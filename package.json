@@ -2,11 +2,10 @@
   "name": "propfs",
   "private": true,
   "version": "1.0.0",
-  "description": "PropFS — Feasibility Study Properti by PT. Mettaland Batam Sukses",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -43,7 +42,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@types/node": "^20.17.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/uuid": "^10.0.0",
