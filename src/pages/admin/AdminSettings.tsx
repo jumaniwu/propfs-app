@@ -1,150 +1,161 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw } from 'lucide-react'
-import { supabase, type AppFeature } from '@/lib/supabase'
-import { useAuthStore } from '@/store/authStore'
-import { toast } from '@/hooks/use-toast'
+import { Save, RefreshCw, AlertCircle, CheckCircle2, ShieldCheck, CreditCard, LayoutDashboard, Database, HardDrive, BarChart3, ChevronRight, Settings2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { invalidatePPNCache } from '@/hooks/usePPNRate'
-
-const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
-  { key: 'fs_module', label: 'Feasibility Study (FS)', desc: 'Modul utama analisa kelayakan proyek properti.' },
-  { key: 'cost_control', label: 'Cost Control & RAB', desc: 'Modul pelacakan anggaran dan Kurva S.' },
-  { key: 'ai_solver', label: 'AI Target Profit Solver', desc: 'Fitur optimasi harga otomatis berbasis AI.' },
-  { key: 'pdf_export', label: 'PDF Report Export', desc: 'Kemampuan ekspor hasil analisa ke PDF.' },
-  { key: 'scurve', label: 'Kurva S Visualization', desc: 'Visualisasi grafik progres pembangunan.' },
-  { key: 'dashboard_admin', label: 'Admin Dashboard', desc: 'Akses ke panel admin ini.' },
-]
+import { Switch } from '@/components/ui/switch'
+import { toast } from '@/hooks/use-toast'
+import { useAuthStore } from '@/store/authStore'
+import { Link } from 'react-router-dom'
 
 export default function AdminSettings() {
-  const [globalFlags, setGlobalFlags] = useState<Record<string, boolean>>({})
-  const [toggling, setToggling] = useState(false)
-  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures } = useAuthStore()
-
-  // PPN State
-  const [ppnPct, setPpnPct]       = useState(11)
-  const [ppnInput, setPpnInput]   = useState('11')
-  const [savingPPN, setSavingPPN] = useState(false)
+  const { profile } = useAuthStore()
+  const [ppnRate, setPpnRate] = useState<string>('11')
   const [loadingPPN, setLoadingPPN] = useState(true)
+  const [savingPPN, setSavingPPN] = useState(false)
+  const [isSubsEnabled, setIsSubsEnabled] = useState(true)
+  const [updatingSubs, setUpdatingSubs] = useState(false)
 
   useEffect(() => {
-    setGlobalFlags(globalFeatures)
-  }, [globalFeatures])
-
-  // Load PPN from Supabase
-  useEffect(() => {
-    async function loadPPN() {
-      try {
-        const { data } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'ppn_rate')
-          .maybeSingle()
-        const rate = data?.value ?? 0.11
-        setPpnPct(Math.round(Number(rate) * 100))
-        setPpnInput(String(Math.round(Number(rate) * 100)))
-      } catch { /* use default */ } finally { setLoadingPPN(false) }
-    }
-    loadPPN()
+    fetchSettings()
   }, [])
 
-  async function updateGlobalFlag(key: AppFeature, val: boolean) {
-    const newFlags = { ...globalFlags, [key]: val }
-    setGlobalFlags(newFlags)
-    const { error } = await supabase
+  async function fetchSettings() {
+    setLoadingPPN(true)
+    const { data } = await supabase
       .from('app_settings')
-      .update({ value: newFlags, updated_at: new Date().toISOString() })
-      .eq('key', 'feature_flags')
+      .select('*')
     
-    if (!error) {
-      await loadFeatureFlags()
-      toast({ title: 'Setting Global diperbarui' })
+    if (data) {
+      const ppn = data.find(s => s.key === 'ppn_rate')
+      const subs = data.find(s => s.key === 'subscription_enabled')
+      if (ppn) setPpnRate(ppn.value)
+      if (subs) setIsSubsEnabled(subs.value === 'true' || subs.value === true)
     }
+    setLoadingPPN(false)
   }
 
   async function savePPN() {
-    const pct = Number(ppnInput)
-    if (isNaN(pct) || pct < 0 || pct > 99) {
-      toast({ title: 'PPN tidak valid (0–99%)', variant: 'destructive' }); return
-    }
     setSavingPPN(true)
-    try {
-      const rate = pct / 100
-      // Upsert because key might not exist yet
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'ppn_rate', value: rate, updated_at: new Date().toISOString() }, { onConflict: 'key' })
-      if (error) throw error
-      invalidatePPNCache()
-      setPpnPct(pct)
-      toast({ title: `PPN berhasil diubah menjadi ${pct}%` })
-    } catch {
-      toast({ title: 'Gagal menyimpan PPN', variant: 'destructive' })
-    } finally { setSavingPPN(false) }
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'ppn_rate', value: ppnRate, updated_at: new Date().toISOString() })
+    
+    if (error) {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    } else {
+      toast({ title: 'Berhasil', description: 'Tarif PPN diperbarui.' })
+    }
+    setSavingPPN(false)
   }
 
-  async function toggleSubscription() {
-    setToggling(true)
-    try {
-      const newVal = !isSubscriptionEnabled
-      const { error } = await supabase
-        .from('app_settings')
-        .update({ value: newVal, updated_at: new Date().toISOString() })
-        .eq('key', 'subscription_enabled')
-      if (error) throw error
-      await loadFeatureFlags()
-      toast({
-        title: `Subscription System ${newVal ? 'AKTIF' : 'NONAKTIF'}`,
-        description: newVal
-          ? 'User sekarang dibatasi berdasarkan paket (Free/Basic/Pro).'
-          : 'Semua user bisa akses semua fitur bebas.',
-      })
-    } catch {
-      toast({ title: 'Gagal mengubah setting', variant: 'destructive' })
-    } finally {
-      setToggling(false)
+  async function toggleSubscription(checked: boolean) {
+    setUpdatingSubs(true)
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'subscription_enabled', value: checked, updated_at: new Date().toISOString() })
+    
+    if (error) {
+      toast({ title: 'Gagal', description: error.message, variant: 'destructive' })
+    } else {
+      setIsSubsEnabled(checked)
+      toast({ title: 'Berhasil', description: `Paywall sekarang ${checked ? 'Aktif' : 'Non-aktif'}.` })
     }
+    setUpdatingSubs(false)
   }
+
+  const ppnPct = parseInt(ppnRate) || 0
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-end">
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-           <h1 className="text-2xl font-serif font-bold text-navy">Sistem & Fitur (Settings)</h1>
-           <p className="text-sm text-muted-foreground mt-1">Nyalakan atau matikan fitur platform secara global untuk seluruh pengguna baru.</p>
+          <div className="flex items-center gap-3 mb-2">
+             <div className="p-2 bg-navy/5 rounded-xl">
+                <Settings2 className="w-6 h-6 text-navy" />
+             </div>
+             <h1 className="text-4xl font-serif font-black text-navy">System Settings</h1>
+          </div>
+          <p className="text-slate-500 font-medium">Konfigurasi global platform PropFS</p>
         </div>
       </div>
 
-      {/* ── PPN Rate Setting ── */}
-      <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-        <div className="flex items-center gap-2">
-          <Percent className="h-5 w-5 text-gold" />
-          <h2 className="font-serif text-xl font-bold">Tarif PPN (Pajak Pertambahan Nilai)</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Tarif PPN ini dipakai pada semua perhitungan invoice. Harga paket di landing page sudah belum termasuk PPN.
-          PPN akan ditambahkan otomatis saat checkout.
-        </p>
-        <div className="flex items-center gap-3">
-          <div className="relative w-36">
-            <Input
-              type="number"
-              min={0}
-              max={99}
-              value={ppnInput}
-              onChange={e => setPpnInput(e.target.value)}
-              className="pr-8 text-lg font-bold"
-              disabled={loadingPPN}
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">%</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* ── PPN Section ── */}
+        <div className="lg:col-span-2 bg-white rounded-3xl p-8 border border-slate-100 shadow-sm transition-all hover:shadow-md">
+          <div className="flex items-center gap-3 mb-6">
+             <div className="p-2 bg-amber-50 rounded-lg">
+                <ShieldCheck className="w-5 h-5 text-amber-600" />
+             </div>
+             <h3 className="text-xl font-bold text-navy">Pajak Pertambahan Nilai (PPN)</h3>
           </div>
-          <Button onClick={savePPN} disabled={savingPPN || loadingPPN} className="gap-2">
-            {savingPPN ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Simpan PPN
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Berlaku sekarang: <strong>{loadingPPN ? '...' : `${ppnPct}%`}</strong>
-          </span>
+          
+          <p className="text-sm text-slate-500 mb-8 leading-relaxed">
+            Atur persentase PPN yang akan diterapkan pada seluruh Invoice di sistem. Perubahan ini akan langsung berdampak pada simulasi harga di Landing Page.
+          </p>
+
+          <div className="flex items-center gap-6 mb-8">
+            <div className="relative flex-1 max-w-[200px]">
+              <Input 
+                type="number" 
+                value={ppnRate}
+                onChange={(e) => setPpnRate(e.target.value)}
+                className="h-16 text-2xl font-black pl-6 pr-12 border-slate-200 focus:ring-navy rounded-2xl"
+              />
+              <span className="absolute right-5 top-1/2 -translate-y-1/2 font-black text-xl text-slate-400">%</span>
+            </div>
+            
+            <div className="flex-1">
+               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest block mb-1">Status Pajak</span>
+                  <span className="text-navy font-bold flex items-center gap-2">
+                     <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Aktif Secara Global
+                  </span>
+               </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-6 border-t border-slate-50">
+             <div className="flex items-center gap-2 text-xs text-slate-400 italic">
+                <AlertCircle className="w-3 h-3" /> Rekomendasi Pemerintah: 11%
+             </div>
+             <Button 
+                onClick={savePPN} 
+                disabled={savingPPN || loadingPPN} 
+                className="bg-navy hover:bg-navy/90 text-gold font-bold px-8 h-12 rounded-xl transition-all active:scale-95"
+             >
+               {savingPPN ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+               Simpan Perubahan
+             </Button>
+          </div>
+        </div>
+
+        {/* ── Summary Card ── */}
+        <div className="bg-slate-900 rounded-3xl p-8 text-white flex flex-col justify-between relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700" />
+           
+           <div>
+              <h4 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-6">Current Configuration</h4>
+              <div className="space-y-6">
+                 <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-300">PPN Rate</span>
+                    <span className="text-2xl font-black text-gold">{ppnPct}%</span>
+                 </div>
+                 <div className="flex items-center justify-between">
+                    <span className="text-sm text-slate-300">Subs Payment</span>
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${isSubsEnabled ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                       {isSubsEnabled ? 'ENABLED' : 'DISABLED'}
+                    </span>
+                 </div>
+              </div>
+           </div>
+
+           <div className="mt-12 pt-8 border-t border-white/10 text-[10px] text-slate-500 font-medium italic">
+              Last updated: {new Date().toLocaleDateString()}
+           </div>
         </div>
       </div>
 
@@ -163,49 +174,56 @@ export default function AdminSettings() {
                </div>
                <h3 className="text-3xl font-serif font-bold text-white mb-2">Sistem Langganan Berbayar</h3>
                <p className="text-sm text-white/70 max-w-lg leading-relaxed">
-                  Apabila sakelar ini digeser ke <b>Aktif</b>, pengguna baru akan mendapatkan limit sesuai *Tier Pricing* (Gratis hanya bisa membuat 2 proyek RAB). 
-                  Jika nonaktif, sistem PropFS akan menjadi bebas (seluruh fitur dan ekspor PDF terbuka untuk umum).
+                  Aktifkan paywall untuk memaksa user baru melakukan pembayaran sebelum bisa menggunakan dashboard utama. Gunakan mode Non-aktif untuk masa testing massal.
                </p>
             </div>
-            <button onClick={toggleSubscription} disabled={toggling} className="transition-transform active:scale-95 shrink-0 group">
-               {isSubscriptionEnabled 
-                 ? <ToggleRight className="h-20 w-20 text-gold drop-shadow-[0_0_15px_rgba(201,168,76,0.5)]" /> 
-                 : <ToggleLeft className="h-20 w-20 text-white/20 group-hover:text-white/40" />
-               }
-               <div className="text-center font-bold text-sm tracking-widest uppercase mt-2">
-                  {isSubscriptionEnabled ? <span className="text-gold">AKTIF</span> : <span className="text-white/40">NON-AKTIF</span>}
-               </div>
-            </button>
+
+            <div className="flex flex-col items-center gap-4 bg-white/5 p-6 rounded-2xl border border-white/10 backdrop-blur-sm">
+               <span className={`text-xs font-bold tracking-widest ${isSubsEnabled ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  STATUS: {isSubsEnabled ? 'ACTIVE' : 'BYPASSED'}
+               </span>
+               <Switch 
+                  checked={isSubsEnabled}
+                  onCheckedChange={toggleSubscription}
+                  disabled={updatingSubs}
+                  className="data-[state=checked]:bg-emerald-500 scale-125"
+               />
+               <span className="text-[10px] text-white/40 italic text-center">Tindakan ini akan <br/>berdampak instan.</span>
+            </div>
          </div>
       </div>
 
-      {/* ── Global Feature Management ── */}
-      <div className="bg-card border border-border shadow-sm rounded-2xl p-6 lg:p-8 space-y-6">
-         <div className="flex items-center justify-between">
-            <h2 className="font-serif text-xl font-bold flex items-center gap-2"><Settings className="h-5 w-5 text-gold" /> Konfigurasi Modul Utama</h2>
-            <div className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-widest">Global Effect</div>
-         </div>
-         <p className="text-sm text-muted-foreground/80 mb-6">Secara paksa menyembunyikan atau memunculkan sistem berikut dari dashboard pengguna.</p>
-         
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {AVAILABLE_FEATURES.map(f => (
-               <label key={f.key} className="flex gap-4 p-5 rounded-2xl border border-border bg-slate-50/50 hover:bg-slate-50 cursor-pointer group transition-colors">
-                  <div className="pt-1">
-                     <input 
-                        type="checkbox" 
-                        className="h-5 w-5 rounded border-gray-300 text-gold focus:ring-gold cursor-pointer"
-                        checked={!!globalFlags[f.key]}
-                        onChange={(e) => updateGlobalFlag(f.key, e.target.checked)}
-                     />
+      {/* ── Bottom Section ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+         <Link to="/admin" className="group">
+            <div className="bg-white border border-slate-100 p-6 rounded-2xl flex items-center justify-between hover:border-navy hover:shadow-lg transition-all duration-300">
+               <div className="flex items-center gap-4">
+                  <div className="p-3 bg-navy/5 rounded-xl group-hover:bg-navy group-hover:text-gold transition-colors">
+                     <LayoutDashboard className="w-5 h-5" />
                   </div>
                   <div>
-                     <div className="text-base font-bold text-navy group-hover:text-gold transition-colors">{f.label}</div>
-                     <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{f.desc}</div>
+                     <h4 className="font-bold text-navy">Kembali ke Dashboard</h4>
+                     <p className="text-[10px] text-slate-400 font-medium">Monitor statistik real-time</p>
                   </div>
-               </label>
-            ))}
+               </div>
+               <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-navy group-hover:translate-x-1 transition-all" />
+            </div>
+         </Link>
+
+         <div className="bg-white border border-slate-100 p-6 rounded-2xl flex items-center justify-between border-dashed opacity-60">
+            <div className="flex items-center gap-4">
+               <div className="p-3 bg-slate-100 rounded-xl">
+                  <Database className="w-5 h-5 text-slate-400" />
+               </div>
+               <div>
+                  <h4 className="font-bold text-slate-400">Database Backup</h4>
+                  <p className="text-[10px] text-slate-300 font-medium italic">Available on Enterprise plan</p>
+               </div>
+            </div>
+            <ShieldCheck className="w-5 h-5 text-slate-200" />
          </div>
       </div>
+
     </div>
   )
 }
