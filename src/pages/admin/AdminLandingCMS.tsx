@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
-import { Save, Image as ImageIcon, Layout, List, Plus, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase'
 
 export default function AdminLandingCMS() {
   const { landingContent, updateLandingContent } = useAuthStore()
   const [cmsData, setCmsData] = useState(landingContent)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setCmsData(landingContent)
@@ -16,9 +19,55 @@ export default function AdminLandingCMS() {
      try {
        await updateLandingContent(cmsData)
        toast({ title: 'Konten Website Berhasil Disimpan', description: 'Perubahan akan langsung tampil di halaman depan.' })
-     } catch {
-       toast({ title: 'Gagal Menyimpan', variant: 'destructive' })
+     } catch (err: any) {
+       toast({ title: 'Gagal Menyimpan', description: err.message, variant: 'destructive' })
      }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 1. Validasi File
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Bukan Gambar', description: 'Silakan pilih file gambar (JPG, PNG, WEBP).', variant: 'destructive' })
+      return
+    }
+
+    setUploading(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `hero_${Math.random()}.${fileExt}`
+      const filePath = `hero/${fileName}`
+
+      // 2. Upload ke Supabase Storage (Bucket: landing-assets)
+      const { error: uploadError } = await supabase.storage
+        .from('landing-assets')
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // 3. Dapatkan Public URL
+      const { data } = supabase.storage
+        .from('landing-assets')
+        .getPublicUrl(filePath)
+
+      // 4. Update State
+      setCmsData({
+        ...cmsData,
+        hero: {
+          ...cmsData.hero,
+          imageUrl: data.publicUrl
+        }
+      })
+
+      toast({ title: 'Berhasil Upload', description: 'Gambar baru telah diunggah.' })
+    } catch (err: any) {
+      console.error(err)
+      toast({ title: 'Gagal Upload', description: 'Pastikan bucket "landing-assets" sudah dibuat dan publik.', variant: 'destructive' })
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -73,15 +122,36 @@ export default function AdminLandingCMS() {
               <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Paragraf Sub-headline (Deskripsi)</label>
               <textarea className="w-full bg-muted/50 border border-border/50 rounded-xl p-4 min-h-[80px] focus:bg-white focus:ring-1 focus:ring-gold transition-colors text-sm" value={cmsData.hero.subtitle} onChange={e => setCmsData({...cmsData, hero: {...cmsData.hero, subtitle: e.target.value}})} />
             </div>
-            <div className="grid md:grid-cols-2 gap-5">
-               <div className="space-y-1.5 flex flex-col">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Kumpulan Tag (Pisahkan ,)</label>
-                  <input className="w-full h-12 bg-muted/50 border border-border/50 rounded-xl px-4 focus:bg-white focus:ring-1 focus:ring-gold transition-colors text-sm" value={cmsData.hero.hashtags.join(', ')} onChange={e => setCmsData({...cmsData, hero: {...cmsData.hero, hashtags: e.target.value.split(',').map(s => s.trim())}})} />
-               </div>
-               <div className="space-y-1.5 flex flex-col">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Gambar Ornamen (URL)</label>
-                 <input className="w-full h-12 bg-muted/50 border border-border/50 rounded-xl px-4 focus:bg-white focus:ring-1 focus:ring-gold transition-colors font-mono text-sm" value={cmsData.hero.imageUrl} onChange={e => setCmsData({...cmsData, hero: {...cmsData.hero, imageUrl: e.target.value}})} />
-               </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5 flex flex-col">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Hero Image (Dashboard Preview)</label>
+                <div className="flex gap-4 items-start">
+                   <div className="flex-1 space-y-2">
+                      <input className="w-full h-11 bg-muted/50 border border-border/50 rounded-xl px-4 focus:bg-white focus:ring-1 focus:ring-gold transition-colors font-mono text-[10px]" value={cmsData.hero.imageUrl} readOnly />
+                      <p className="text-[9px] text-muted-foreground italic ml-1">*Upload file menggunakan tombol di samping.</p>
+                   </div>
+                   <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
+                   <Button variant="outline" className="h-11 px-5 gap-2 border-dashed border-2 hover:border-gold hover:text-gold" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                      Upload Foto
+                   </Button>
+                </div>
+              </div>
+
+              {cmsData.hero.imageUrl && (
+                 <div className="relative aspect-video rounded-2xl overflow-hidden border border-border bg-slate-100 group">
+                    <img src={cmsData.hero.imageUrl} className="w-full h-full object-cover" alt="Preview Hero" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                       <span className="text-white text-xs font-bold">Image Preview</span>
+                    </div>
+                 </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5 flex flex-col">
+                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Kumpulan Tag (Pisahkan ,)</label>
+                <input className="w-full h-12 bg-muted/50 border border-border/50 rounded-xl px-4 focus:bg-white focus:ring-1 focus:ring-gold transition-colors text-sm" value={cmsData.hero.hashtags.join(', ')} onChange={e => setCmsData({...cmsData, hero: {...cmsData.hero, hashtags: e.target.value.split(',').map(s => s.trim())}})} />
             </div>
           </div>
         </div>
