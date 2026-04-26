@@ -1,0 +1,338 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 35 30% 96%;
+    --foreground: 210 50% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 210 50% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 50% 10%;
+    --primary: 39 50% 55%;
+    --primary-foreground: 210 50% 5%;
+    --secondary: 210 40% 25%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 20% 92%;
+    --muted-foreground: 210 15% 50%;
+    --accent: 39 60% 55%;
+    --accent-foreground: 210 50% 5%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 20% 85%;
+    --input: 210 20% 88%;
+    --ring: 39 50% 55%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 210 50% 8%;
+    --foreground: 35 30% 95%;
+    --card: 210 45% 12%;
+    --card-foreground: 35 30% 95%;
+    --popover: 210 45% 12%;
+    --popover-foreground: 35 30% 95%;
+    --primary: 39 50% 55%;
+    --primary-foreground: 210 50% 5%;
+    --secondary: 210 35% 20%;
+    --secondary-foreground: 35 30% 95%;
+    --muted: 210 35% 18%;
+    --muted-foreground: 210 20% 65%;
+    --accent: 39 55% 45%;
+    --accent-foreground: 35 30% 95%;
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 30% 22%;
+    --input: 210 30% 20%;
+    --ring: 39 50% 55%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/40 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/60;
+  }
+}
+
+@layer components {
+  /* Input dengan border hijau */
+  .input-green {
+    @apply border-green-400 focus:border-green-600 focus:ring-green-200;
+  }
+
+  /* KPI Card */
+  .kpi-card {
+    @apply bg-card rounded-xl shadow-lg p-5 border-l-4;
+  }
+
+  /* Table styles */
+  .data-table th {
+    @apply bg-navy text-white text-xs font-medium uppercase tracking-wider py-3 px-4 sticky top-0;
+  }
+
+  .data-table td {
+    @apply py-2.5 px-4 text-sm border-b border-border;
+  }
+
+  .data-table tr:nth-child(even) td {
+    @apply bg-muted/30;
+  }
+
+  .data-table tr:hover td {
+    @apply bg-accent/10;
+  }
+
+  /* Section heading */
+  .section-title {
+    @apply text-navy dark:text-gold font-serif text-lg font-semibold mb-4 flex items-center gap-2;
+  }
+
+  /* Status badge */
+  .badge-sangat-layak {
+    @apply bg-green-50 text-green-800 border border-green-200 rounded-full px-3 py-1 text-sm font-semibold;
+  }
+
+  .badge-layak {
+    @apply bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-3 py-1 text-sm font-semibold;
+  }
+
+  .badge-tidak-layak {
+    @apply bg-red-50 text-red-800 border border-red-200 rounded-full px-3 py-1 text-sm font-semibold;
+  }
+
+  /* Positive/negative value colors */
+  .text-positive {
+    @apply text-green-700 dark:text-green-400;
+  }
+
+  .text-negative {
+    @apply text-red-700 dark:text-red-400;
+  }
+
+  /* Gold accent for premium elements */
+  .text-gold {
+    color: #C9A84C;
+  }
+
+  .border-gold {
+    border-color: #C9A84C;
+  }
+
+  .bg-navy {
+    background-color: #0D1B2A;
+  }
+
+  .text-navy {
+    color: #0D1B2A;
+  }
+}
+
+@layer utilities {
+  /* ── PRINT STYLES ── */
+  @media print {
+    /* === Page Setup === */
+    @page {
+      size: A4 portrait;
+      margin: 12mm 10mm;
+    }
+
+    /* Hide UI chrome */
+    .no-print,
+    nav,
+    header:not(#report-content header),
+    [role="navigation"] {
+      display: none !important;
+    }
+
+    /* === Base Reset === */
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      box-shadow: none !important;
+    }
+
+    html, body {
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      font-size: 10pt !important;
+      background: white !important;
+      color: #111 !important;
+    }
+
+    /* Report container */
+    #report-content {
+      max-width: 100% !important;
+      width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+
+    /* === PAGE BREAKS === */
+    .print-break-before {
+      break-before: page !important;
+      page-break-before: always !important;
+    }
+
+    .print-break-avoid {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    /* === TABLE FIXES — core issue === */
+    /* Make ALL tables fully visible, never clip */
+    table {
+      width: 100% !important;
+      table-layout: auto !important;
+      border-collapse: collapse !important;
+      overflow: visible !important;
+      page-break-inside: auto !important;
+    }
+
+    /* Repeat table headers on every printed page */
+    thead {
+      display: table-header-group !important;
+    }
+
+    tfoot {
+      display: table-footer-group !important;
+    }
+
+    tr {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    th, td {
+      font-size: 8pt !important;
+      padding: 3px 5px !important;
+      border: 1px solid #ccc !important;
+      overflow: visible !important;
+      word-break: break-word !important;
+      white-space: normal !important;
+    }
+
+    /* Fix overflow containers that would clip content */
+    .overflow-x-auto,
+    [class*="overflow"] {
+      overflow: visible !important;
+    }
+
+    /* === COLOR FIXES for dark backgrounds === */
+    /* Navy backgrounds */
+    .bg-navy,
+    [class*="bg-navy"] {
+      background-color: #0D1B2A !important;
+      color: white !important;
+    }
+
+    /* Gold elements */
+    .text-gold,
+    [class*="text-gold"] {
+      color: #C9A84C !important;
+    }
+
+    /* Muted backgrounds — keep them subtle */
+    [class*="bg-muted"] {
+      background-color: #f5f5f5 !important;
+    }
+
+    /* Navy/gold gradient headers */
+    .bg-gold-gradient {
+      background: linear-gradient(135deg, #C9A84C 0%, #E8C875 50%, #C9A84C 100%) !important;
+    }
+
+    /* === FONT SIZE SCALING === */
+    h1 { font-size: 20pt !important; }
+    h2 { font-size: 15pt !important; }
+    h3 { font-size: 12pt !important; }
+    h4 { font-size: 10pt !important; }
+    p, span, div { font-size: 9pt; }
+
+    /* Cover page special */
+    #report-content > div:first-child {
+      min-height: 0 !important;
+      padding: 30mm 20mm !important;
+    }
+
+    /* Charts — preserve size but avoid splitting */
+    .recharts-wrapper,
+    [class*="recharts"] {
+      break-inside: avoid !important;
+    }
+
+    /* KPI card grid */
+    .grid {
+      break-inside: avoid !important;
+    }
+
+    /* Status badges */
+    .rounded-full {
+      border: 1px solid #999 !important;
+    }
+  }
+
+  /* Numeric font */
+  .font-numeric {
+    @apply font-mono tabular-nums;
+  }
+
+  /* Gold gradient */
+  .bg-gold-gradient {
+    background: linear-gradient(135deg, #C9A84C 0%, #E8C875 50%, #C9A84C 100%);
+  }
+
+  /* Navy gradient */
+  .bg-navy-gradient {
+    background: linear-gradient(135deg, #0D1B2A 0%, #1B3A5C 100%);
+  }
+
+  /* Shimmer loading */
+  .shimmer {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 37%, #f0f0f0 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+  }
+
+  /* Animate fade-in */
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out forwards;
+  }
+
+  @keyframes fade-in {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+}
