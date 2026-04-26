@@ -148,7 +148,7 @@ export default function AdminSettings() {
         </div>
       </div>
 
-      {/* ── Subscription Toggle ── */}}
+      {/* ── Subscription Toggle ── */}
       <div className="bg-gradient-to-r from-navy to-slate-800 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
          <div className="absolute top-0 right-0 w-64 h-64 bg-gold/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
          
