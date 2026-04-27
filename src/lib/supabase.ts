@@ -25,6 +25,7 @@ export type AppFeature =
 export interface LandingPageContent {
   branding: {
     logoUrl: string
+    faviconUrl?: string
     siteName: string
     tagline: string
   }
