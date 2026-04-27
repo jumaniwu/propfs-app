@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, Smartphone, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
+import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { toast } from '@/hooks/use-toast'
 
-type Tab = 'login' | 'register' | 'otp'
+type Tab = 'login' | 'register'
 
 export default function AuthPage() {
   const navigate = useNavigate()
@@ -16,7 +15,8 @@ export default function AuthPage() {
 
   const [tab, setTab] = useState<Tab>(() => {
     const params = new URLSearchParams(window.location.search)
-    return (params.get('tab') as Tab) || 'login'
+    const t = params.get('tab')
+    return (t === 'register' ? 'register' : 'login')
   })
   
   // Read selected plan from URL
@@ -35,8 +35,6 @@ export default function AuthPage() {
   
   const [regStep, setRegStep] = useState<1 | 2>(1)
   const [showPass, setShowPass] = useState(false)
-  const [isSendingOtp, setIsSendingOtp] = useState(false)
-  const [generatedOtp, setGeneratedOtp] = useState('')
   
   // Form State
   const [loginEmail, setLoginEmail] = useState('')
@@ -49,9 +47,6 @@ export default function AuthPage() {
   const [regPass, setRegPass] = useState('')
   const [regPass2, setRegPass2] = useState('')
   const [regError, setRegError] = useState('')
-
-  const [otpValue, setOtpValue] = useState(['', '', '', '', '', ''])
-  const otpInputs = useRef<(HTMLInputElement | null)[]>([])
 
   useEffect(() => {
     clearError()
@@ -101,7 +96,6 @@ export default function AuthPage() {
         navigate('/home')
       }
     } catch (err: any) {
-      // Supabase may require email confirmation - show helpful message
       const msg: string = err.message || ''
       if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email')) {
         setRegError('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi, lalu login kembali.')
@@ -110,41 +104,6 @@ export default function AuthPage() {
         setRegError(err.message)
       }
     }
-  }
-
-  async function handleVerifyOTP(e: React.FormEvent) {
-    e.preventDefault()
-    clearError()
-    const code = otpValue.join('')
-    
-    if (code !== generatedOtp && code !== '123456') {
-      useAuthStore.setState({ authError: 'Kode OTP salah.' })
-      return
-    }
-
-    try {
-      await signUp(regEmail, regPass, regName, regCompany, regPhone)
-      await signIn(regEmail, regPass)
-      
-      const params = new URLSearchParams(location.search)
-      const plan = params.get('plan')
-      if (plan && plan !== 'free') {
-        navigate(`/home?create_invoice=${plan}`)
-      } else {
-        navigate('/home')
-      }
-    } catch (err: any) {
-      setRegError(err.message)
-      setTab('register')
-    }
-  }
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^[0-9]*$/.test(value)) return
-    const newOtp = [...otpValue]
-    newOtp[index] = value
-    setOtpValue(newOtp)
-    if (value && index < 5) otpInputs.current[index + 1]?.focus()
   }
 
   return (
@@ -182,17 +141,14 @@ export default function AuthPage() {
 
       {/* ── Right panel: form ── */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-24 bg-slate-50/50 relative overflow-hidden">
-        {/* Background blobs for mobile */}
         <div className="lg:hidden absolute top-0 left-0 w-64 h-64 bg-gold/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
 
         <div className="w-full max-w-[440px] relative z-10">
           
-          {tab !== 'otp' && (
-            <div className="flex bg-slate-200/50 p-2 rounded-2xl mb-12 w-full backdrop-blur">
-              <button onClick={() => setTab('login')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'login' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>LOG IN</button>
-              <button onClick={() => setTab('register')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'register' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>REGISTER</button>
-            </div>
-          )}
+          <div className="flex bg-slate-200/50 p-2 rounded-2xl mb-12 w-full backdrop-blur">
+            <button onClick={() => setTab('login')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'login' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>LOG IN</button>
+            <button onClick={() => setTab('register')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'register' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>REGISTER</button>
+          </div>
 
           {/* LOGIN */}
           {tab === 'login' && (
@@ -231,7 +187,7 @@ export default function AuthPage() {
               </div>
               
               <Button type="submit" variant="gold" className="w-full h-16 rounded-[22px] text-xl font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all" disabled={isLoading}>
-                {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <>MASUK SEKARANG <ArrowRight className="h-5 w-5 ml-3" /></>}
+                {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <><span>MASUK SEKARANG</span> <ArrowRight className="h-5 w-5 ml-3" /></>}
               </Button>
             </form>
           )}
@@ -240,78 +196,79 @@ export default function AuthPage() {
           {tab === 'register' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
               <div className="space-y-2">
-                <h2 className="text-4xl font-serif font-black text-navy leading-none">
-                  Pendaftaran <span className="text-gold">{displayedPlan}</span> ✨
-                </h2>
-                <div className="flex gap-2 pt-4">
-                   <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 1 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
-                   <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 2 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
-                </div>
+                <h2 className="text-4xl font-serif font-black text-navy leading-none">Buat Akun Baru</h2>
+                <p className="text-slate-500 font-medium">
+                  Paket dipilih: <span className="text-gold font-black">{displayedPlan}</span>
+                </p>
               </div>
 
-              {(authError || regError) && (
-                <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700">
-                   <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
-                   <p className="font-medium">{authError || regError}</p>
+              {regError && (
+                <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700 leading-relaxed">
+                  <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                  <p>{regError}</p>
                 </div>
               )}
-              
-              {regStep === 1 ? (
+
+              {/* Step 1 */}
+              {regStep === 1 && (
                 <div className="space-y-5">
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Lengkap Penanggung Jawab</Label>
-                     <div className="relative">
-                        <User className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="Budi Santoso" value={regName} onChange={e => setRegName(e.target.value)} />
-                     </div>
-                   </div>
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Unit Bisnis / Perusahaan</Label>
-                     <div className="relative">
-                        <Briefcase className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="PT. Jaya Properti Indonesia" value={regCompany} onChange={e => setRegCompany(e.target.value)} />
-                     </div>
-                   </div>
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nomor WhatsApp Aktif</Label>
-                     <div className="relative">
-                        <Phone className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="0812 3456 7890" value={regPhone} onChange={e => setRegPhone(e.target.value)} />
-                     </div>
-                   </div>
-                   <Button className="w-full h-16 bg-navy text-white rounded-2xl font-black text-lg active:scale-95 transition-all shadow-xl shadow-navy/20" onClick={() => setRegStep(2)}>
-                      LANJUTKAN KE KEAMANAN <ArrowRight className="h-5 w-5 ml-3" />
-                   </Button>
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Lengkap</Label>
+                    <div className="relative">
+                      <User className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                      <Input className="pl-14 h-16 rounded-2xl bg-white" type="text" placeholder="Nama Anda" value={regName} onChange={e => setRegName(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Perusahaan</Label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                      <Input className="pl-14 h-16 rounded-2xl bg-white" type="text" placeholder="Nama Perusahaan" value={regCompany} onChange={e => setRegCompany(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">No. WhatsApp</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                      <Input className="pl-14 h-16 rounded-2xl bg-white" type="tel" placeholder="0812-xxxx-xxxx" value={regPhone} onChange={e => setRegPhone(e.target.value)} />
+                    </div>
+                  </div>
+                  <Button className="w-full h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20" onClick={() => setRegStep(2)}>
+                    LANJUTKAN <ArrowRight className="h-5 w-5 ml-2 inline" />
+                  </Button>
                 </div>
-              ) : (
-                <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Aktif</Label>
-                     <div className="relative">
-                        <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="email" placeholder="name@company.com" value={regEmail} onChange={e => setRegEmail(e.target.value)} />
-                     </div>
-                   </div>
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Sandi Akses</Label>
-                     <div className="relative">
-                        <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Minimal 8 karakter" value={regPass} onChange={e => setRegPass(e.target.value)} />
-                     </div>
-                   </div>
-                   <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Ulangi Sandi</Label>
-                     <div className="relative">
-                        <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Konfirmasi sandi Anda" value={regPass2} onChange={e => setRegPass2(e.target.value)} />
-                     </div>
-                   </div>
-                   <div className="flex gap-4 pt-4">
-                     <Button variant="outline" className="h-16 rounded-2xl px-10 border-slate-200 font-bold" onClick={() => setRegStep(1)}>BACK</Button>
-                     <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRegisterSubmit} disabled={isLoading}>
-                       {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : 'DAFTAR SEKARANG'}
-                     </Button>
-                   </div>
+              )}
+
+              {/* Step 2 */}
+              {regStep === 2 && (
+                <div className="space-y-5">
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Aktif</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                      <Input className="pl-14 h-16 rounded-2xl bg-white" type="email" placeholder="email@perusahaan.com" value={regEmail} onChange={e => setRegEmail(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Buat Sandi</Label>
+                    <div className="relative">
+                       <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                       <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Min. 8 karakter" value={regPass} onChange={e => setRegPass(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Ulangi Sandi</Label>
+                    <div className="relative">
+                       <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                       <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Konfirmasi sandi Anda" value={regPass2} onChange={e => setRegPass2(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex gap-4 pt-4">
+                    <Button variant="outline" className="h-16 rounded-2xl px-10 border-slate-200 font-bold" onClick={() => setRegStep(1)}>BACK</Button>
+                    <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRegisterSubmit} disabled={isLoading}>
+                      {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : 'DAFTAR SEKARANG'}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -321,4 +278,3 @@ export default function AuthPage() {
     </div>
   )
 }
-
