@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Save, Shield, Star, Crown, CheckCircle2, Layout, Info } from 'lucide-react'
+import { Save, Shield, Star, Crown, CheckCircle2, Layout, Smartphone, Tablet, Monitor, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 
@@ -12,7 +12,7 @@ interface SaaSPlan {
   recommended?: boolean
 }
 
-export default function AdminPlans() {
+export default function AdminSaaSSettings() {
   const [plans, setPlans] = useState<SaaSPlan[]>([
     {
       id: 'free',
@@ -54,7 +54,7 @@ export default function AdminPlans() {
   }
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="space-y-8 pb-10 px-0 sm:px-4">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 sticky top-0 bg-slate-50/90 backdrop-blur-xl pt-4 pb-6 z-10 border-b border-navy/5">
         <div className="space-y-1">
           <h2 className="font-serif text-3xl font-black text-navy tracking-tight">Katalog & Harga SaaS</h2>
