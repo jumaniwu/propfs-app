@@ -9,8 +9,12 @@ import { supabase } from '@/lib/supabase'
 export default function AdminLandingCMS() {
   const { landingContent, updateLandingContent } = useAuthStore()
   const [cmsData, setCmsData] = useState(landingContent)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState<'logo' | 'favicon' | 'hero' | null>(null)
+  
+  // Create refs outside of array
+  const logoRef = useRef<HTMLInputElement>(null)
+  const faviconRef = useRef<HTMLInputElement>(null)
+  const heroRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setCmsData(landingContent)
@@ -25,7 +29,7 @@ export default function AdminLandingCMS() {
      }
   }
 
-  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>, target: 'logo' | 'favicon' | 'hero') {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -33,32 +37,48 @@ export default function AdminLandingCMS() {
       return
     }
 
-    setUploading(true)
+    setUploading(target)
     try {
       const fileExt = file.name.split('.').pop()
-      const fileName = `hero_${Math.random()}.${fileExt}`
+      const fileName = `${target}_${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `hero/${fileName}`
 
+      // Attempt Supabase Upload First
       const { error: uploadError } = await supabase.storage
         .from('landing-assets')
         .upload(filePath, file)
 
-      if (uploadError) throw uploadError
+      let resultUrl = ''
 
-      const { data } = supabase.storage
-        .from('landing-assets')
-        .getPublicUrl(filePath)
+      if (!uploadError) {
+        const { data } = supabase.storage.from('landing-assets').getPublicUrl(filePath)
+        resultUrl = data.publicUrl
+        toast({ title: 'Berhasil Upload', description: 'Gambar disimpan di Cloud Storage.' })
+      } else {
+        // FALLBACK: Auto convert to Base64 if bucket doesn't exist
+        resultUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+        toast({ title: 'Tersimpan Lokal', description: 'Gambar ukuran kecil disimpan ke dalam data text.' })
+      }
 
-      setCmsData({
-        ...cmsData,
-        hero: { ...cmsData.hero, imageUrl: data.publicUrl }
+      setCmsData(prev => {
+        const next = { ...prev }
+        if (target === 'hero') next.hero = { ...next.hero, imageUrl: resultUrl }
+        else if (target === 'logo') next.branding = { ...next.branding, logoUrl: resultUrl }
+        else if (target === 'favicon') next.branding = { ...next.branding, faviconUrl: resultUrl }
+        return next
       })
 
-      toast({ title: 'Berhasil Upload', description: 'Gambar baru telah diunggah.' })
     } catch (err: any) {
-      toast({ title: 'Gagal Upload', description: 'Pastikan bucket "landing-assets" sudah PUBLIC di Supabase.', variant: 'destructive' })
+      toast({ title: 'Gagal Memproses Gambar', description: err.message, variant: 'destructive' })
     } finally {
-      setUploading(false)
+      setUploading(null)
+      // Reset input value so same file can be uploaded again if needed
+      e.target.value = ''
     }
   }
 
@@ -106,12 +126,24 @@ export default function AdminLandingCMS() {
                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.tagline} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, tagline: e.target.value}})} />
                </div>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">URL Logo (.png/.svg)</Label>
-                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono text-xs focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.logoUrl} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, logoUrl: e.target.value}})} />
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Upload Logo (.png/.svg)</Label>
+                  <div className="flex gap-2">
+                    <input type="file" ref={logoRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo')} />
+                    <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => logoRef.current?.click()} disabled={uploading === 'logo'}>
+                       {uploading === 'logo' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate max-w-[200px]">{cmsData.branding.logoUrl ? 'Logo Ter-upload ✓' : 'Pilih File Logo'}</span>}
+                       <Upload className="h-4 w-4 ml-2 text-slate-400" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">URL Favicon (.ico/.png)</Label>
-                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono text-xs focus:ring-4 focus:ring-gold/10 transition-all" placeholder="Kosongkan untuk bawaan default" value={cmsData.branding.faviconUrl || ''} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, faviconUrl: e.target.value}})} />
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Upload Favicon (.ico/.png)</Label>
+                  <div className="flex gap-2">
+                    <input type="file" ref={faviconRef} className="hidden" accept="image/x-icon,image/png" onChange={(e) => handleFileUpload(e, 'favicon')} />
+                    <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => faviconRef.current?.click()} disabled={uploading === 'favicon'}>
+                       {uploading === 'favicon' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate max-w-[200px]">{cmsData.branding.faviconUrl ? 'Favicon Ter-upload ✓' : 'Kosongkan u/ Default'}</span>}
+                       <Upload className="h-4 w-4 ml-2 text-slate-400" />
+                    </Button>
+                  </div>
                 </div>
             </div>
           </div>
@@ -147,9 +179,9 @@ export default function AdminLandingCMS() {
                     <p className="text-[10px] text-slate-400 mb-2 font-bold uppercase tracking-widest">File Path Aktif</p>
                     <code className="text-[10px] block truncate text-navy font-mono">{cmsData.hero.imageUrl || 'No image uploaded'}</code>
                  </div>
-                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-                 <Button className="w-full sm:w-auto h-14 px-8 bg-navy text-white rounded-2xl font-bold flex gap-3 shadow-xl" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                    {uploading ? <Loader2 className="animate-spin h-5 w-5" /> : <Upload className="h-5 w-5" />}
+                 <input type="file" ref={heroRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'hero')} />
+                 <Button className="w-full sm:w-auto h-14 px-8 bg-navy text-white rounded-2xl font-bold flex gap-3 shadow-xl" onClick={() => heroRef.current?.click()} disabled={uploading === 'hero'}>
+                    {uploading === 'hero' ? <Loader2 className="animate-spin h-5 w-5" /> : <Upload className="h-5 w-5" />}
                     UPLOAD FOTO BARU
                  </Button>
               </div>
