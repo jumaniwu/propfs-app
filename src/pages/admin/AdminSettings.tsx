@@ -56,7 +56,7 @@ export default function AdminSettings() {
     setGlobalFlags(newFlags)
     const { data, error } = await supabase
       .from('app_settings')
-      .update({ value: newFlags, updated_at: new Date().toISOString() })
+      .update({ value: newFlags })
       .eq('key', 'feature_flags')
       .select()
     
@@ -84,7 +84,7 @@ export default function AdminSettings() {
       // Upsert via update to avoid RLS error if insert policy is missing
       const { data, error } = await supabase
         .from('app_settings')
-        .update({ value: rate, updated_at: new Date().toISOString() })
+        .update({ value: rate })
         .eq('key', 'ppn_rate')
         .select()
       if (error) throw error
@@ -103,7 +103,7 @@ export default function AdminSettings() {
       const newVal = !isSubscriptionEnabled
       const { data, error } = await supabase
         .from('app_settings')
-        .update({ value: newVal, updated_at: new Date().toISOString() })
+        .update({ value: newVal })
         .eq('key', 'subscription_enabled')
         .select()
       

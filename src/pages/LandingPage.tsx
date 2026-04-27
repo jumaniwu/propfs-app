@@ -59,7 +59,7 @@ export default function LandingPage() {
               </div>
             )}
             <div className="flex flex-col">
-              <span className={`font-serif font-bold text-xl leading-none ${scrolled ? 'text-white' : 'text-navy dark:text-gold'}`}>
+              <span className={`font-serif font-bold text-xl leading-none text-white`}>
                 {branding.siteName}
               </span>
               <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-gold mt-1">

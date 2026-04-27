@@ -276,7 +276,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     const { error } = await supabase
       .from('app_settings')
-      .update({ value: fullContent, updated_at: new Date().toISOString() })
+      .update({ value: fullContent })
       .eq('key', 'landing_page_cms')
 
     if (error) throw error
