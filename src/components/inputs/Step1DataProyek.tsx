@@ -82,7 +82,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
             <Input
               {...register('namaProyek')}
               className="pl-9 focus-visible:ring-green-400"
-              placeholder="Contoh: King Square - Bodhi Dharma"
+              placeholder="Contoh: Grand Residence Boulevard"
             />
           </div>
         </FieldWrapper>
@@ -94,7 +94,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
             <Input
               {...register('namaDeveloper')}
               className="pl-9 focus-visible:ring-green-400"
-              placeholder="Contoh: PT. Mettaland Batam Sukses"
+              placeholder="Contoh: PT. Cipta Properti Nusantara"
             />
           </div>
         </FieldWrapper>
@@ -126,7 +126,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
             <Input
               {...register('alamatLokasi')}
               className="pl-9 focus-visible:ring-green-400"
-              placeholder="Contoh: Batam Centre, Kepulauan Riau"
+              placeholder="Contoh: Jakarta Selatan, DKI Jakarta"
             />
           </div>
         </FieldWrapper>
