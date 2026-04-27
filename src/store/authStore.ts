@@ -102,6 +102,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   initialize: async () => {
     set({ isLoading: true })
 
+    // Safety net: always release loading after 5s so page never hangs blank
+    const safetyTimeout = setTimeout(() => {
+      set({ isLoading: false })
+    }, 5000)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -124,6 +128,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     } catch {
       // Silently ignore connection errors
     } finally {
+      clearTimeout(safetyTimeout)
       set({ isLoading: false })
     }
 
