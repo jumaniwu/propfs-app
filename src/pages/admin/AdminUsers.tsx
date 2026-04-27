@@ -30,13 +30,30 @@ export default function AdminUsers() {
     loadUsers()
   }, [])
 
+  const [loading, setLoading] = useState(true)
+
   async function loadUsers() {
-    // Fetch profiles WITH their subscriptions
-    const { data } = await supabase
-      .from('profiles')
-      .select('*, subscriptions(*)')
-      .order('created_at', { ascending: false })
-    if (data) setUsers(data)
+    setLoading(true)
+    try {
+      // Fetch profiles WITH their subscriptions
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*, subscriptions(*)')
+        .order('created_at', { ascending: false })
+      
+      if (error) {
+        console.warn("Error fetching profiles (possibly RLS block). Querying profiles locally or ignoring:", error)
+        // Fallback: If query fails due to RLS, try just fetching profiles without subscriptions
+        const { data: fallbackData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+        if (fallbackData) setUsers(fallbackData)
+      } else if (data) {
+        setUsers(data)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleOpenUser(u: any) {
@@ -175,11 +192,15 @@ export default function AdminUsers() {
                   </tr>
                 )
               })}
-              {users.length === 0 && (
+              {loading ? (
                 <tr>
                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
                 </tr>
-              )}
+              ) : users.length === 0 ? (
+                <tr>
+                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground italic">Tidak ada data pelanggan, atau akses dibatasi RLS.</td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

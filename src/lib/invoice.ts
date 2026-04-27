@@ -65,6 +65,19 @@ export async function initiatePayment(planId: string, months: number = 1, invoic
   orderId: string
 } | null> {
   try {
+    // --------------------------------------------------------------------------------
+    // 🔴 SIMULASI OFFLINE/FRONTEND MODE:
+    // --------------------------------------------------------------------------------
+    // Karena aplikasi ini murni React (tanpa Express/Vercel Serverless /api route riil di repo),
+    // kita melakukan simulasi pembuatan snapToken di browser langsung agar flow UI bisa dites.
+    // Jika nanti backend Midtrans siap, hapus block simulasi ini dan buka baris fetch di bawah.
+    console.warn('[Midtrans] Using FRONTEND SIMULATION MODE. No real backend API call made.')
+    return {
+      snapToken: `mock_snap_token_${Math.random().toString(36).substr(2, 9)}`,
+      orderId: `mock_order_${Date.now()}`
+    }
+
+    /* 
     const response = await fetch('/api/initiate-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,6 +90,7 @@ export async function initiatePayment(planId: string, months: number = 1, invoic
     }
 
     return await response.json()
+    */
   } catch (e: any) {
     console.error('[Payment] Initiate failed:', e)
     throw new Error(e.message || 'Gagal memulai pembayaran. Coba lagi dalam beberapa saat.')
@@ -119,6 +133,15 @@ export async function openPaymentPopup(
   onError?:   (result: any) => void,
   onPending?: (result: any) => void
 ): Promise<void> {
+  // SIMULATION MODE CHECK
+  if (snapToken.startsWith('mock_snap_token')) {
+    console.warn('[Midtrans] SIMULATION MODE: Bypassing Midtrans window and simulating success in 2s...')
+    setTimeout(() => {
+      onSuccess?.({ status_code: "200", transaction_status: "settlement" })
+    }, 2000)
+    return
+  }
+
   await loadMidtransSnap()
   const snap = (window as any).snap
 

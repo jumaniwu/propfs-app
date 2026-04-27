@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { CheckCircle2, ChevronLeft, CreditCard, ShieldCheck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { initiatePayment, openPaymentPopup, Invoice } from '@/lib/invoice'
+import { initiatePayment, openPaymentPopup, generateInvoicePDF, Invoice } from '@/lib/invoice'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
@@ -147,7 +147,12 @@ export default function PaymentPage() {
                 <div className="bg-slate-50 p-4 font-bold md:col-span-1">Total Harga (Inc. PPN)</div>
                 <div className="p-4 md:col-span-3 flex items-center gap-2">
                   <span className="font-black text-base">Rp {invoice.total_idr.toLocaleString('id-ID')}</span>
-                  <span className="text-blue-600 hover:underline cursor-pointer text-xs">(Lihat Invoice)</span>
+                  <span 
+                    className="text-blue-600 hover:underline cursor-pointer text-xs"
+                    onClick={() => generateInvoicePDF(invoice)}
+                  >
+                    (Lihat & Download Invoice)
+                  </span>
                 </div>
               </div>
             </div>
