@@ -54,18 +54,12 @@ export default function AdminSettings() {
   async function updateGlobalFlag(key: AppFeature, val: boolean) {
     const newFlags = { ...globalFlags, [key]: val }
     setGlobalFlags(newFlags)
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('app_settings')
-      .update({ value: newFlags })
-      .eq('key', 'feature_flags')
-      .select()
+      .upsert({ key: 'feature_flags', value: newFlags })
     
     if (error) {
       toast({ title: 'Gagal mengubah setting', description: error.message, variant: 'destructive' })
-      setGlobalFlags(globalFlags)
-    } else if (!data || data.length === 0) {
-      // Data does not exist yet to update
-      toast({ title: 'Gagal mengubah setting', description: 'Data feature_flags belum ada di database. Hubungi developer.', variant: 'destructive' })
       setGlobalFlags(globalFlags)
     } else {
       await loadFeatureFlags()
@@ -81,14 +75,10 @@ export default function AdminSettings() {
     setSavingPPN(true)
     try {
       const rate = pct / 100
-      // Upsert via update to avoid RLS error if insert policy is missing
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('app_settings')
-        .update({ value: rate })
-        .eq('key', 'ppn_rate')
-        .select()
+        .upsert({ key: 'ppn_rate', value: rate })
       if (error) throw error
-      if (!data || data.length === 0) throw new Error("Key 'ppn_rate' belum ada di database. Harap berikan izin INSERT di Supabase atau buat key manual.")
       invalidatePPNCache()
       setPpnPct(pct)
       toast({ title: `PPN berhasil diubah menjadi ${pct}%` })
@@ -101,14 +91,11 @@ export default function AdminSettings() {
     setToggling(true)
     try {
       const newVal = !isSubscriptionEnabled
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('app_settings')
-        .update({ value: newVal })
-        .eq('key', 'subscription_enabled')
-        .select()
+        .upsert({ key: 'subscription_enabled', value: newVal })
       
       if (error) throw error
-      if (!data || data.length === 0) throw new Error("Data subscription_enabled belum ada di database. Harap jalankan migrasi SQL.")
       await loadFeatureFlags()
       toast({
         title: `Subscription System ${newVal ? 'AKTIF' : 'NONAKTIF'}`,

@@ -283,7 +283,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   updateLandingContent: async (content: LandingPageContent) => {
-    // Pastikan kita menyimpan state penuh agar array features tidak hilang
     const fullContent = {
       ...get().landingContent,
       ...content
@@ -291,7 +290,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     const { error } = await supabase
       .from('app_settings')
-      .update({ value: fullContent })
+      .upsert({ key: 'landing_page_cms', value: fullContent })
       .eq('key', 'landing_page_cms')
 
     if (error) throw error

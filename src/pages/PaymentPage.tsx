@@ -39,7 +39,7 @@ export default function PaymentPage() {
       // In production, initiatePayment should ideally take the invoice ID and link it to Midtrans.
       // Since it requires plan_id and months right now, we derive months = 1 as default fallback
       const months = 1 
-      const paymentRes = await initiatePayment(invoice.plan_id, months, invoice.id)
+      const paymentRes = await initiatePayment(invoice.plan_id, months, invoice.id, invoice.total_idr)
       
       if (!paymentRes) throw new Error('Gagal memproses ke Midtrans.')
 
