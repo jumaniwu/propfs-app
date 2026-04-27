@@ -172,7 +172,9 @@ export const useFSStore = create<FSStore>((set, get) => ({
     }
 
     // Increment total_projects_created (Free plan gate)
-    await supabase.rpc('increment_project_counter', { uid: user.id }).catch(() => {})
+    try {
+      await supabase.rpc('increment_project_counter', { uid: user.id })
+    } catch { /* ignore */ }
 
     set(state => ({
       projects: [project, ...state.projects],
