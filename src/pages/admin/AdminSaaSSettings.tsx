@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Save, Shield, Star, Crown, CheckCircle2, Layout, Smartphone, Tablet, Monitor, Info } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase'
 
 interface SaaSPlan {
   id: string
@@ -49,8 +49,26 @@ export default function AdminSaaSSettings() {
     setPlans(plans.map(p => p.id === id ? { ...p, [field]: value } : p))
   }
 
-  function handleSave() {
-    toast({ title: 'Gagal Menyimpan ke Database', description: 'Fitur penyimpanan dinamis harga SaaS sedang dalam tahap integrasi schema.', variant: 'destructive' })
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleSave() {
+    setIsSaving(true)
+    try {
+      const promises = plans.map(p => 
+        supabase.from('subscription_plans').update({
+          price_idr: p.priceIdr,
+          max_projects: p.maxProjects,
+          features: p.features
+        }).eq('id', p.id)
+      )
+      await Promise.all(promises)
+      
+      toast({ title: 'Katalog Berhasil Disimpan', description: 'Perubahan harga dan batasan berhasil diperbarui di database.' })
+    } catch (err: any) {
+      toast({ title: 'Gagal Menyimpan ke Database', description: err.message || 'Gagal menyimpan data.', variant: 'destructive' })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -60,8 +78,8 @@ export default function AdminSaaSSettings() {
           <h2 className="font-serif text-3xl font-black text-navy tracking-tight">Katalog & Harga SaaS</h2>
           <p className="text-sm text-slate-500 font-medium">Atur nominal harga paket dan batasan limit proyek untuk pelanggan Anda.</p>
         </div>
-        <Button variant="gold" className="w-full md:w-auto gap-3 h-14 px-10 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave}>
-          <Save className="h-5 w-5" /> SIMPAN HARGA
+        <Button variant="gold" className="w-full md:w-auto gap-3 h-14 px-10 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave} disabled={isSaving}>
+          <Save className="h-5 w-5" /> {isSaving ? 'Menyimpan...' : 'SIMPAN HARGA'}
         </Button>
       </div>
 

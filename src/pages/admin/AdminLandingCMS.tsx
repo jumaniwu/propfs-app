@@ -100,10 +100,14 @@ export default function AdminLandingCMS() {
                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Tagline (Samping Logo)</Label>
                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.tagline} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, tagline: e.target.value}})} />
                </div>
-               <div className="space-y-2">
-                 <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">URL Logo (.png/.svg)</Label>
-                 <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono text-xs focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.logoUrl} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, logoUrl: e.target.value}})} />
-               </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">URL Logo (.png/.svg)</Label>
+                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono text-xs focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.logoUrl} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, logoUrl: e.target.value}})} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">URL Favicon (.ico/.png)</Label>
+                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono text-xs focus:ring-4 focus:ring-gold/10 transition-all" placeholder="Kosongkan untuk bawaan default" value={cmsData.branding.faviconUrl || ''} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, faviconUrl: e.target.value}})} />
+                </div>
             </div>
           </div>
         </section>

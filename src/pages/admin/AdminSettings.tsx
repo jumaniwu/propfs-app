@@ -54,12 +54,20 @@ export default function AdminSettings() {
   async function updateGlobalFlag(key: AppFeature, val: boolean) {
     const newFlags = { ...globalFlags, [key]: val }
     setGlobalFlags(newFlags)
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('app_settings')
       .update({ value: newFlags, updated_at: new Date().toISOString() })
       .eq('key', 'feature_flags')
+      .select()
     
-    if (!error) {
+    if (error) {
+      toast({ title: 'Gagal mengubah setting', description: error.message, variant: 'destructive' })
+      setGlobalFlags(globalFlags)
+    } else if (!data || data.length === 0) {
+      // Data does not exist yet to update
+      toast({ title: 'Gagal mengubah setting', description: 'Data feature_flags belum ada di database. Hubungi developer.', variant: 'destructive' })
+      setGlobalFlags(globalFlags)
+    } else {
       await loadFeatureFlags()
       toast({ title: 'Setting Global diperbarui' })
     }
@@ -73,16 +81,19 @@ export default function AdminSettings() {
     setSavingPPN(true)
     try {
       const rate = pct / 100
-      // Upsert because key might not exist yet
-      const { error } = await supabase
+      // Upsert via update to avoid RLS error if insert policy is missing
+      const { data, error } = await supabase
         .from('app_settings')
-        .upsert({ key: 'ppn_rate', value: rate, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+        .update({ value: rate, updated_at: new Date().toISOString() })
+        .eq('key', 'ppn_rate')
+        .select()
       if (error) throw error
+      if (!data || data.length === 0) throw new Error("Key 'ppn_rate' belum ada di database. Harap berikan izin INSERT di Supabase atau buat key manual.")
       invalidatePPNCache()
       setPpnPct(pct)
       toast({ title: `PPN berhasil diubah menjadi ${pct}%` })
-    } catch {
-      toast({ title: 'Gagal menyimpan PPN', variant: 'destructive' })
+    } catch (err: any) {
+      toast({ title: 'Gagal menyimpan PPN', description: err.message, variant: 'destructive' })
     } finally { setSavingPPN(false) }
   }
 
@@ -90,11 +101,14 @@ export default function AdminSettings() {
     setToggling(true)
     try {
       const newVal = !isSubscriptionEnabled
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('app_settings')
         .update({ value: newVal, updated_at: new Date().toISOString() })
         .eq('key', 'subscription_enabled')
+        .select()
+      
       if (error) throw error
+      if (!data || data.length === 0) throw new Error("Data subscription_enabled belum ada di database. Harap jalankan migrasi SQL.")
       await loadFeatureFlags()
       toast({
         title: `Subscription System ${newVal ? 'AKTIF' : 'NONAKTIF'}`,
@@ -102,8 +116,8 @@ export default function AdminSettings() {
           ? 'User sekarang dibatasi berdasarkan paket (Free/Basic/Pro).'
           : 'Semua user bisa akses semua fitur bebas.',
       })
-    } catch {
-      toast({ title: 'Gagal mengubah setting', variant: 'destructive' })
+    } catch (err: any) {
+      toast({ title: 'Gagal mengubah setting', description: err.message, variant: 'destructive' })
     } finally {
       setToggling(false)
     }
