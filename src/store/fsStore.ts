@@ -166,7 +166,10 @@ export const useFSStore = create<FSStore>((set, get) => ({
       inputs, results: null, version: APP_VERSION,
       created_at: now, updated_at: now,
     })
-    if (error) throw error
+    if (error) {
+      const msg = error.message || JSON.stringify(error)
+      throw new Error(`Database error: ${msg}. Pastikan Supabase API Key sudah benar di Vercel.`)
+    }
 
     // Increment total_projects_created (Free plan gate)
     await supabase.rpc('increment_project_counter', { uid: user.id }).catch(() => {})
