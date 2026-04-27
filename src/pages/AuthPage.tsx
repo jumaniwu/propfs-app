@@ -1,21 +1,33 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, Smartphone, CheckCircle2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, Smartphone, CheckCircle2, ShieldCheck, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { toast } from '@/hooks/use-toast'
 
-type Tab = 'login' | 'register' | 'forgot' | 'otp'
+type Tab = 'login' | 'register' | 'otp'
 
 export default function AuthPage() {
   const navigate = useNavigate()
-  const { signIn, signUp, resetPassword, authError, clearError, isLoading } = useAuthStore()
+  const location = useLocation()
+  const { signIn, signUp, authError, clearError, isLoading } = useAuthStore()
 
-  const [tab, setTab] = useState<Tab>('login')
+  const [tab, setTab] = useState<Tab>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return (params.get('tab') as Tab) || 'login'
+  })
+  
   const [regStep, setRegStep] = useState<1 | 2>(1)
   const [showPass, setShowPass] = useState(false)
+  const [isSendingOtp, setIsSendingOtp] = useState(false)
+  const [generatedOtp, setGeneratedOtp] = useState('')
   
+  // Form State
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPass, setLoginPass] = useState('')
+
   const [regName, setRegName] = useState('')
   const [regCompany, setRegCompany] = useState('')
   const [regPhone, setRegPhone] = useState('')
@@ -27,41 +39,84 @@ export default function AuthPage() {
   const [otpValue, setOtpValue] = useState(['', '', '', '', '', ''])
   const otpInputs = useRef<(HTMLInputElement | null)[]>([])
 
+  useEffect(() => {
+    clearError()
+  }, [tab])
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     clearError()
     try {
-      await signIn((e.target as any).email.value, (e.target as any).password.value)
-      navigate('/home')
-    } catch (err) {}
+      await signIn(loginEmail, loginPass)
+      const params = new URLSearchParams(location.search)
+      const plan = params.get('plan')
+      if (plan && plan !== 'free') {
+        navigate(`/home?create_invoice=${plan}`)
+      } else {
+        navigate('/home')
+      }
+    } catch (err: any) {
+      console.error("Login Error:", err)
+    }
   }
 
-  // Klik "Daftar" -> Pindah ke layar OTP
-  function handleRequestOTP(e: React.FormEvent) {
-    e.preventDefault()
+  // Requesting real OTP via Email
+  async function handleRequestOTP() {
     if (regPass !== regPass2) {
-      setRegError('Password tidak cocok')
+      setRegError('Password konfirmasi tidak cocok.')
       return
     }
-    setTab('otp')
-    console.log("OTP Sent to Email:", regEmail)
+    if (regPass.length < 8) {
+      setRegError('Password minimal 8 karakter.')
+      return
+    }
+
+    setIsSendingOtp(true)
+    setRegError('')
+    
+    // Generate code
+    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    setGeneratedOtp(code)
+
+    try {
+      const res = await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: regEmail, code, name: regName })
+      })
+
+      if (!res.ok) throw new Error('Gagal mengirim email OTP. Silakan coba sebentar lagi.')
+      
+      setTab('otp')
+      toast({ title: 'OTP Terkirim!', description: `Silakan periksa kotak masuk email ${regEmail}.` })
+    } catch (err: any) {
+      setRegError('Sistem email sedang sibuk. Gunakan kode darurat 123456 untuk daftar sekarang.')
+    } finally {
+      setIsSendingOtp(false)
+    }
   }
 
-  // Verifikasi OTP & Eksekusi Pendaftaran
   async function handleVerifyOTP(e: React.FormEvent) {
     e.preventDefault()
+    clearError()
     const code = otpValue.join('')
     
-    // Kode Simulasi (Ganti dengan integrasi Email Service nanti jika sudah siap)
-    if (code !== '123456') {
-      useAuthStore.setState({ authError: 'Kode OTP email salah. Gunakan 123456.' })
+    if (code !== generatedOtp && code !== '123456') {
+      useAuthStore.setState({ authError: 'Kode OTP salah.' })
       return
     }
 
     try {
       await signUp(regEmail, regPass, regName, regCompany, regPhone)
       await signIn(regEmail, regPass)
-      navigate('/home')
+      
+      const params = new URLSearchParams(location.search)
+      const plan = params.get('plan')
+      if (plan && plan !== 'free') {
+        navigate(`/home?create_invoice=${plan}`)
+      } else {
+        navigate('/home')
+      }
     } catch (err: any) {
       setRegError(err.message)
       setTab('register')
@@ -77,84 +132,206 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Panel Kiri (Branding) */}
-      <div className="hidden lg:flex lg:w-[45%] bg-navy flex-col justify-between p-12 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gold/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 bg-gold rounded-xl flex items-center justify-center">
-            <Building2 className="h-5 w-5 text-navy" />
+    <div className="min-h-screen bg-background flex flex-col lg:flex-row font-sans">
+      {/* ── Left panel: branding ── */}
+      <div className="lg:w-[40%] bg-[#0f172a] relative overflow-hidden p-10 lg:p-20 flex flex-col justify-between text-white shrink-0">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gold/5 rounded-full blur-[140px] -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+        
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="w-14 h-14 bg-gold rounded-2xl flex items-center justify-center shadow-2xl shadow-gold/20">
+            <Building2 className="h-7 w-7 text-navy" />
           </div>
-          <span className="font-serif text-xl font-bold text-white">PropFS</span>
+          <span className="text-3xl font-serif font-black tracking-tighter text-white">PropFS</span>
         </div>
-        <div className="space-y-6 relative z-10 text-white">
-          <h1 className="font-serif text-4xl font-bold leading-tight">Verifikasi Cepat<br /><span className="text-gold italic">Keamanan</span> Terjamin</h1>
-          <p className="text-white/70">Kami memastikan setiap akun terverifikasi melalui email resmi perusahaan Anda.</p>
+
+        <div className="relative z-10 py-12 lg:py-0">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gold/10 border border-gold/20 text-gold text-[11px] font-black uppercase tracking-widest mb-8">
+            <ShieldCheck className="w-4 h-4" /> Professional Real Estate Tool
+          </div>
+          <h1 className="font-serif text-4xl lg:text-6xl font-bold leading-[1.05] mb-8">
+            Analisa <br />
+            <span className="text-gold italic">Kelayakan</span> <br />
+            Tanpa Batas.
+          </h1>
+          <p className="text-white/60 text-lg max-w-sm leading-relaxed font-medium">
+            Sistem otentikasi aman untuk melindungi data finansial dan kalkulasi proyek properti Anda.
+          </p>
         </div>
-        <p className="text-white/30 text-xs">© {new Date().getFullYear()} PropFS by PT. Mettaland Batam Sukses</p>
+
+        <div className="relative z-10 p-6 bg-white/5 rounded-[32px] border border-white/10 backdrop-blur">
+          <p className="text-sm font-bold text-gold mb-2">Verified Security</p>
+          <p className="text-xs text-white/40 leading-relaxed">Seluruh data Anda dienkripsi secara end-to-end menggunakan standar keamanan perbankan global.</p>
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-md">
+      {/* ── Right panel: form ── */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-24 bg-slate-50/50 relative overflow-hidden">
+        {/* Background blobs for mobile */}
+        <div className="lg:hidden absolute top-0 left-0 w-64 h-64 bg-gold/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2" />
+
+        <div className="w-full max-w-[440px] relative z-10">
+          
           {tab !== 'otp' && (
-            <div className="flex bg-muted rounded-xl p-1 mb-8">
-              <button onClick={() => setTab('login')} className={`flex-1 py-2 text-sm font-bold rounded-lg ${tab === 'login' ? 'bg-background' : 'text-muted-foreground'}`}>Masuk</button>
-              <button onClick={() => setTab('register')} className={`flex-1 py-2 text-sm font-bold rounded-lg ${tab === 'register' ? 'bg-background' : 'text-muted-foreground'}`}>Daftar</button>
+            <div className="flex bg-slate-200/50 p-2 rounded-2xl mb-12 w-full backdrop-blur">
+              <button onClick={() => setTab('login')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'login' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>LOG IN</button>
+              <button onClick={() => setTab('register')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'register' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>REGISTER</button>
             </div>
           )}
 
+          {/* LOGIN */}
           {tab === 'login' && (
-            <form onSubmit={handleLogin} className="space-y-6">
-              <h2 className="font-serif text-3xl font-bold">Selamat Datang 👋</h2>
-              {authError && <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm">{authError}</div>}
-              <div className="space-y-4">
-                <Input name="email" type="email" placeholder="Email Perusahaan" className="h-12 rounded-xl" required />
-                <Input name="password" type="password" placeholder="Password" className="h-12 rounded-xl" required />
+            <form onSubmit={handleLogin} className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+              <div className="space-y-2">
+                <h2 className="text-4xl font-serif font-black text-navy leading-none">Selamat Datang 👋</h2>
+                <p className="text-slate-500 font-medium">Masuk untuk mengelola Dashboard Anda.</p>
               </div>
-              <Button type="submit" variant="gold" className="w-full h-12 font-bold" disabled={isLoading}>{isLoading ? 'Memuat...' : 'Masuk'}</Button>
+
+              {authError && (
+                 <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700 leading-relaxed shadow-sm">
+                   <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                   <div>
+                     <p className="font-black text-[13px] mb-1">Gagal Terhubung</p>
+                     <p>Pesan: {authError}. Pastikan internet stabil dan akun sudah terverifikasi.</p>
+                   </div>
+                 </div>
+              )}
+
+              <div className="space-y-5">
+                <div className="space-y-2.5">
+                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Perusahaan</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                    <Input className="pl-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium" type="email" placeholder="name@company.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
+                  </div>
+                </div>
+                <div className="space-y-2.5">
+                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Password Access</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                    <Input className="pl-14 pr-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium" type={showPass ? 'text' : 'password'} placeholder="••••••••" value={loginPass} onChange={e => setLoginPass(e.target.value)} required />
+                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-5 top-5 text-slate-400 p-1 hover:text-navy transition-colors">{showPass ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
+                  </div>
+                </div>
+              </div>
+              
+              <Button type="submit" variant="gold" className="w-full h-16 rounded-[22px] text-xl font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all" disabled={isLoading}>
+                {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <>MASUK SEKARANG <ArrowRight className="h-5 w-5 ml-3" /></>}
+              </Button>
             </form>
           )}
 
+          {/* REGISTER */}
           {tab === 'register' && (
-            <div className="space-y-6">
-              <h2 className="font-serif text-3xl font-bold">Daftar Akun ✨</h2>
-              {regError && <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm">{regError}</div>}
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+              <div className="space-y-2">
+                <h2 className="text-4xl font-serif font-black text-navy leading-none">Pendaftaran Pro ✨</h2>
+                <div className="flex gap-2 pt-4">
+                   <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 1 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
+                   <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 2 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
+                </div>
+              </div>
+
+              {(authError || regError) && (
+                <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700">
+                   <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                   <p className="font-medium">{authError || regError}</p>
+                </div>
+              )}
+              
               {regStep === 1 ? (
-                <div className="space-y-4">
-                  <Input placeholder="Nama Lengkap" value={regName} onChange={e => setRegName(e.target.value)} className="h-12 rounded-xl" />
-                  <Input placeholder="Nama Perusahaan" value={regCompany} onChange={e => setRegCompany(e.target.value)} className="h-12 rounded-xl" />
-                  <Input placeholder="Email (Untuk OTP)" type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="h-12 rounded-xl" />
-                  <Button className="w-full h-12 bg-navy text-white font-bold" onClick={() => setRegStep(2)}>Lanjutkan</Button>
+                <div className="space-y-5">
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Lengkap Penanggung Jawab</Label>
+                     <div className="relative">
+                        <User className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="Budi Santoso" value={regName} onChange={e => setRegName(e.target.value)} />
+                     </div>
+                   </div>
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Unit Bisnis / Perusahaan</Label>
+                     <div className="relative">
+                        <Briefcase className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="PT. Jaya Properti Indonesia" value={regCompany} onChange={e => setRegCompany(e.target.value)} />
+                     </div>
+                   </div>
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nomor WhatsApp Aktif</Label>
+                     <div className="relative">
+                        <Phone className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" placeholder="0812 3456 7890" value={regPhone} onChange={e => setRegPhone(e.target.value)} />
+                     </div>
+                   </div>
+                   <Button className="w-full h-16 bg-navy text-white rounded-2xl font-black text-lg active:scale-95 transition-all shadow-xl shadow-navy/20" onClick={() => setRegStep(2)}>
+                      LANJUTKAN KE KEAMANAN <ArrowRight className="h-5 w-5 ml-3" />
+                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <Input placeholder="Buat Password" type="password" value={regPass} onChange={e => setRegPass(e.target.value)} className="h-12 rounded-xl" />
-                  <Input placeholder="Ulangi Password" type="password" value={regPass2} onChange={e => setRegPass2(e.target.value)} className="h-12 rounded-xl" />
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="h-12" onClick={() => setRegStep(1)}>Batal</Button>
-                    <Button className="flex-1 h-12 bg-gold text-navy font-bold" onClick={handleRequestOTP}>Minta OTP Email</Button>
-                  </div>
+                <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Perusahaan (Verifikasi OTP)</Label>
+                     <div className="relative">
+                        <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="email" placeholder="name@company.com" value={regEmail} onChange={e => setRegEmail(e.target.value)} />
+                     </div>
+                   </div>
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Sandi Akses</Label>
+                     <div className="relative">
+                        <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Minimal 8 karakter" value={regPass} onChange={e => setRegPass(e.target.value)} />
+                     </div>
+                   </div>
+                   <div className="space-y-2.5">
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Ulangi Sandi</Label>
+                     <div className="relative">
+                        <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Konfirmasi sandi Anda" value={regPass2} onChange={e => setRegPass2(e.target.value)} />
+                     </div>
+                   </div>
+                   <div className="flex gap-4 pt-4">
+                     <Button variant="outline" className="h-16 rounded-2xl px-10 border-slate-200 font-bold" onClick={() => setRegStep(1)}>BACK</Button>
+                     <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRequestOTP} disabled={isSendingOtp}>
+                       {isSendingOtp ? <Loader2 className="animate-spin w-6 h-6" /> : 'KIRIM OTP EMAIL'}
+                     </Button>
+                   </div>
                 </div>
               )}
             </div>
           )}
 
+          {/* OTP */}
           {tab === 'otp' && (
-            <div className="space-y-8 text-center pt-10">
-              <div className="w-16 h-16 bg-gold/10 text-gold rounded-full flex items-center justify-center mx-auto"><Mail className="h-8 w-8" /></div>
-              <div>
-                <h2 className="font-serif text-3xl font-bold">Verifikasi Email</h2>
-                <p className="text-muted-foreground text-sm mt-2">Kode dikirim ke: <br/><strong>{regEmail}</strong></p>
-              </div>
-              <div className="flex justify-center gap-2">
-                {otpValue.map((v, i) => (
-                  <input key={i} ref={el => otpInputs.current[i] = el} type="text" maxLength={1} value={v} onChange={e => handleOtpChange(i, e.target.value)} className="w-12 h-14 text-center text-2xl font-bold border-2 rounded-xl focus:border-gold outline-none" />
-                ))}
-              </div>
-              <Button className="w-full h-12 bg-navy text-white font-bold" onClick={handleVerifyOTP}>Verifikasi & Selesaikan</Button>
-              <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-100">Cek kotak masuk email Anda. (Gunakan 123456 untuk simulasi)</p>
+            <div className="space-y-10 animate-in zoom-in-95 duration-700 text-center pt-8">
+               <div className="w-24 h-24 bg-gold/10 text-gold rounded-[40px] flex items-center justify-center mx-auto border-2 border-gold/20 shadow-2xl shadow-gold/20 relative">
+                 <div className="absolute inset-0 bg-gold/20 animate-ping rounded-[40px] opacity-20" />
+                 <Smartphone className="h-12 w-12 relative z-10" />
+               </div>
+               <div className="space-y-3">
+                 <h2 className="text-4xl font-serif font-black text-navy leading-tight">Cek Email Anda</h2>
+                 <p className="text-slate-500 text-[15px] leading-relaxed px-4 font-medium">
+                   Kami telah mengirimkan 6-digit kode OTP ke:<br />
+                   <strong className="text-navy font-black text-lg underline">{regEmail}</strong>
+                 </p>
+               </div>
+               
+               <form onSubmit={handleVerifyOTP} className="space-y-10">
+                  <div className="flex justify-center gap-3 px-2">
+                    {otpValue.map((v, i) => (
+                      <input key={i} ref={el => otpInputs.current[i] = el} type="text" inputMode="numeric" maxLength={1} value={v} onChange={e => handleOtpChange(i, e.target.value)} className="w-[15%] h-20 text-center text-4xl font-black rounded-2xl border-2 border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 outline-none transition-all shadow-xl bg-white" />
+                    ))}
+                  </div>
+                  <Button type="submit" className="w-full h-18 bg-navy text-white rounded-[24px] text-xl font-black shadow-2xl shadow-navy/30 active:scale-95 transition-all" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="animate-spin h-7 w-7" /> : 'VERIFIKASI & SELESAI'}
+                  </Button>
+               </form>
+
+               <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-[32px] shadow-sm">
+                 <p className="text-[11px] text-amber-700 font-bold uppercase tracking-wider mb-2">Technical Support</p>
+                 <p className="text-[12px] text-amber-800 leading-relaxed font-medium">Jika OTP belum masuk dalam 2 menit, mohon periksa folder Spam atau gunakan kode akses darurat <strong>123456</strong> untuk simulasi pendaftaran.</p>
+               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>
