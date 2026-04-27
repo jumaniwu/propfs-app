@@ -3,68 +3,68 @@
 // ============================================================
 
 import { create } from 'zustand'
-import { 
-  supabase, 
-  type Profile, 
-  type Subscription, 
-  type PlanId, 
+import {
+  supabase,
+  type Profile,
+  type Subscription,
+  type PlanId,
   type AppFeature,
-  type LandingPageContent 
+  type LandingPageContent
 } from '../lib/supabase'
 import type { User, Session } from '@supabase/supabase-js'
 
 
 // ── Plan feature definitions (mirrored from DB) ────────────
 export const PLAN_LIMITS: Record<PlanId, {
-  maxProjects:          number
-  canExportPDF:         boolean
-  canAccessCashflow:    boolean
-  canAccessARAP:        boolean
+  maxProjects: number
+  canExportPDF: boolean
+  canAccessCashflow: boolean
+  canAccessARAP: boolean
   projectSlotPermanent: boolean
 }> = {
-  free:  { maxProjects: 2,  canExportPDF: false, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: true },
-  basic: { maxProjects: 5,  canExportPDF: true,  canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: false },
-  pro:   { maxProjects: 10, canExportPDF: true,  canAccessCashflow: true,  canAccessARAP: true,  projectSlotPermanent: false },
+  free: { maxProjects: 2, canExportPDF: false, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: true },
+  basic: { maxProjects: 5, canExportPDF: true, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: false },
+  pro: { maxProjects: 10, canExportPDF: true, canAccessCashflow: true, canAccessARAP: true, projectSlotPermanent: false },
 }
 
 // ── Store Interface ─────────────────────────────────────────
 interface AuthStore {
-  user:                  User | null
-  session:               Session | null
-  profile:               Profile | null
-  subscription:          Subscription | null
+  user: User | null
+  session: Session | null
+  profile: Profile | null
+  subscription: Subscription | null
   isSubscriptionEnabled: boolean
-  globalFeatures:        Record<AppFeature, boolean>
-  isLoading:             boolean
-  authError:             string | null
-  landingContent:        LandingPageContent
+  globalFeatures: Record<AppFeature, boolean>
+  isLoading: boolean
+  authError: string | null
+  landingContent: LandingPageContent
 
-  initialize:          () => Promise<void>
-  signIn:              (email: string, password: string) => Promise<void>
-  signUp:              (email: string, password: string, fullName: string, company: string, phone: string) => Promise<void>
-  signOut:             () => Promise<void>
-  resetPassword:       (email: string) => Promise<void>
-  refreshProfile:      () => Promise<void>
+  initialize: () => Promise<void>
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string, fullName: string, company: string, phone: string) => Promise<void>
+  signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<void>
+  refreshProfile: () => Promise<void>
   refreshSubscription: () => Promise<void>
-  loadFeatureFlags:    () => Promise<void>
-  loadLandingContent:  () => Promise<void>
+  loadFeatureFlags: () => Promise<void>
+  loadLandingContent: () => Promise<void>
   updateLandingContent: (content: LandingPageContent) => Promise<void>
-  clearError:          () => void
-  getCurrentPlan:      () => PlanId
-  canCreateProject:    (activeProjectCount: number) => boolean
-  isFeatureEnabled:    (feature: AppFeature) => boolean
+  clearError: () => void
+  getCurrentPlan: () => PlanId
+  canCreateProject: (activeProjectCount: number) => boolean
+  isFeatureEnabled: (feature: AppFeature) => boolean
 }
 
 // ── Store ──────────────────────────────────────────────────
 export const useAuthStore = create<AuthStore>((set, get) => ({
-  user:                  null,
-  session:               null,
-  profile:               null,
-  subscription:          null,
+  user: null,
+  session: null,
+  profile: null,
+  subscription: null,
   isSubscriptionEnabled: false,
-  globalFeatures:        { fs_module: true, cost_control: false, ai_solver: true, pdf_export: true, scurve: false, dashboard_admin: false },
-  isLoading:             true,
-  authError:             null,
+  globalFeatures: { fs_module: true, cost_control: false, ai_solver: true, pdf_export: true, scurve: false, dashboard_admin: false },
+  isLoading: true,
+  authError: null,
   landingContent: {
     branding: {
       logoUrl: '',
@@ -102,22 +102,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   initialize: async () => {
     set({ isLoading: true })
 
-    // Check for Magic Mock Session first
-    const mockSession = localStorage.getItem(MOCK_STORAGE_KEY)
-    if (mockSession) {
-      try {
-        const data = JSON.parse(mockSession)
-        set({ 
-          user: data.user, 
-          profile: data.profile, 
-          subscription: data.subscription,
-          isLoading: false, 
-          isSubscriptionEnabled: true 
-        })
-        // Skip Supabase initialization if mock is active
-        return
-      } catch { /* ignore */ }
-    }
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -144,7 +128,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
 
     // Load feature flags & landing content regardless of auth state
-    try { 
+    try {
       await Promise.all([
         get().loadFeatureFlags(),
         get().loadLandingContent()
@@ -180,11 +164,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       if (error) throw error
       if (data.user) {
         await supabase.from('profiles').insert({
-          id:                     data.user.id,
-          full_name:              fullName,
+          id: data.user.id,
+          full_name: fullName,
           company,
           phone,
-          role:                   'user',
+          role: 'user',
           total_projects_created: 0,
         })
       }
@@ -245,11 +229,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         .from('app_settings')
         .select('key, value')
         .in('key', ['subscription_enabled', 'feature_flags'])
-      
+
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
 
-      set({ 
+      set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? flags : get().globalFeatures
       })
@@ -273,7 +257,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       .from('app_settings')
       .update({ value: content, updated_at: new Date().toISOString() })
       .eq('key', 'landing_page_cms')
-    
+
     if (error) throw error
     set({ landingContent: content })
   },
@@ -294,7 +278,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const { profile, isSubscriptionEnabled } = get()
     if (!isSubscriptionEnabled) return true
 
-    const plan   = get().getCurrentPlan()
+    const plan = get().getCurrentPlan()
     const limits = PLAN_LIMITS[plan]
 
     if (limits.projectSlotPermanent) {
@@ -306,7 +290,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   // ── isFeatureEnabled ──────────────────────────────────────
   isFeatureEnabled: (feature: AppFeature): boolean => {
     const { profile, globalFeatures, user } = get()
-    
+
     // 1. Superadmin always has all features
     if (profile?.role === 'superadmin') return true
 
