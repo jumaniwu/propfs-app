@@ -252,10 +252,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const { data } = await supabase.from('app_settings').select('value').eq('key', 'landing_page_cms').maybeSingle()
       if (data?.value && typeof data.value === 'object') {
+        const v = data.value as any
         set(state => ({
           landingContent: {
-            ...state.landingContent,
-            ...(data.value as Partial<LandingPageContent>)
+            branding: { ...state.landingContent.branding, ...(v.branding || {}) },
+            hero: { ...state.landingContent.hero, ...(v.hero || {}) },
+            suitableFor: { ...state.landingContent.suitableFor, ...(v.suitableFor || {}) },
+            features: Array.isArray(v.features) ? v.features : state.landingContent.features,
+            auxiliaryProducts: Array.isArray(v.auxiliaryProducts) ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
+            marketingHighlight: { ...state.landingContent.marketingHighlight, ...(v.marketingHighlight || {}) },
           }
         }))
       }

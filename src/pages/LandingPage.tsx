@@ -104,7 +104,7 @@ export default function LandingPage() {
             <div className="grid lg:grid-cols-2 gap-16 items-center text-left">
               <div className="space-y-8">
                 <div className="flex flex-wrap gap-2">
-                  {hero.hashtags.map(tag => (
+                  {(hero.hashtags || []).map(tag => (
                     <span key={tag} className="px-3 py-1 rounded-full bg-white/10 text-gold text-[10px] font-black uppercase tracking-widest">
                       {tag}
                     </span>
@@ -154,7 +154,7 @@ export default function LandingPage() {
             <span className="text-navy font-black tracking-tighter text-xl italic">{suitableFor.label}</span>
             <div className="h-px w-12 bg-navy/20 hidden md:block" />
             <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
-              {suitableFor.tags.map(tag => (
+              {(suitableFor?.tags || []).map(tag => (
                 <div key={tag} className="flex items-center gap-2 group">
                   <CheckCircle2 className="h-5 w-5 text-navy group-hover:scale-125 transition-transform" />
                   <span className="text-navy font-bold">{tag}</span>
@@ -174,7 +174,7 @@ export default function LandingPage() {
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {features.map((ft) => {
+              {(features || []).map((ft) => {
                 const Icon = ICON_MAP[ft.iconName] || Calculator
                 return (
                   <div key={ft.id} className="group p-8 rounded-[32px] bg-card border border-border hover:border-gold/50 transition-all hover:shadow-2xl hover:shadow-gold/5 hover:-translate-y-2">
@@ -192,7 +192,7 @@ export default function LandingPage() {
 
             {/* Auxiliary / Add-on Products (Horizontal Cards) */}
             <div className="mt-16 grid md:grid-cols-2 gap-8">
-              {auxiliaryProducts.map(prod => {
+              {(auxiliaryProducts || []).map(prod => {
                 const Icon = ICON_MAP[prod.iconName] || Sparkles
                 return (
                   <div key={prod.id} className="flex flex-col sm:flex-row items-center gap-6 p-8 rounded-[32px] bg-navy text-white hover:shadow-2xl hover:shadow-navy/20 transition-all border border-white/5 group">
