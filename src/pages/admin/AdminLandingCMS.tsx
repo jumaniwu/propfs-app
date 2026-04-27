@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
