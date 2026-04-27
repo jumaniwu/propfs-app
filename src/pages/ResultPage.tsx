@@ -82,7 +82,7 @@ export default function ResultPage() {
   if (!currentResults) {
     return (
       <div className="min-h-screen bg-background">
-        <Header breadcrumbs={[{ label: 'Dashboard', href: '/' }, { label: 'Hasil FS' }]} />
+        <Header breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Hasil FS' }]} />
         <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
           <div className="text-4xl">📊</div>
           <h2 className="font-serif text-xl font-semibold">Belum Ada Hasil Kalkulasi</h2>
@@ -108,7 +108,7 @@ export default function ResultPage() {
     <div className="min-h-screen bg-background">
       <Header
         breadcrumbs={[
-          { label: 'Dashboard', href: '/' },
+          { label: 'Dashboard', href: '/dashboard' },
           { label: projectName, href: `/input/${id}` },
           { label: 'Hasil FS' },
         ]}

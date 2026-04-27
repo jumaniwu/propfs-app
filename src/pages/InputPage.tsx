@@ -127,7 +127,7 @@ export default function InputPage() {
     <div className="min-h-screen bg-background">
       <Header
         breadcrumbs={[
-          { label: 'Dashboard', href: '/' },
+          { label: 'Dashboard', href: '/dashboard' },
           { label: currentInputs.namaProyek || 'Proyek Baru', href: undefined },
           { label: STEP_TITLES[currentStep - 1] },
         ]}

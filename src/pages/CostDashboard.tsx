@@ -11,6 +11,7 @@ import TabKurvaS from '@/components/cost/TabKurvaS'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import { useCostStore } from '@/store/costStore'
+import { useAuthStore } from '@/store/authStore'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dropdown-menu' // using native or just a simpler approach, actually I will just use standard confirm for delete for now or a dialog
@@ -20,6 +21,7 @@ type TabKey = 'rab' | 'material' | 'realisasi' | 'kurva_s'
 
 export default function CostDashboard() {
   const navigate = useNavigate()
+  const { isFeatureEnabled } = useAuthStore()
   const { savedProjects, activePlan, projectInfo, updateActivePlanComponents, clearProject, loadProject, deleteProject, clearActivePlan } = useCostStore()
   const [activeTab, setActiveTab] = useState<TabKey>('rab')
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -156,18 +158,26 @@ export default function CostDashboard() {
             {/* Tabbed Panel */}
             <div className="bg-white border border-border rounded-3xl shadow-sm overflow-hidden">
               <div className="flex border-b border-border bg-muted/20 px-4 pt-4 overflow-x-auto">
-                <TabButton active={activeTab === 'rab'} onClick={() => setActiveTab('rab')} icon={<FileSpreadsheet className="w-4 h-4" />}>
-                  RAB Proyek
-                </TabButton>
-                <TabButton active={activeTab === 'material'} onClick={() => setActiveTab('material')} icon={<PackageOpen className="w-4 h-4" />}>
-                  Material Schedule
-                </TabButton>
-                <TabButton active={activeTab === 'realisasi'} onClick={() => setActiveTab('realisasi')} icon={<ReceiptIcon className="w-4 h-4" />}>
-                  Realisasi Biaya
-                </TabButton>
-                <TabButton active={activeTab === 'kurva_s'} onClick={() => setActiveTab('kurva_s')} icon={<TrendingUp className="w-4 h-4" />}>
-                  Kurva S
-                </TabButton>
+                {isFeatureEnabled('cost_rab') && (
+                  <TabButton active={activeTab === 'rab'} onClick={() => setActiveTab('rab')} icon={<FileSpreadsheet className="w-4 h-4" />}>
+                    RAB Proyek
+                  </TabButton>
+                )}
+                {isFeatureEnabled('cost_material') && (
+                  <TabButton active={activeTab === 'material'} onClick={() => setActiveTab('material')} icon={<PackageOpen className="w-4 h-4" />}>
+                    Material Schedule
+                  </TabButton>
+                )}
+                {isFeatureEnabled('cost_realisasi') && (
+                  <TabButton active={activeTab === 'realisasi'} onClick={() => setActiveTab('realisasi')} icon={<ReceiptIcon className="w-4 h-4" />}>
+                    Realisasi Biaya
+                  </TabButton>
+                )}
+                {isFeatureEnabled('scurve') && (
+                  <TabButton active={activeTab === 'kurva_s'} onClick={() => setActiveTab('kurva_s')} icon={<TrendingUp className="w-4 h-4" />}>
+                    Kurva S
+                  </TabButton>
+                )}
               </div>
 
               <div className="p-8">

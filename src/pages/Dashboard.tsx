@@ -42,19 +42,21 @@ export default function Dashboard() {
   const [showMigrate, setShowMigrate]   = useState(false)
   const [migrating, setMigrating]       = useState(false)
   const [migResult, setMigResult]       = useState<{ migrated: number; errors: number } | null>(null)
-  const [loading, setLoading]           = useState(true)
+  
+  // Default loading to true ONLY if we have no projects in local memory
+  const [loading, setLoading]           = useState(projects.length === 0)
   const [projectToDelete, setProjectToDelete] = useState<SavedProject | null>(null)
 
   // Load projects from Supabase on mount
   useEffect(() => {
+    let mounted = true
     if (user) {
-      // Supabase mode: fetch from DB
-      fetchProjects().finally(() => setLoading(false))
+      fetchProjects().finally(() => { if (mounted) setLoading(false) })
       if (hasLocalProjects()) setShowMigrate(true)
     } else {
-      // DEV mode (no user): load from localStorage immediately
-      fetchProjects().finally(() => setLoading(false))
+      fetchProjects().finally(() => { if (mounted) setLoading(false) })
     }
+    return () => { mounted = false }
   }, [user])
 
   const filtered = useMemo(() => {
