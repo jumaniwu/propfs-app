@@ -125,24 +125,39 @@ export default function AdminLandingCMS() {
                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Tagline (Samping Logo)</Label>
                  <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.branding.tagline} onChange={e => setCmsData({...cmsData, branding: {...cmsData.branding, tagline: e.target.value}})} />
                </div>
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Upload Logo (.png/.svg)</Label>
-                  <div className="flex gap-2">
-                    <input type="file" ref={logoRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo')} />
-                    <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => logoRef.current?.click()} disabled={uploading === 'logo'}>
-                       {uploading === 'logo' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate max-w-[200px]">{cmsData.branding.logoUrl ? 'Logo Ter-upload ✓' : 'Pilih File Logo'}</span>}
-                       <Upload className="h-4 w-4 ml-2 text-slate-400" />
-                    </Button>
+                <div className="space-y-4">
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Logo Website (.png/.svg)</Label>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                    {cmsData.branding.logoUrl && (
+                      <div className="w-16 h-16 bg-navy rounded-xl p-2 flex items-center justify-center border border-slate-200">
+                        <img src={cmsData.branding.logoUrl} className="max-w-full max-h-full object-contain" alt="Logo Preview" />
+                      </div>
+                    )}
+                    <div className="flex-1 w-full flex gap-2">
+                       <input type="file" ref={logoRef} className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, 'logo')} />
+                       <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => logoRef.current?.click()} disabled={uploading === 'logo'}>
+                          {uploading === 'logo' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate">{cmsData.branding.logoUrl ? 'Ganti Logo' : 'Pilih File Logo'}</span>}
+                          <Upload className="h-4 w-4 ml-2 text-slate-400" />
+                       </Button>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Upload Favicon (.ico/.png)</Label>
-                  <div className="flex gap-2">
-                    <input type="file" ref={faviconRef} className="hidden" accept="image/x-icon,image/png" onChange={(e) => handleFileUpload(e, 'favicon')} />
-                    <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => faviconRef.current?.click()} disabled={uploading === 'favicon'}>
-                       {uploading === 'favicon' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate max-w-[200px]">{cmsData.branding.faviconUrl ? 'Favicon Ter-upload ✓' : 'Kosongkan u/ Default'}</span>}
-                       <Upload className="h-4 w-4 ml-2 text-slate-400" />
-                    </Button>
+
+                <div className="space-y-4">
+                  <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Favicon (.ico/.png)</Label>
+                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                    {cmsData.branding.faviconUrl && (
+                      <div className="w-10 h-10 bg-white rounded-lg p-1 flex items-center justify-center border border-slate-200">
+                        <img src={cmsData.branding.faviconUrl} className="w-full h-full object-contain" alt="Favicon Preview" />
+                      </div>
+                    )}
+                    <div className="flex-1 w-full flex gap-2">
+                       <input type="file" ref={faviconRef} className="hidden" accept="image/x-icon,image/png" onChange={(e) => handleFileUpload(e, 'favicon')} />
+                       <Button variant="outline" className="h-14 w-full bg-slate-50 border-none font-bold text-navy hover:bg-slate-100 flex items-center justify-between px-5 rounded-2xl" onClick={() => faviconRef.current?.click()} disabled={uploading === 'favicon'}>
+                          {uploading === 'favicon' ? <span className="flex gap-2 items-center"><Loader2 className="h-4 w-4 animate-spin"/> Uploading...</span> : <span className="truncate">{cmsData.branding.faviconUrl ? 'Ganti Favicon' : 'Pilih File Favicon'}</span>}
+                          <Upload className="h-4 w-4 ml-2 text-slate-400" />
+                       </Button>
+                    </div>
                   </div>
                 </div>
             </div>
