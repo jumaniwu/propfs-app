@@ -9,10 +9,13 @@ import { invalidatePPNCache } from '@/hooks/usePPNRate'
 
 const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
   { key: 'fs_module', label: 'Feasibility Study (FS)', desc: 'Modul utama analisa kelayakan proyek properti.' },
-  { key: 'cost_control', label: 'Cost Control & RAB', desc: 'Modul pelacakan anggaran dan Kurva S.' },
+  { key: 'cost_control', label: 'Cost Control (Global)', desc: 'Menyalakan menu/dashboard Cost Control.' },
+  { key: 'cost_rab', label: 'Cost Control: RAB', desc: 'Tab RAB Proyek di dalam modul Cost Control.' },
+  { key: 'cost_material', label: 'Cost Control: Material Schedule', desc: 'Tab Rekap Material di modul Cost Control.' },
+  { key: 'cost_realisasi', label: 'Cost Control: Realisasi Biaya', desc: 'Tab Realisasi Biaya (Tracking) di modul Cost Control.' },
+  { key: 'scurve', label: 'Cost Control: Kurva S', desc: 'Visualisasi grafik progres pembangunan.' },
   { key: 'ai_solver', label: 'AI Target Profit Solver', desc: 'Fitur optimasi harga otomatis berbasis AI.' },
   { key: 'pdf_export', label: 'PDF Report Export', desc: 'Kemampuan ekspor hasil analisa ke PDF.' },
-  { key: 'scurve', label: 'Kurva S Visualization', desc: 'Visualisasi grafik progres pembangunan.' },
   { key: 'dashboard_admin', label: 'Admin Dashboard', desc: 'Akses ke panel admin ini.' },
 ]
 
