@@ -4,12 +4,11 @@ import {
   Plus, Search, SortAsc, Building2, FileJson,
   Upload, AlertCircle, CheckCircle2, X,
 } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog'
 import Header from '@/components/layout/Header'
+
 import ProjectCard from '@/components/shared/ProjectCard'
 import { useFSStore } from '@/store/fsStore'
 import { useAuthStore } from '@/store/authStore'
@@ -37,7 +36,6 @@ export default function Dashboard() {
 
   const [search, setSearch]             = useState('')
   const [sortKey, setSortKey]           = useState<SortKey>('date')
-  const [showNewDialog, setNewDialog]   = useState(false)
   const [showMigrate, setShowMigrate]   = useState(false)
   const [migrating, setMigrating]       = useState(false)
   const [migResult, setMigResult]       = useState<{ migrated: number; errors: number } | null>(null)
@@ -83,8 +81,7 @@ export default function Dashboard() {
   const activeCount = projects.length
   const canAdd = canCreateProject(activeCount)
 
-  async function handleNewProject(template: 'A' | 'B' | null) {
-    setNewDialog(false)
+  async function handleNewProject() {
     if (!canAdd) {
       toast({
         title: 'Batas proyek tercapai',
@@ -96,7 +93,7 @@ export default function Dashboard() {
       return
     }
     try {
-      const id = await createProject(template ?? undefined)
+      const id = await createProject()
       navigate(`/input/${id}`)
     } catch (e: any) {
       toast({ title: 'Gagal membuat proyek', description: e.message, variant: 'destructive' })
@@ -273,7 +270,7 @@ export default function Dashboard() {
                   if (isSubscriptionEnabled) navigate('/pricing')
                   else toast({ title: 'Batas proyek tercapai', variant: 'destructive' })
                 } else {
-                  setNewDialog(true)
+                  handleNewProject()
                 }
               }}
               className="gap-2"
@@ -324,7 +321,7 @@ export default function Dashboard() {
             <p className="text-muted-foreground text-sm">Memuat proyek...</p>
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState onCreate={() => canAdd ? setNewDialog(true) : navigate('/pricing')} search={search} />
+          <EmptyState onCreate={() => canAdd ? handleNewProject() : navigate('/pricing')} search={search} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {filtered.map(project => (
@@ -358,61 +355,7 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* New project dialog */}
-      <Dialog open={showNewDialog} onOpenChange={setNewDialog}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Buat Proyek Baru</DialogTitle>
-            <DialogDescription>
-              Pilih template untuk mengisi data awal, atau mulai dari kosong.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 gap-3 mt-2">
-            {/* Blank */}
-            <button
-              onClick={() => handleNewProject(null)}
-              className="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed border-border hover:border-gold/60 hover:bg-gold/5 transition-all text-left"
-            >
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                <Plus className="h-5 w-5 text-muted-foreground" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Proyek Kosong</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Mulai dari awal, isi semua data manual</div>
-              </div>
-            </button>
-
-            {/* Template A */}
-            <button
-              onClick={() => handleNewProject('A')}
-              className="flex items-center gap-4 p-4 rounded-xl border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all text-left"
-            >
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Template A — Perumahan Landed</div>
-                <div className="text-xs text-muted-foreground mt-0.5">King Square - Bodhi Dharma | 5 tipe | 130.000 m² | 3 fase</div>
-              </div>
-            </button>
-
-            {/* Template B */}
-            <button
-              onClick={() => handleNewProject('B')}
-              className="flex items-center gap-4 p-4 rounded-xl border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left"
-            >
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <div className="font-semibold text-sm">Template B — Ruko Komersial</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Ruko 2LT Batam Centre | 3 tipe | 5.500 m² | 1 fase</div>
-              </div>
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Template dialog removed — project created immediately */}
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!projectToDelete} onOpenChange={(open) => !open && setProjectToDelete(null)}>
