@@ -146,6 +146,16 @@ CREATE POLICY "Superadmin can update app_settings"
     )
   );
 
+-- app_settings: superadmin insert
+CREATE POLICY "Superadmin can insert app_settings"
+  ON app_settings FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE id = auth.uid() AND role = 'superadmin'
+    )
+  );
+
 -- ── Helper RPC functions ───────────────────────────────────
 
 -- Increment total_projects_created (cannot go below 0)
