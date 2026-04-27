@@ -1,31 +1,30 @@
-import { useState, useMemo } from 'react'
-import { TrendingUp, Info } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { TrendingUp, Info, Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 export default function TabKurvaS() {
-  const { activePlan, projectInfo } = useCostStore()
-  const [durasiProyek, setDurasiProyek] = useState(projectInfo?.targetDurationMonths || 12) // ambil dari info project
-  const [generated, setGenerated] = useState(false)
+  const { activePlan, projectInfo, updateSCurveConfig } = useCostStore()
+  
+  // Use persistent project setting if available
+  const [durasiProyek, setDurasiProyek] = useState(projectInfo?.targetDurationMonths || 12)
+  const isGenerated = projectInfo?.isSCurveGenerated || false
 
   const chartData = useMemo(() => {
-    if (!generated || !activePlan) return []
+    if (!isGenerated || !activePlan) return []
 
     const total = activePlan.totalBaselineBudget
     if (total === 0) return []
 
-    // Distribusi bobot S-Curve: pola bell/normal yang menghasilkan bentuk S
-    // Pembagian % kumulatif per bulan menggunakan kurva sigmoid sederhana
     const months = Array.from({ length: durasiProyek }, (_, i) => i + 1)
 
     // Sigmoid-like distribution
     const weights = months.map(m => {
-      const x = (m / durasiProyek) * 10 - 5 // normalize ke -5..5
-      return 1 / (1 + Math.exp(-x)) // sigmoid
+      const x = (m / durasiProyek) * 10 - 5
+      return 1 / (1 + Math.exp(-x))
     })
 
-    // Hitung incremental (selisih sigmoid - shaping to bell)
     const incremental = weights.map((w, i) => i === 0 ? w : w - weights[i - 1])
     const incSum = incremental.reduce((s, v) => s + v, 0)
 
@@ -37,17 +36,37 @@ export default function TabKurvaS() {
         bulan: `Bln ${m}`,
         rencanaBudget: Math.round(cumulative),
         rencanaPersentase: parseFloat(((cumulative / total) * 100).toFixed(1)),
-        realisasiPersentase: null, // placeholder untuk data aktual nanti
+        realisasiPersentase: null,
       }
     })
-  }, [generated, activePlan, durasiProyek])
+  }, [isGenerated, activePlan, durasiProyek])
 
   const formatRp = (val: number) => `Rp ${(val / 1_000_000).toFixed(1)} Jt`
 
+  const handleGenerate = () => {
+    updateSCurveConfig(durasiProyek, true)
+  }
+
+  const exportCSV = () => {
+    if (chartData.length === 0) return
+    const headers = ['Periode', 'Rencana Kumulatif (Rp)', 'Progres (%)']
+    const rows = chartData.map(d => `${d.bulan},${d.rencanaBudget},${d.rencanaPersentase}`)
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'kurva-s-propfs.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 print:space-y-4">
       {/* Config Panel */}
-      <div className="bg-muted/30 border border-border rounded-2xl p-6">
+      <div className="bg-muted/30 border border-border rounded-2xl p-6 print:hidden">
         <h3 className="font-semibold mb-1 flex items-center gap-2">
           <TrendingUp className="h-5 w-5 text-navy" />
           Konfigurasi Time Schedule
@@ -65,35 +84,44 @@ export default function TabKurvaS() {
                 min={3}
                 max={60}
                 value={durasiProyek}
-                onChange={e => { setDurasiProyek(Number(e.target.value)); setGenerated(false) }}
+                onChange={e => { setDurasiProyek(Number(e.target.value)); updateSCurveConfig(Number(e.target.value), false) }}
                 className="w-40"
               />
               <span className="font-bold text-navy w-24">{durasiProyek} Bulan</span>
             </div>
           </div>
 
-          <Button className="bg-navy hover:bg-navy/90 gap-2" onClick={() => setGenerated(true)}>
+          <Button className="bg-navy hover:bg-navy/90 gap-2" onClick={handleGenerate}>
             <TrendingUp className="h-4 w-4" /> Generate Kurva S
           </Button>
         </div>
       </div>
 
       {/* Chart */}
-      {!generated && (
-        <div className="py-16 text-center">
+      {!isGenerated && (
+        <div className="py-16 text-center print:hidden">
           <TrendingUp className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-40" />
           <p className="text-muted-foreground text-sm">Klik "Generate Kurva S" untuk menampilkan grafik distribusi anggaran.</p>
         </div>
       )}
 
-      {generated && chartData.length > 0 && (
+      {isGenerated && chartData.length > 0 && (
         <div className="space-y-6">
-          <div className="flex items-center gap-2 bg-blue-50 text-blue-700 rounded-xl px-4 py-3 text-sm">
-            <Info className="h-4 w-4 shrink-0" />
-            <span>
-              Grafik menampilkan distribusi anggaran kumulatif (Rencana S-Curve) selama <strong>{durasiProyek} bulan</strong>.
-              Data Realisasi Aktual akan muncul setelah Anda menginput pengeluaran di tab <em>Realisasi Biaya</em>.
-            </span>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-blue-50 text-blue-700 rounded-xl px-4 py-3 text-sm print:hidden">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 shrink-0" />
+              <span>
+                Grafik menampilkan distribusi anggaran kumulatif (Rencana S-Curve) selama <strong>{durasiProyek} bulan</strong>.
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="bg-white gap-2 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={exportCSV}>
+                <Download className="h-4 w-4" /> Excel (CSV)
+              </Button>
+              <Button size="sm" variant="outline" className="bg-white gap-2 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" /> Export PDF
+              </Button>
+            </div>
           </div>
 
           <div className="bg-white border border-border rounded-2xl p-6">
