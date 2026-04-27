@@ -246,20 +246,31 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   loadLandingContent: async () => {
     try {
       const { data } = await supabase.from('app_settings').select('value').eq('key', 'landing_page_cms').maybeSingle()
-      if (data?.value) {
-        set({ landingContent: data.value as LandingPageContent })
+      if (data?.value && typeof data.value === 'object') {
+        set(state => ({
+          landingContent: {
+            ...state.landingContent,
+            ...(data.value as Partial<LandingPageContent>)
+          }
+        }))
       }
     } catch { /* ignore */ }
   },
 
   updateLandingContent: async (content: LandingPageContent) => {
+    // Pastikan kita menyimpan state penuh agar array features tidak hilang
+    const fullContent = {
+      ...get().landingContent,
+      ...content
+    }
+
     const { error } = await supabase
       .from('app_settings')
-      .update({ value: content, updated_at: new Date().toISOString() })
+      .update({ value: fullContent, updated_at: new Date().toISOString() })
       .eq('key', 'landing_page_cms')
 
     if (error) throw error
-    set({ landingContent: content })
+    set({ landingContent: fullContent })
   },
 
   // ── clearError ────────────────────────────────────────────
