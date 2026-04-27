@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { FSInputs } from '@/types/fs.types'
+import { useAuthStore } from '@/store/authStore'
 
 const schema = z.object({
   namaProyek:    z.string().min(2, 'Nama proyek minimal 2 karakter'),
@@ -51,7 +52,18 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
     },
   })
 
+  const profile = useAuthStore(s => s.profile)
+  
   const watchAll = watch()
+
+  // Auto-fill company from profile if field is empty
+  useEffect(() => {
+    const currentVal = watchAll.namaDeveloper
+    if (!currentVal && profile?.company) {
+      setValue('namaDeveloper', profile.company)
+      onChange({ namaDeveloper: profile.company })
+    }
+  }, [profile?.company])
 
   useEffect(() => {
     const sub = watch((values) => {

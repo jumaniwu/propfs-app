@@ -187,7 +187,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // ── signOut ───────────────────────────────────────────────
   signOut: async () => {
-    localStorage.removeItem(MOCK_STORAGE_KEY)
     await supabase.auth.signOut()
     set({ user: null, session: null, profile: null, subscription: null })
   },
@@ -289,9 +288,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   // ── getCurrentPlan ────────────────────────────────────────
   getCurrentPlan: (): PlanId => {
     const { subscription, isSubscriptionEnabled } = get()
-    if (!isSubscriptionEnabled) return 'pro' // flag off = full access
+    if (!isSubscriptionEnabled) return 'free' // flag off = free tier display
     if (!subscription || subscription.status !== 'active') return 'free'
-    return subscription.plan_id
+    return (subscription.plan_id as PlanId) || 'free'
   },
 
   // ── canCreateProject ──────────────────────────────────────

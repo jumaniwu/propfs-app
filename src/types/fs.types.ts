@@ -379,7 +379,7 @@ export const DEFAULT_APARTEMEN: Omit<TipeBangunan, 'id'> = {
 export const DEFAULT_INPUTS: FSInputs = {
   namaProyek: '',
   alamatLokasi: '',
-  namaDeveloper: 'PT. Mettaland Batam Sukses',
+  namaDeveloper: '',
   tahunMulai: new Date().getFullYear(),
   jumlahFase: 3,
   durasiPerFase: 24,
@@ -466,7 +466,7 @@ export const DEFAULT_INPUTS: FSInputs = {
 export const TEMPLATE_A: Partial<FSInputs> = {
   namaProyek: 'King Square - Bodhi Dharma',
   alamatLokasi: 'Batam Centre, Kepulauan Riau',
-  namaDeveloper: 'PT. Mettaland Batam Sukses',
+  namaDeveloper: '',
   tahunMulai: 2024,
   jumlahFase: 3,
   durasiPerFase: 24,

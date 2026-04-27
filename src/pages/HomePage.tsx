@@ -60,7 +60,20 @@ export default function HomePage() {
                status: 'pending'
             })
          }
-         navigate('/home', { replace: true })
+         // Navigate to the new invoice payment page
+         const { data: newInv } = await supabase.from('invoices')
+           .select('id')
+           .eq('user_id', profile.id)
+           .eq('status', 'pending')
+           .order('created_at', { ascending: false })
+           .limit(1)
+           .maybeSingle()
+         
+         if (newInv?.id) {
+           navigate(`/payment/${newInv.id}`, { replace: true })
+         } else {
+           navigate('/home', { replace: true })
+         }
       }
 
       // Fetch
