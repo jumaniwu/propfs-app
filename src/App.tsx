@@ -26,6 +26,7 @@ const LandingPage = lazy(() => import('./pages/LandingPage'))
 const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
+const LegalPage   = lazy(() => import('./pages/LegalPage'))
 
 function LoadingScreen() {
   return (
@@ -68,6 +69,7 @@ export default function App() {
           {/* ── Public Routes ── */}
           <Route path="/" element={<OpenRoute><LandingPage /></OpenRoute>} />
           <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
+          <Route path="/legal/:type" element={<OpenRoute><LegalPage /></OpenRoute>} />
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />
