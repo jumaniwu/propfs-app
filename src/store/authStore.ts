@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   profile: null,
   subscription: null,
   isSubscriptionEnabled: false,
-  globalFeatures: { fs_module: true, cost_control: false, ai_solver: true, pdf_export: true, scurve: false, dashboard_admin: false },
+  globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
   isLoading: true,
   authError: null,
   landingContent: {
@@ -235,7 +235,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
-        globalFeatures: typeof flags === 'object' && flags !== null ? flags : get().globalFeatures
+        globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures
       })
     } catch {
       // DB not available — keep defaults

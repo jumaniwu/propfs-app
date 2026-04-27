@@ -10,6 +10,7 @@ export interface ProjectInfo {
   startDate: string
   targetDurationMonths: number
   type: string
+  isSCurveGenerated?: boolean
 }
 
 export interface SavedCostProject {
@@ -60,6 +61,9 @@ interface CostStore {
   // Realisasi Biaya persistence
   addRealisasiEntries: (entries: RealisasiEntry[]) => void
   clearRealisasiEntries: () => void
+
+  // S-Curve config
+  updateSCurveConfig: (duration: number, generated: boolean) => void
 }
 
 const STORAGE_KEY = 'propfs-cost-projects'
@@ -126,6 +130,14 @@ export const useCostStore = create<CostStore>((set, get) => ({
   clearProject: () => {
     set({ projectInfo: null, activePlan: null, draftComponents: [], materialSchedule: [], realisasiEntries: [] })
     get().loadProjects()
+  },
+
+  updateSCurveConfig: (duration, generated) => {
+    const info = get().projectInfo;
+    if (info) {
+      set({ projectInfo: { ...info, targetDurationMonths: duration, isSCurveGenerated: generated } })
+      get().saveToStorage()
+    }
   },
 
   deleteProject: (id) => {
