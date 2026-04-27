@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -480,8 +480,8 @@ export default function LandingPage() {
           </div>
           <p className="text-white/40 text-sm font-medium">© {new Date().getFullYear()} PT. Mettaland Batam Sukses. All rights reserved.</p>
           <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-white/40">
-            <a href="#" className="hover:text-gold transition-colors">Privacy</a>
-            <a href="#" className="hover:text-gold transition-colors">Terms</a>
+            <Link to="/legal/privacy" className="hover:text-gold transition-colors">Privacy</Link>
+            <Link to="/legal/terms" className="hover:text-gold transition-colors">Terms</Link>
           </div>
         </div>
       </footer>

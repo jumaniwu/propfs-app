@@ -194,26 +194,27 @@ export default function InputPage() {
           <div className="flex gap-2">
             {currentStep === 7 ? (
               <>
-                <Button variant="outline" onClick={handleSaveDraft} className="gap-2">
-                  <Save className="h-4 w-4" />
-                  Simpan Draft
+                <Button variant="outline" onClick={handleSaveDraft} className="gap-2 hidden sm:flex">
+                  <Save className="h-4 w-4" /> Simpan Draft
                 </Button>
-                <Button variant="gold" onClick={handleCalculate} className="gap-2">
-                  <Calculator className="h-4 w-4" />
-                  Hitung Feasibility Study
+                <Button variant="gold" onClick={handleCalculate} className="gap-2 font-bold shadow-md shadow-gold/20">
+                  <Calculator className="h-4 w-4" /> Simpan & Publish Hitungan
                 </Button>
               </>
             ) : (
               <>
-                {currentStep >= 6 && (
+                {currentStep >= 6 ? (
                   <Button
                     variant="outline"
                     onClick={handleCalculate}
                     className="gap-2 text-sm"
                     title="Hitung dengan data yang ada"
                   >
-                    <Calculator className="h-4 w-4" />
-                    Hitung Sekarang
+                    <Calculator className="h-4 w-4" /> Hitung Sekarang
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={handleSaveDraft} className="gap-2 text-sm text-navy">
+                    <Save className="h-4 w-4" /> Simpan Draft
                   </Button>
                 )}
                 <Button variant="default" onClick={handleNext} className="gap-2">
