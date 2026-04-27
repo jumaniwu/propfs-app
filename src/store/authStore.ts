@@ -12,10 +12,7 @@ import {
   type LandingPageContent 
 } from '../lib/supabase'
 import type { User, Session } from '@supabase/supabase-js'
-// MAGIC MOCK ADMIN (For testing without Supabase)
-const MAGIC_EMAIL = 'admin@propfs.id'
-const MAGIC_PASS  = '123456'
-const MOCK_STORAGE_KEY = 'propfs-mock-session'
+
 
 // ── Plan feature definitions (mirrored from DB) ────────────
 export const PLAN_LIMITS: Record<PlanId, {
@@ -159,33 +156,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   signIn: async (email, password) => {
     set({ isLoading: true, authError: null })
 
-    // Check for Magic Admin
-    if (email === MAGIC_EMAIL && password === MAGIC_PASS) {
-      const mockUser = { id: 'mock-admin-uuid', email: MAGIC_EMAIL } as any
-      const mockProfile: Profile = {
-        id: 'mock-admin-uuid',
-        full_name: 'Super Admin PropFS',
-        company: 'PT. Mettaland Batam Sukses',
-        phone: '08110000000',
-        role: 'superadmin',
-        total_projects_created: 99,
-        created_at: new Date().toISOString()
-      }
-      const mockSub: Subscription = {
-        id: 'mock-sub-uuid',
-        user_id: 'mock-admin-uuid',
-        plan_id: 'pro',
-        status: 'active',
-        started_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 365 * 86400000).toISOString(),
-        midtrans_order_id: null,
-        created_at: new Date().toISOString()
-      }
-      
-      set({ user: mockUser, profile: mockProfile, subscription: mockSub, isLoading: false, isSubscriptionEnabled: true })
-      localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify({ user: mockUser, profile: mockProfile, subscription: mockSub }))
-      return
-    }
 
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
