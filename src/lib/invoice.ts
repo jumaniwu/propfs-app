@@ -77,14 +77,20 @@ export async function initiatePayment(planId: string, months: number = 1, invoic
     })
 
     if (!response.ok) {
-      const err = await response.json()
-      throw new Error(err.message || 'Gagal memulai pembayaran')
+      const text = await response.text()
+      try {
+        const json = JSON.parse(text)
+        throw new Error(json.message || json.error_messages?.[0] || 'Gagal memulai pembayaran (Midtrans Error)')
+      } catch {
+        // If not JSON, it might be a Vercel/HTML error page
+        throw new Error(`Server Error (${response.status}): ${text.slice(0, 100)}...`)
+      }
     }
 
     return await response.json()
   } catch (e: any) {
     console.error('[Payment] Initiate failed:', e)
-    throw new Error(e.message || 'Gagal memulai pembayaran. Coba lagi dalam beberapa saat.')
+    throw new Error(e.message || 'Gagal koneksi ke server pembayaran. Pastikan API sudah di-deploy ke Vercel.')
   }
 }
 
