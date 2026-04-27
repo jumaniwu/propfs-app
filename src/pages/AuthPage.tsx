@@ -19,6 +19,20 @@ export default function AuthPage() {
     return (params.get('tab') as Tab) || 'login'
   })
   
+  // Read selected plan from URL
+  const selectedPlan = (() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('plan') || 'free'
+  })()
+
+  const planLabel: Record<string, string> = {
+    free: 'Gratis',
+    basic: 'Starter',
+    pro: 'Pro',
+    starter: 'Starter',
+  }
+  const displayedPlan = planLabel[selectedPlan] || selectedPlan
+  
   const [regStep, setRegStep] = useState<1 | 2>(1)
   const [showPass, setShowPass] = useState(false)
   const [isSendingOtp, setIsSendingOtp] = useState(false)
@@ -60,8 +74,7 @@ export default function AuthPage() {
     }
   }
 
-  // Requesting real OTP via Email
-  async function handleRequestOTP() {
+  async function handleRegisterSubmit() {
     if (regPass !== regPass2) {
       setRegError('Password konfirmasi tidak cocok.')
       return
@@ -70,29 +83,32 @@ export default function AuthPage() {
       setRegError('Password minimal 8 karakter.')
       return
     }
+    if (!regEmail) {
+      setRegError('Email wajib diisi.')
+      return
+    }
 
-    setIsSendingOtp(true)
     setRegError('')
-    
-    // Generate code
-    const code = Math.floor(100000 + Math.random() * 900000).toString()
-    setGeneratedOtp(code)
-
     try {
-      const res = await fetch('/api/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: regEmail, code, name: regName })
-      })
-
-      if (!res.ok) throw new Error('Gagal mengirim email OTP. Silakan coba sebentar lagi.')
-      
-      setTab('otp')
-      toast({ title: 'OTP Terkirim!', description: `Silakan periksa kotak masuk email ${regEmail}.` })
+      await signUp(regEmail, regPass, regName, regCompany, regPhone)
+      // Try to auto-login directly
+      await signIn(regEmail, regPass)
+      const params = new URLSearchParams(location.search)
+      const plan = params.get('plan')
+      if (plan && plan !== 'free') {
+        navigate(`/home?create_invoice=${plan}`)
+      } else {
+        navigate('/home')
+      }
     } catch (err: any) {
-      setRegError('Sistem email sedang sibuk. Gunakan kode darurat 123456 untuk daftar sekarang.')
-    } finally {
-      setIsSendingOtp(false)
+      // Supabase may require email confirmation - show helpful message
+      const msg: string = err.message || ''
+      if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email')) {
+        setRegError('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi, lalu login kembali.')
+        setTab('login')
+      } else {
+        setRegError(err.message)
+      }
     }
   }
 
@@ -224,7 +240,9 @@ export default function AuthPage() {
           {tab === 'register' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
               <div className="space-y-2">
-                <h2 className="text-4xl font-serif font-black text-navy leading-none">Pendaftaran Pro ✨</h2>
+                <h2 className="text-4xl font-serif font-black text-navy leading-none">
+                  Pendaftaran <span className="text-gold">{displayedPlan}</span> ✨
+                </h2>
                 <div className="flex gap-2 pt-4">
                    <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 1 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
                    <div className={`h-2 flex-1 rounded-full transition-all duration-500 ${regStep === 2 ? 'bg-gold shadow-lg shadow-gold/20' : 'bg-slate-200'}`} />
@@ -268,7 +286,7 @@ export default function AuthPage() {
               ) : (
                 <div className="space-y-5 animate-in slide-in-from-right-8 duration-500">
                    <div className="space-y-2.5">
-                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Perusahaan (Verifikasi OTP)</Label>
+                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Aktif</Label>
                      <div className="relative">
                         <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
                         <Input className="pl-14 h-16 rounded-2xl bg-white" type="email" placeholder="name@company.com" value={regEmail} onChange={e => setRegEmail(e.target.value)} />
@@ -290,50 +308,14 @@ export default function AuthPage() {
                    </div>
                    <div className="flex gap-4 pt-4">
                      <Button variant="outline" className="h-16 rounded-2xl px-10 border-slate-200 font-bold" onClick={() => setRegStep(1)}>BACK</Button>
-                     <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRequestOTP} disabled={isSendingOtp}>
-                       {isSendingOtp ? <Loader2 className="animate-spin w-6 h-6" /> : 'KIRIM OTP EMAIL'}
+                     <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRegisterSubmit} disabled={isLoading}>
+                       {isLoading ? <Loader2 className="animate-spin w-6 h-6" /> : 'DAFTAR SEKARANG'}
                      </Button>
                    </div>
                 </div>
               )}
             </div>
-          )}
-
-          {/* OTP */}
-          {tab === 'otp' && (
-            <div className="space-y-10 animate-in zoom-in-95 duration-700 text-center pt-8">
-               <div className="w-24 h-24 bg-gold/10 text-gold rounded-[40px] flex items-center justify-center mx-auto border-2 border-gold/20 shadow-2xl shadow-gold/20 relative">
-                 <div className="absolute inset-0 bg-gold/20 animate-ping rounded-[40px] opacity-20" />
-                 <Smartphone className="h-12 w-12 relative z-10" />
-               </div>
-               <div className="space-y-3">
-                 <h2 className="text-4xl font-serif font-black text-navy leading-tight">Cek Email Anda</h2>
-                 <p className="text-slate-500 text-[15px] leading-relaxed px-4 font-medium">
-                   Kami telah mengirimkan 6-digit kode OTP ke:<br />
-                   <strong className="text-navy font-black text-lg underline">{regEmail}</strong>
-                 </p>
-               </div>
-               
-               <form onSubmit={handleVerifyOTP} className="space-y-10">
-                  <div className="flex justify-center gap-3 px-2">
-                    {otpValue.map((v, i) => (
-                      <input key={i} ref={el => otpInputs.current[i] = el} type="text" inputMode="numeric" maxLength={1} value={v} onChange={e => handleOtpChange(i, e.target.value)} className="w-[15%] h-20 text-center text-4xl font-black rounded-2xl border-2 border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 outline-none transition-all shadow-xl bg-white" />
-                    ))}
-                  </div>
-                  <Button type="submit" className="w-full h-18 bg-navy text-white rounded-[24px] text-xl font-black shadow-2xl shadow-navy/30 active:scale-95 transition-all" disabled={isLoading}>
-                    {isLoading ? <Loader2 className="animate-spin h-7 w-7" /> : 'VERIFIKASI & SELESAI'}
-                  </Button>
-               </form>
-
-               <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-[32px] shadow-sm">
-                 <p className="text-[11px] text-amber-700 font-bold uppercase tracking-wider mb-2">Technical Support</p>
-                 <p className="text-[12px] text-amber-800 leading-relaxed font-medium">Jika OTP belum masuk dalam 2 menit, mohon periksa folder Spam atau gunakan kode akses darurat <strong>123456</strong> untuk simulasi pendaftaran.</p>
-               </div>
-            </div>
-          )}
-
-        </div>
-      </div>
     </div>
   )
 }
+
