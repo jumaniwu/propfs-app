@@ -36,52 +36,41 @@ export default function HomePage() {
       const createInvoicePlan = query.get('create_invoice')
 
       if (createInvoicePlan) {
-         // Cek existing pending invoice
-         const { data: existing } = await supabase.from('invoices')
-            .select('id')
-            .eq('user_id', profile.id)
-            .eq('status', 'pending')
-            .eq('plan_id', createInvoicePlan)
-            .maybeSingle()
+         // Generate mock invoice
+         const invoiceId = `mock_inv_${Math.random().toString(36).substr(2,9)}`
+         const subtotal = createInvoicePlan === 'pro' ? 399000 : 149000
+         const ppn = Math.round(subtotal * 0.11)
          
-         if (!existing) {
-            const subtotal = createInvoicePlan === 'pro' ? 399000 : 149000 // default 1 bulan
-            const ppn = Math.round(subtotal * 0.11)
-            
-            await supabase.from('invoices').insert({
-               user_id: profile.id,
-               plan_id: createInvoicePlan,
-               invoice_number: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`,
-               period_start: new Date().toISOString(),
-               period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
-               subtotal_idr: subtotal,
-               ppn_idr: ppn,
-               total_idr: subtotal + ppn,
-               status: 'pending'
-            })
+         const invoice = {
+            id: invoiceId,
+            user_id: profile.id,
+            plan_id: createInvoicePlan,
+            invoice_number: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`,
+            period_start: new Date().toISOString(),
+            period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
+            subtotal_idr: subtotal,
+            ppn_idr: ppn,
+            total_idr: subtotal + ppn,
+            status: 'pending',
+            created_at: new Date().toISOString()
          }
-         // Navigate to the new invoice payment page
-         const { data: newInv } = await supabase.from('invoices')
-           .select('id')
-           .eq('user_id', profile.id)
-           .eq('status', 'pending')
-           .order('created_at', { ascending: false })
-           .limit(1)
-           .maybeSingle()
          
-         if (newInv?.id) {
-           navigate(`/payment/${newInv.id}`, { replace: true })
-         } else {
-           navigate('/home', { replace: true })
-         }
+         localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify(invoice))
+         navigate(`/payment/${invoiceId}`, { replace: true })
+         return
       }
 
       // Fetch
-      const { data } = await supabase.from('invoices')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-      if (data) setInvoices(data)
+      let localInvoices = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key && key.startsWith('propfs_invoice_')) {
+           const inv = JSON.parse(localStorage.getItem(key) || '{}')
+           if (inv.user_id === profile.id) localInvoices.push(inv)
+        }
+      }
+      localInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setInvoices(localInvoices as any)
     }
 
     handleIncomingInvoiceAndFetch()

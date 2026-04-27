@@ -325,7 +325,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // ── isFeatureEnabled ──────────────────────────────────────
   isFeatureEnabled: (feature: AppFeature): boolean => {
-    const { profile, globalFeatures, user } = get()
+    const { profile, globalFeatures } = get()
 
     // 1. Superadmin always has all features
     if (profile?.role === 'superadmin') return true
@@ -333,6 +333,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // 2. Check per-user explicit override
     if (profile?.custom_features && profile.custom_features[feature] !== undefined) {
       return profile.custom_features[feature]
+    }
+
+    // Lock cost_control for free tier
+    if (feature === 'cost_control' && get().getCurrentPlan() === 'free') {
+      return false
     }
 
     // 3. Fallback to global system-wide setting

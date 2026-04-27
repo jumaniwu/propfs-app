@@ -24,12 +24,10 @@ export default function PaymentPage() {
 
   async function fetchInvoice() {
     setLoading(true)
-    const { data } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('id', id)
-      .single()
-    if (data) setInvoice(data as Invoice)
+    const localInv = localStorage.getItem(`propfs_invoice_${id}`)
+    if (localInv) {
+       setInvoice(JSON.parse(localInv) as Invoice)
+    }
     setLoading(false)
   }
 
@@ -49,8 +47,21 @@ export default function PaymentPage() {
         paymentRes.snapToken,
         async () => {
           // onSuccess
-          await supabase.from('invoices').update({ status: 'paid' }).eq('id', invoice.id)
-          toast({ title: 'Pembayaran Berhasil! 🎉', description: `Invoice lunas.` })
+          // Update Invoice in local storage
+          const updatedInv = { ...invoice, status: 'paid', paid_at: new Date().toISOString() }
+          localStorage.setItem(`propfs_invoice_${invoice.id}`, JSON.stringify(updatedInv))
+          
+          // Auto-provision actual Subscription in Supabase!
+          await supabase.from('subscriptions').insert({
+             user_id: user.id,
+             plan_id: invoice.plan_id,
+             status: 'active',
+             started_at: new Date().toISOString(),
+             // expired_at approx 30 days from now
+             expired_at: new Date(Date.now() + 30 * 86400000).toISOString()
+          })
+
+          toast({ title: 'Pembayaran Berhasil! 🎉', description: `Invoice lunas dan paket telah diaktifkan.` })
           navigate('/home')
         },
         () => {

@@ -296,7 +296,9 @@ export default function PricingPage() {
                       const { data: { user } } = await supabase.auth.getUser()
                       if (!user) { navigate('/auth'); return }
 
-                      const { data: invoice } = await supabase.from('invoices').insert({
+                      const invoiceId = `mock_inv_${Math.random().toString(36).substr(2,9)}`
+                      const invoice = {
+                         id: invoiceId,
                          user_id: user.id,
                          plan_id: plan.id,
                          invoice_number: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`,
@@ -305,12 +307,12 @@ export default function PricingPage() {
                          subtotal_idr: totalPrice,
                          ppn_idr: ppnAmount,
                          total_idr: grandTotal,
-                         status: 'pending'
-                      }).select('*').single()
-
-                      if (invoice) {
-                         navigate(`/payment/${invoice.id}`)
+                         status: 'pending',
+                         created_at: new Date().toISOString()
                       }
+                      
+                      localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify(invoice))
+                      navigate(`/payment/${invoiceId}`)
                     } catch (e) {
                       console.error(e)
                     } finally {
