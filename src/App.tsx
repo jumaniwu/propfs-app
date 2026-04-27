@@ -21,6 +21,7 @@ const AdminLandingCMS = lazy(() => import('./pages/admin/AdminLandingCMS'))
 const AdminAIBilling  = lazy(() => import('./pages/admin/AdminAIBilling'))
 const AdminInvoices   = lazy(() => import('./pages/admin/AdminInvoices'))
 const AdminPlans      = lazy(() => import('./pages/admin/AdminPlans'))
+const AdminStaff      = lazy(() => import('./pages/admin/AdminEmployeeManager'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
@@ -90,6 +91,7 @@ export default function App() {
              <Route path="users" element={<AdminUsers />} />
              <Route path="settings" element={<AdminSettings />} />
              <Route path="cms" element={<AdminLandingCMS />} />
+             <Route path="staff" element={<AdminStaff />} />
           </Route>
 
           {/* ── Fallback ── */}
