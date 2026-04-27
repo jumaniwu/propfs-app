@@ -205,8 +205,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const { user } = get()
     if (!user) return
     try {
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) set({ profile: data as Profile })
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      if (data) {
+        set({ profile: data as Profile })
+      } else {
+        // Fallback: If DB trigger failed, self-heal by creating the profile now.
+        const meta = user.user_metadata || {}
+        const newProfile = {
+           id: user.id,
+           full_name: meta.full_name || user.email?.split('@')[0] || 'Unknown',
+           company: meta.company || '-',
+           phone: meta.phone || '-',
+           role: 'user',
+           total_projects_created: 0
+        }
+        await supabase.from('profiles').insert(newProfile)
+        set({ profile: newProfile as Profile })
+      }
     } catch { /* ignore */ }
   },
 

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Users, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 
@@ -16,14 +19,44 @@ const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
 export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([])
   const [selectedUser, setSelectedUser] = useState<any | null>(null)
+  
+  // Subscription Form State
+  const [subPlan, setSubPlan] = useState('free')
+  const [subStart, setSubStart] = useState('')
+  const [subEnd, setSubEnd] = useState('')
+  const [isUpdatingSub, setIsUpdatingSub] = useState(false)
 
   useEffect(() => {
     loadUsers()
   }, [])
 
   async function loadUsers() {
-    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+    // Fetch profiles WITH their subscriptions
+    const { data } = await supabase
+      .from('profiles')
+      .select('*, subscriptions(*)')
+      .order('created_at', { ascending: false })
     if (data) setUsers(data)
+  }
+
+  function handleOpenUser(u: any) {
+    setSelectedUser(u)
+    
+    // Find active or most recent subscription
+    const subs = u.subscriptions || []
+    const activeSub = subs.find((s: any) => s.status === 'active') || subs[0]
+    
+    if (activeSub) {
+      setSubPlan(activeSub.plan_id)
+      setSubStart(activeSub.started_at ? new Date(activeSub.started_at).toISOString().split('T')[0] : '')
+      setSubEnd(activeSub.expired_at ? new Date(activeSub.expired_at).toISOString().split('T')[0] : '')
+    } else {
+      setSubPlan('free')
+      setSubStart(new Date().toISOString().split('T')[0])
+      const nextMonth = new Date()
+      nextMonth.setMonth(nextMonth.getMonth() + 1)
+      setSubEnd(nextMonth.toISOString().split('T')[0])
+    }
   }
 
   async function updateUserFlag(userId: string, key: AppFeature, val: boolean) {
@@ -42,7 +75,39 @@ export default function AdminUsers() {
       if (selectedUser?.id === userId) {
         setSelectedUser({ ...selectedUser, custom_features: nextFeatures })
       }
-      toast({ title: `Akses fitur pengguna diperbarui`, variant: 'default' })
+      toast({ title: `Akses fitur pengguna diperbarui` })
+    }
+  }
+
+  async function handleSaveSubscription() {
+    if (!selectedUser) return
+    setIsUpdatingSub(true)
+    try {
+      const activeSub = (selectedUser.subscriptions || []).find((s: any) => s.status === 'active')
+      const payload = {
+         user_id: selectedUser.id,
+         plan_id: subPlan,
+         status: 'active',
+         started_at: subStart ? new Date(subStart).toISOString() : null,
+         expired_at: subEnd ? new Date(subEnd).toISOString() : null
+      }
+      
+      let res;
+      if (activeSub) {
+        // Update existing active subscription
+        res = await supabase.from('subscriptions').update(payload).eq('id', activeSub.id).select().single()
+      } else {
+        // Insert new subscription
+        res = await supabase.from('subscriptions').insert(payload).select().single()
+      }
+      
+      if (res.error) throw res.error
+      toast({ title: 'Langganan berhasil diperbarui' })
+      loadUsers() // Refresh all data to sync
+    } catch (err: any) {
+      toast({ title: 'Error menyimpan langganan', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsUpdatingSub(false)
     }
   }
 
@@ -51,7 +116,7 @@ export default function AdminUsers() {
       <div className="flex justify-between items-end">
         <div>
            <h1 className="text-2xl font-serif font-bold text-navy">Manajemen Perusahaan & Pengguna</h1>
-           <p className="text-sm text-muted-foreground mt-1">Daftar pengguna yang mendaftar dan kontrol akses bypass fitur.</p>
+           <p className="text-sm text-muted-foreground mt-1">Daftar pengguna dan atur durasi langganan (expired contract).</p>
         </div>
       </div>
 
@@ -68,35 +133,51 @@ export default function AdminUsers() {
             <thead>
               <tr className="bg-muted/50 text-left border-b border-border">
                 <th className="px-4 py-3 font-medium">Perusahaan & Pendaftar</th>
-                <th className="px-4 py-3 font-medium">Kontak (WhatsApp/Email)</th>
+                <th className="px-4 py-3 font-medium">Kontak</th>
+                <th className="px-4 py-3 font-medium">Status Langganan</th>
                 <th className="px-4 py-3 font-medium text-center">Role</th>
                 <th className="px-4 py-3 font-medium text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.map(u => (
-                <tr key={u.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-4">
-                    <div className="font-bold text-navy">{u.company || '-'}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{u.full_name || 'Tanpa Nama'}</div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="font-medium">{u.phone || '-'}</div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1 ${u.role === 'superadmin' ? 'bg-gold/20 text-yellow-800' : 'bg-slate-100 text-slate-600'}`}>
-                      {u.role === 'superadmin' && <ShieldAlert className="h-3 w-3" />}
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <Button variant="outline" size="sm" onClick={() => setSelectedUser(u)} className="hover:bg-navy hover:text-white border-navy/20">Akses Bypass</Button>
-                  </td>
-                </tr>
-              ))}
+              {users.map(u => {
+                const subs = u.subscriptions || []
+                const active = subs.find((s:any) => s.status === 'active')
+                
+                return (
+                  <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-4">
+                      <div className="font-bold text-navy">{u.company || '-'}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{u.full_name || 'Tanpa Nama'}</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="font-medium text-xs">{u.phone || '-'}</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {active ? (
+                        <div>
+                          <div className="font-bold text-emerald-600 uppercase text-[10px] tracking-wider">Plan {active.plan_id}</div>
+                          {active.expired_at && <div className="text-xs text-muted-foreground mt-0.5">Exp: {new Date(active.expired_at).toLocaleDateString('id-ID')}</div>}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground italic">Tidak ada (Paket Free)</div>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1 ${u.role === 'superadmin' ? 'bg-gold/20 text-yellow-800' : 'bg-slate-100 text-slate-600'}`}>
+                        {u.role === 'superadmin' && <ShieldAlert className="h-3 w-3" />}
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <Button variant="outline" size="sm" onClick={() => handleOpenUser(u)} className="hover:bg-navy hover:text-white border-navy/20">Edit Akses & Paket</Button>
+                    </td>
+                  </tr>
+                )
+              })}
               {users.length === 0 && (
                 <tr>
-                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
+                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
                 </tr>
               )}
             </tbody>
@@ -107,35 +188,91 @@ export default function AdminUsers() {
       {/* User Access Modal */}
       {selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-2xl font-serif font-bold text-navy mb-1">{selectedUser.company || selectedUser.full_name}</h3>
-            <p className="text-sm text-muted-foreground mb-6">Bypass: Aktifkan fitur khusus untuk perusahaan ini yang mengabaikan setting paket umum berlangganan mereka.</p>
+          <div className="bg-white rounded-3xl overflow-hidden max-w-2xl w-full flex flex-col max-h-[90vh] shadow-2xl animate-in zoom-in-95 duration-200">
             
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-              {AVAILABLE_FEATURES.map(f => (
-                <label key={f.key} className="flex items-start gap-4 p-4 rounded-xl border border-border border-b-2 hover:border-gold cursor-pointer transition-all">
-                  <div className="pt-0.5">
-                     <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${selectedUser.custom_features?.[f.key] ? 'border-gold bg-gold' : 'border-muted-foreground/30'}`}>
-                        {selectedUser.custom_features?.[f.key] && <CheckCircle2 className="h-3.5 w-3.5 text-navy" />}
-                     </div>
-                     <input 
-                       type="checkbox" 
-                       className="hidden"
-                       checked={!!(selectedUser.custom_features && selectedUser.custom_features[f.key])}
-                       onChange={(e) => updateUserFlag(selectedUser.id, f.key, e.target.checked)}
-                     />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-navy">{f.label}</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{f.desc}</div>
-                  </div>
-                </label>
-              ))}
+            <div className="p-6 sm:p-8 border-b border-border bg-slate-50 relative">
+               <h3 className="text-2xl font-serif font-bold text-navy mb-1">{selectedUser.company || selectedUser.full_name}</h3>
+               <p className="text-sm text-muted-foreground flex items-center gap-4">
+                 <span>ID: <span className="font-mono text-xs">{selectedUser.id.substring(0,8)}</span></span>
+                 {selectedUser.phone}
+               </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-10 custom-scrollbar">
+              
+              {/* SECTION: Langganan */}
+              <div className="space-y-4">
+                 <div className="flex items-center gap-2 mb-2">
+                   <CreditCard className="h-5 w-5 text-gold" />
+                   <h4 className="font-bold text-navy text-lg">Kontrol Langganan (Expired Contract)</h4>
+                 </div>
+                 
+                 <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                       <Label className="text-xs uppercase font-bold text-slate-500">Paket Properti</Label>
+                       <Select value={subPlan} onValueChange={setSubPlan}>
+                         <SelectTrigger className="h-12 bg-white">
+                           <SelectValue />
+                         </SelectTrigger>
+                         <SelectContent>
+                           <SelectItem value="free">Paket Free (Gratis)</SelectItem>
+                           <SelectItem value="basic">Paket Starter (Basic)</SelectItem>
+                           <SelectItem value="pro">Paket Pro (Full)</SelectItem>
+                         </SelectContent>
+                       </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                       <Label className="text-xs uppercase font-bold text-slate-500">Tgl. Aktif (Start)</Label>
+                       <Input type="date" className="h-12 bg-white" value={subStart} onChange={e => setSubStart(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                       <Label className="text-xs uppercase font-bold text-slate-500">Tgl. Kedaluwarsa (Exp)</Label>
+                       <Input type="date" className="h-12 bg-white" value={subEnd} onChange={e => setSubEnd(e.target.value)} />
+                    </div>
+                 </div>
+                 
+                 <Button variant="gold" className="font-bold gap-2 mt-2" onClick={handleSaveSubscription} disabled={isUpdatingSub}>
+                   {isUpdatingSub ? <RefreshCw className="h-4 w-4 animate-spin" /> : <SaveIcon />} 
+                   Simpan Durasi Langganan
+                 </Button>
+              </div>
+
+
+              {/* SECTION: Bypass Feature Flags */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                   <ShieldAlert className="h-5 w-5 text-slate-400" />
+                   <h4 className="font-bold text-navy text-lg">Individu Feature Bypass</h4>
+                 </div>
+                <p className="text-xs text-muted-foreground -mt-3 mb-4">Aktifkan fitur khusus untuk perusahaan ini yang mengabaikan setting paket umum berlangganan mereka secara manual.</p>
+                
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {AVAILABLE_FEATURES.map(f => (
+                    <label key={f.key} className="flex items-start gap-4 p-3 rounded-xl border border-border border-b-2 hover:border-gold cursor-pointer transition-all bg-card">
+                      <div className="pt-0.5">
+                         <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${selectedUser.custom_features?.[f.key] ? 'border-gold bg-gold' : 'border-muted-foreground/30'}`}>
+                            {selectedUser.custom_features?.[f.key] && <CheckCircle2 className="h-3.5 w-3.5 text-navy" />}
+                         </div>
+                         <input 
+                           type="checkbox" 
+                           className="hidden"
+                           checked={!!(selectedUser.custom_features && selectedUser.custom_features[f.key])}
+                           onChange={(e) => updateUserFlag(selectedUser.id, f.key, e.target.checked)}
+                         />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-navy">{f.label}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
             </div>
             
-            <div className="mt-8 flex gap-3">
-               <Button className="flex-1 bg-navy text-white hover:bg-navy/90 h-11 text-base shadow-lg shadow-navy/20" onClick={() => setSelectedUser(null)}>
-                 Selesai & Tutup
+            <div className="p-6 border-t border-border bg-slate-50 flex gap-3 justify-end mt-auto">
+               <Button variant="outline" className="h-12 font-bold px-8 hover:bg-slate-200" onClick={() => setSelectedUser(null)}>
+                 Tutup Halaman
                </Button>
             </div>
           </div>
@@ -143,4 +280,8 @@ export default function AdminUsers() {
       )}
     </div>
   )
+}
+
+function SaveIcon() {
+   return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
 }
