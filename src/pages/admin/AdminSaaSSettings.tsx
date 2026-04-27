@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Save, Shield, Star, Crown, CheckCircle2, Layout, Smartphone, Tablet, Monitor, Info } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 
