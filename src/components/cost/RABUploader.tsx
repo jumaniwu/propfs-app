@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Save } from 'lucide-react';
+import { UploadCloud, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, Save, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { extractTextFromExcel } from '@/utils/excel';
 import { parseRABwithGemini } from '@/lib/ai-parser';
@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 
 export default function RABUploader() {
   const [file, setFile] = useState<File | null>(null);
-  const [progress, setProgress] = useState<{done: number, total: number} | null>(null);
+  const [progress, setProgress] = useState<{ done: number, total: number } | null>(null);
   const { toast } = useToast();
   const { isProcessingUpload, setProcessingUpload, setDraftComponents, draftComponents, clearDraft, saveDraftToActivePlan } = useCostStore();
 
@@ -18,31 +18,35 @@ export default function RABUploader() {
     }
   };
 
+  const handleRemoveDraftItem = (id: string) => {
+    setDraftComponents(draftComponents.filter(c => c.id !== id));
+  };
+
   const handleUpload = async () => {
     if (!file) return;
 
     setProcessingUpload(true);
     setProgress(null);
-    
+
     setTimeout(async () => {
       try {
         const text = await extractTextFromExcel(file);
-        
+
         const components = await parseRABwithGemini(text, (done, total) => {
           setProgress({ done, total });
         });
-        
-        if(components.length === 0) {
+
+        if (components.length === 0) {
           toast({
-              title: "Gagal memproses RAB",
-              description: "AI tidak mendeteksi komponen RAB yang valid di dalam file.",
-              variant: "destructive"
+            title: "Gagal memproses RAB",
+            description: "AI tidak mendeteksi komponen RAB yang valid di dalam file.",
+            variant: "destructive"
           })
         } else {
           setDraftComponents(components);
           toast({
-              title: "RAB Berhasil diproses AI",
-              description: `Menemukan ${components.length} item pekerjaan.`,
+            title: "RAB Berhasil diproses AI",
+            description: `Menemukan ${components.length} item pekerjaan.`,
           })
         }
 
@@ -73,7 +77,7 @@ export default function RABUploader() {
             </div>
             <div>
               <h3 className="font-semibold text-lg">Review Hasil AI</h3>
-              <p className="text-sm text-muted-foreground">Periksa dan konfirmasi pengkategorian RAB</p>
+              <p className="text-sm text-muted-foreground">Periksa dan hapus baris jika ada AI membaca "Subtotal" menjadi item.</p>
             </div>
           </div>
           <div className="flex gap-3">
@@ -94,6 +98,7 @@ export default function RABUploader() {
                 <th className="px-4 py-3">Satuan</th>
                 <th className="px-4 py-3 text-right">Harga Satuan</th>
                 <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -107,14 +112,19 @@ export default function RABUploader() {
                   <td className="px-4 py-3">{item.unit}</td>
                   <td className="px-4 py-3 text-right">Rp {item.unitPrice.toLocaleString('id-ID')}</td>
                   <td className="px-4 py-3 text-right font-medium text-navy">Rp {item.totalPlannedCost.toLocaleString('id-ID')}</td>
+                  <td className="px-4 py-3 text-center">
+                    <Button variant="ghost" size="sm" onClick={() => handleRemoveDraftItem(item.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot className="bg-muted font-bold sticky bottom-0">
-                <tr>
-                    <td colSpan={5} className="px-4 py-3 text-right">Total RAB Keseluruhan</td>
-                    <td className="px-4 py-3 text-right text-navy">Rp {total.toLocaleString('id-ID')}</td>
-                </tr>
+              <tr>
+                <td colSpan={5} className="px-4 py-3 text-right">Total RAB Keseluruhan</td>
+                <td className="px-4 py-3 text-right text-navy">Rp {total.toLocaleString('id-ID')}</td>
+              </tr>
             </tfoot>
           </table>
         </div>
@@ -156,9 +166,9 @@ export default function RABUploader() {
       </div>
 
       <div className="mt-6 flex flex-col items-center gap-4">
-        <Button 
-          className="bg-navy hover:bg-navy/90 text-white min-w-[220px] h-12 text-base font-bold" 
-          onClick={handleUpload} 
+        <Button
+          className="bg-navy hover:bg-navy/90 text-white min-w-[220px] h-12 text-base font-bold"
+          onClick={handleUpload}
           disabled={!file || isProcessingUpload}
         >
           {isProcessingUpload ? (
@@ -178,10 +188,10 @@ export default function RABUploader() {
               <Loader2 className="h-6 w-6 animate-spin text-gold shrink-0" />
               <div className="flex-1">
                 <p className="font-bold text-base">
-                  {progress 
-                    ? progress.done >= progress.total - 1 
+                  {progress
+                    ? progress.done >= progress.total - 1
                       ? 'Melakukan Validasi Silang (Self-Correction)...'
-                      : `Memproses Bagian ${progress.done + 1} dari ${progress.total - 1}` 
+                      : `Memproses Bagian ${progress.done + 1} dari ${progress.total - 1}`
                     : 'Membaca File Excel...'}
                 </p>
                 <p className="text-white/60 text-sm mt-0.5">
