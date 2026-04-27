@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette } from 'lucide-react'
+import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore, DEFAULT_LANDING_CONTENT } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 
@@ -70,9 +70,14 @@ export default function AdminLandingCMS() {
           <h2 className="font-serif text-2xl sm:text-3xl font-black text-navy tracking-tight">Editor Visual Web</h2>
           <p className="text-xs sm:text-sm text-slate-500 font-medium italic">Klik simpan untuk menerapkan ke propfs.id</p>
         </div>
-        <Button variant="gold" className="w-full sm:w-auto gap-3 h-14 px-8 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave}>
-          <Save className="h-5 w-5" /> SIMPAN PERUBAHAN
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <Button variant="outline" className="gap-2 h-14 px-6 text-sm font-bold border-red-200 text-red-600 hover:bg-red-50" onClick={() => setCmsData(DEFAULT_LANDING_CONTENT)}>
+            <RefreshCw className="h-4 w-4" /> RESET KE DEFAULT
+          </Button>
+          <Button variant="gold" className="w-full sm:w-auto gap-3 h-14 px-8 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave}>
+            <Save className="h-5 w-5" /> SIMPAN PERUBAHAN
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-10 max-w-5xl">

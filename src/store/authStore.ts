@@ -55,17 +55,7 @@ interface AuthStore {
   isFeatureEnabled: (feature: AppFeature) => boolean
 }
 
-// ── Store ──────────────────────────────────────────────────
-export const useAuthStore = create<AuthStore>((set, get) => ({
-  user: null,
-  session: null,
-  profile: null,
-  subscription: null,
-  isSubscriptionEnabled: false,
-  globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
-  isLoading: true,
-  authError: null,
-  landingContent: {
+export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
     branding: {
       logoUrl: '',
       siteName: 'PropFS',
@@ -75,7 +65,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       title: 'Analisa Kelayakan Proyek Properti Lebih Cepat',
       subtitle: 'Platform terintegrasi untuk menghitung cashflow, IRR, NPV hingga kontrol budget pembangunan dan Kurva S dalam satu dashboard.',
       hashtags: ['#DeveloperProperti', '#AnalisaKelayakan', '#CostControl'],
-      imageUrl: 'https://images.unsplash.com/photo-1460472178825-e5240623abe5?q=80&w=2070&auto=format&fit=crop'
+      imageUrl: ''
     },
     suitableFor: {
       label: 'SOLUSI TERBAIK UNTUK :',
@@ -96,8 +86,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       desc: 'Tinggalkan spreadsheet yang rumit dan mulailah menggunakan sistem yang terstandarisasi untuk meminimalkan risiko investasi.',
       imageUrl: 'https://images.unsplash.com/photo-1554232456-8727aae0cfa4?q=80&w=2070&auto=format&fit=crop'
     }
-  },
+}
 
+// ── Store ──────────────────────────────────────────────────
+export const useAuthStore = create<AuthStore>((set, get) => ({
+  user: null,
+  session: null,
+  profile: null,
+  subscription: null,
+  isSubscriptionEnabled: false,
+  globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
+  isLoading: true,
+  authError: null,
+  landingContent: DEFAULT_LANDING_CONTENT,
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
     set({ isLoading: true })
