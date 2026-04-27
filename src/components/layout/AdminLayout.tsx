@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom'
-import { LayoutDashboard, Users, Webhook, Settings, LogOut, PanelLeftClose, PanelLeft, Home, Zap, Crown, Receipt } from 'lucide-react'
+import { LayoutDashboard, Users, Webhook, Settings, LogOut, PanelLeftClose, PanelLeft, Home, Zap, Crown, Receipt, UserPlus } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 
 const NAV_LINKS = [
   { id: 'dashboard', path: '/admin',         label: 'Dashboard Stats', icon: LayoutDashboard },
   { id: 'billing',   path: '/admin/billing', label: 'AI Billing',      icon: Zap },
-  { id: 'plans',     path: '/admin/plans',   label: 'Paket Berlangganan',icon: Crown },
+  { id: 'plans',     path: '/admin/plans',   label: 'Katalog & Harga', icon: Crown },
   { id: 'invoices',  path: '/admin/invoices',label: 'Invoice',         icon: Receipt },
-  { id: 'users',     path: '/admin/users',   label: 'Pengguna',        icon: Users },
+  { id: 'users',     path: '/admin/users',   label: 'Data Pelanggan',  icon: Users },
+  { id: 'employees', path: '/admin/staff',   label: 'Tim & Karyawan',  icon: UserPlus },
   { id: 'cms',       path: '/admin/cms',     label: 'Konten Website',  icon: Webhook },
   { id: 'settings',  path: '/admin/settings',label: 'Sistem & Fitur',  icon: Settings },
 ]
