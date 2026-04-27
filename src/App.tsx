@@ -47,6 +47,7 @@ function LoadingScreen() {
 export default function App() {
   const isDarkMode = useFSStore(s => s.isDarkMode)
   const initialize = useAuthStore(s => s.initialize)
+  const faviconUrl = useAuthStore(s => s.landingContent.branding.faviconUrl)
 
   // Apply dark mode
   useEffect(() => {
@@ -56,6 +57,18 @@ export default function App() {
       document.documentElement.classList.remove('dark')
     }
   }, [isDarkMode])
+
+  // Apply custom favicon
+  useEffect(() => {
+    if (!faviconUrl) return
+    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    link.href = faviconUrl
+  }, [faviconUrl])
 
   // Initialize auth (check session, load profile, load feature flags)
   useEffect(() => {
