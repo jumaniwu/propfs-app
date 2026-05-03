@@ -188,7 +188,6 @@ export function generateInvoicePDF(invoice: Invoice) {
         <div>
           <div class="logo">PropFS</div>
           <p style="color:#666;font-size:12px">Feasibility Study & Cost Control System</p>
-          <p style="color:#666;font-size:12px">PT. Mettaland Batam Sukses</p>
           <p style="color:#666;font-size:12px">Batam Centre, Kepulauan Riau</p>
         </div>
         <div style="text-align:right">

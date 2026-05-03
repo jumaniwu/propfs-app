@@ -16,14 +16,16 @@ export default function AuthPage() {
   const [tab, setTab] = useState<Tab>(() => {
     const params = new URLSearchParams(window.location.search)
     const t = params.get('tab')
-    return (t === 'register' ? 'register' : 'login')
+    const p = params.get('plan')
+    return (t === 'register' || p ? 'register' : 'login')
   })
   
   // Read selected plan from URL
-  const selectedPlan = (() => {
+  const [selectedPlan, setSelectedPlan] = useState(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('plan') || 'free'
-  })()
+  })
+  const [selectedMonths, setSelectedMonths] = useState<number>(1)
 
   const planLabel: Record<string, string> = {
     free: 'Gratis',
@@ -108,10 +110,8 @@ export default function AuthPage() {
       await signUp(regEmail, regPass, regName, regCompany, regPhone)
       // Try to auto-login directly
       await signIn(regEmail, regPass)
-      const params = new URLSearchParams(location.search)
-      const plan = params.get('plan')
-      if (plan && plan !== 'free') {
-        navigate(`/home?create_invoice=${plan}`)
+      if (selectedPlan && selectedPlan !== 'free') {
+        navigate(`/home?create_invoice=${selectedPlan}&months=${selectedMonths}`)
       } else {
         navigate('/home')
       }
@@ -282,6 +282,37 @@ export default function AuthPage() {
                        <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Konfirmasi sandi Anda" value={regPass2} onChange={e => setRegPass2(e.target.value)} />
                     </div>
+                  </div>
+
+                  {/* Plan & Duration Selectors */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2.5">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Pilih Paket</Label>
+                      <select 
+                        className="w-full h-16 px-4 rounded-2xl bg-white border border-slate-200 text-navy font-bold focus:ring-4 focus:ring-gold/20 outline-none transition-all appearance-none"
+                        value={selectedPlan}
+                        onChange={e => setSelectedPlan(e.target.value)}
+                      >
+                        <option value="free">Gratis</option>
+                        <option value="starter">Starter</option>
+                        <option value="pro">Pro</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                    </div>
+                    {selectedPlan !== 'free' && (
+                      <div className="space-y-2.5">
+                        <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Durasi</Label>
+                        <select 
+                          className="w-full h-16 px-4 rounded-2xl bg-white border border-slate-200 text-navy font-bold focus:ring-4 focus:ring-gold/20 outline-none transition-all appearance-none"
+                          value={selectedMonths}
+                          onChange={e => setSelectedMonths(Number(e.target.value))}
+                        >
+                          <option value={1}>1 Bulan</option>
+                          <option value={3}>3 Bulan (Hemat 10%)</option>
+                          <option value={12}>1 Tahun (Hemat 20%)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Math CAPTCHA */}

@@ -361,7 +361,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       throw error
     }
     
-    set({ landingContent: fullContent })
+    // Force a reload from DB to ensure local state perfectly matches
+    await get().loadLandingContent()
   },
 
   // ── clearError ────────────────────────────────────────────
