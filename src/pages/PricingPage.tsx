@@ -117,7 +117,31 @@ export default function PricingPage() {
 
   const [selectedMonths, setSelectedMonths] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [promoPrices, setPromoPrices] = useState<Record<string, number | null>>({})
   const dur = DURATIONS.find(d => d.months === selectedMonths)!
+
+  // Load promo prices from DB
+  useEffect(() => {
+    async function loadCatalog() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'plan_catalog')
+          .maybeSingle()
+        if (data?.value && Array.isArray(data.value)) {
+          const promos: Record<string, number | null> = {}
+          for (const p of data.value) {
+            if (p.promoPriceIdr && p.promoPriceIdr > 0) {
+              promos[p.id] = p.promoPriceIdr
+            }
+          }
+          setPromoPrices(promos)
+        }
+      } catch { /* ignore */ }
+    }
+    loadCatalog()
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -182,7 +206,11 @@ export default function PricingPage() {
           {PLANS.map(plan => {
             const PIcon = plan.icon
             const isCurrentPlan = plan.id === currentPlan
-            const totalPrice = calcPrice(plan.pricePerMonth, selectedMonths, dur.discount)
+            const promoPrice = promoPrices[plan.id]
+            const effectivePrice = promoPrice && promoPrice < plan.pricePerMonth ? promoPrice : plan.pricePerMonth
+            const hasPromo = promoPrice !== undefined && promoPrice !== null && promoPrice < plan.pricePerMonth
+            const totalPrice = calcPrice(effectivePrice, selectedMonths, dur.discount)
+            const normalTotal = calcPrice(plan.pricePerMonth, selectedMonths, dur.discount)
             const ppnAmount  = Math.round(totalPrice * (ppnPct / 100))
             const grandTotal = totalPrice + ppnAmount
             const isFree     = plan.pricePerMonth === 0
@@ -232,7 +260,14 @@ export default function PricingPage() {
                     </div>
                   ) : (
                     <div>
-                      {dur.discount > 0 && (
+                      {/* Show promo badge */}
+                      {hasPromo && (
+                        <span className="inline-flex items-center gap-1 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full mb-2">
+                          🔥 PROMO HEMAT {Math.round((1 - effectivePrice / plan.pricePerMonth) * 100)}%
+                        </span>
+                      )}
+                      {/* Strikethrough: show original price when there's a promo OR duration discount */}
+                      {(hasPromo || dur.discount > 0) && (
                         <p className={`text-sm line-through ${plan.highlight ? 'text-white/40' : 'text-muted-foreground/60'}`}>
                           {rp(plan.pricePerMonth * selectedMonths)}
                         </p>
@@ -241,7 +276,7 @@ export default function PricingPage() {
                         {rp(totalPrice)}
                       </p>
                       <p className={`text-xs mt-0.5 ${plan.highlight ? 'text-white/60' : 'text-muted-foreground'}`}>
-                        untuk {dur.months} bulan{dur.discount > 0 ? ` (hemat ${dur.discount}%)` : ''}
+                        untuk {dur.months} bulan{dur.discount > 0 ? ` (hemat ${dur.discount}%)` : ''}{hasPromo ? ' + promo' : ''}
                       </p>
                       <div className={`text-xs mt-2 pt-2 border-t ${plan.highlight ? 'border-white/10 text-white/50' : 'border-border text-muted-foreground'}`}>
                         <div className="flex justify-between">
@@ -296,22 +331,49 @@ export default function PricingPage() {
                       const { data: { user } } = await supabase.auth.getUser()
                       if (!user) { navigate('/auth'); return }
 
-                      const invoiceId = `mock_inv_${Math.random().toString(36).substr(2,9)}`
-                      const invoice = {
-                         id: invoiceId,
-                         user_id: user.id,
-                         plan_id: plan.id,
-                         invoice_number: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`,
-                         period_start: new Date().toISOString(),
-                         period_end: new Date(Date.now() + selectedMonths * 30 * 86400000).toISOString(),
-                         subtotal_idr: totalPrice,
-                         ppn_idr: ppnAmount,
-                         total_idr: grandTotal,
-                         status: 'pending',
-                         created_at: new Date().toISOString()
+                      const invoiceNumber = `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`
+                      const periodStart = new Date().toISOString()
+                      const periodEnd = new Date(Date.now() + selectedMonths * 30 * 86400000).toISOString()
+
+                      const invoicePayload = {
+                        user_id: user.id,
+                        plan_id: plan.id,
+                        invoice_number: invoiceNumber,
+                        period_start: periodStart,
+                        period_end: periodEnd,
+                        subtotal_idr: totalPrice,
+                        ppn_idr: ppnAmount,
+                        total_idr: grandTotal,
+                        status: 'pending' as const,
                       }
-                      
-                      localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify(invoice))
+
+                      // Try to save to Supabase DB first
+                      const { data: dbInvoice, error: dbError } = await supabase
+                        .from('invoices')
+                        .insert(invoicePayload)
+                        .select()
+                        .single()
+
+                      let invoiceId: string
+                      if (dbInvoice && !dbError) {
+                        invoiceId = dbInvoice.id
+                        // Also cache in localStorage for PaymentPage quick access
+                        localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify({
+                          ...invoicePayload,
+                          id: invoiceId,
+                          created_at: dbInvoice.created_at,
+                        }))
+                      } else {
+                        // Fallback: save to localStorage only
+                        console.warn('[Invoice] DB insert failed, using localStorage:', dbError?.message)
+                        invoiceId = `local_${Math.random().toString(36).substr(2,9)}`
+                        localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify({
+                          ...invoicePayload,
+                          id: invoiceId,
+                          created_at: new Date().toISOString(),
+                        }))
+                      }
+
                       navigate(`/payment/${invoiceId}`)
                     } catch (e) {
                       console.error(e)

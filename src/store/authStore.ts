@@ -65,7 +65,7 @@ export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
       title: 'Analisa Kelayakan Proyek Properti Lebih Cepat',
       subtitle: 'Platform terintegrasi untuk menghitung cashflow, IRR, NPV hingga kontrol budget pembangunan dan Kurva S dalam satu dashboard.',
       hashtags: ['#DeveloperProperti', '#AnalisaKelayakan', '#CostControl'],
-      imageUrl: ''
+      imageUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2026&auto=format&fit=crop'
     },
     suitableFor: {
       label: 'SOLUSI TERBAIK UNTUK :',
@@ -168,15 +168,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         options: { data: { full_name: fullName, company, phone } },
       })
       if (error) throw error
+
+      // Try to create the profile row immediately
+      // Use upsert to avoid duplicate key errors if profile already exists
       if (data.user) {
-        await supabase.from('profiles').insert({
-          id: data.user.id,
-          full_name: fullName,
-          company,
-          phone,
-          role: 'user',
-          total_projects_created: 0,
-        })
+        try {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            full_name: fullName,
+            company,
+            phone,
+            role: 'user',
+            total_projects_created: 0,
+          }, { onConflict: 'id' })
+        } catch (profileErr: any) {
+          // Profile insert may fail due to RLS if email confirmation is required
+          // This is OK — refreshProfile will self-heal when user eventually logs in
+          console.warn('[SignUp] Profile insert deferred:', profileErr.message)
+        }
+      }
+
+      // Check if email confirmation is required
+      // When confirmation is required, data.session will be null
+      if (data.user && !data.session) {
+        throw new Error('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi, lalu login kembali.')
       }
     } catch (err: any) {
       set({ authError: err.message || 'Gagal mendaftar. Coba lagi.' })
@@ -268,14 +283,38 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase.from('app_settings').select('value').eq('key', 'landing_page_cms').maybeSingle()
       if (data?.value && typeof data.value === 'object') {
         const v = data.value as any
+
+        // Helper: only merge keys that have a truthy non-empty value from DB
+        // This prevents blank DB values from wiping out defaults
+        const safeMerge = (defaults: Record<string, any>, overrides: Record<string, any> = {}, section?: string) => {
+          const result = { ...defaults }
+          for (const key of Object.keys(overrides)) {
+            let val = overrides[key]
+            
+            // Trim if it's a string
+            if (typeof val === 'string') val = val.trim();
+
+            // Special check: If hero content is just "PropFS" or too short, it's likely a placeholder/corrupted
+            if (section === 'hero' && (key === 'title' || key === 'subtitle' || key === 'imageUrl')) {
+               if (val === 'PropFS' || !val || (key !== 'imageUrl' && val.length < 10)) continue;
+            }
+
+            // Only override if value is non-empty
+            if (val !== undefined && val !== null && val !== '') {
+              result[key] = val
+            }
+          }
+          return result
+        }
+
         set(state => ({
           landingContent: {
-            branding: { ...state.landingContent.branding, ...(v.branding || {}) },
-            hero: { ...state.landingContent.hero, ...(v.hero || {}) },
-            suitableFor: { ...state.landingContent.suitableFor, ...(v.suitableFor || {}) },
-            features: Array.isArray(v.features) ? v.features : state.landingContent.features,
-            auxiliaryProducts: Array.isArray(v.auxiliaryProducts) ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
-            marketingHighlight: { ...state.landingContent.marketingHighlight, ...(v.marketingHighlight || {}) },
+            branding: safeMerge(state.landingContent.branding, v.branding) as typeof state.landingContent.branding,
+            hero: safeMerge(state.landingContent.hero, v.hero, 'hero') as typeof state.landingContent.hero,
+            suitableFor: safeMerge(state.landingContent.suitableFor, v.suitableFor) as typeof state.landingContent.suitableFor,
+            features: Array.isArray(v.features) && v.features.length > 0 ? v.features : state.landingContent.features,
+            auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
+            marketingHighlight: safeMerge(state.landingContent.marketingHighlight, v.marketingHighlight) as typeof state.landingContent.marketingHighlight,
           }
         }))
       }

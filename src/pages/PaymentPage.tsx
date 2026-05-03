@@ -24,9 +24,32 @@ export default function PaymentPage() {
 
   async function fetchInvoice() {
     setLoading(true)
-    const localInv = localStorage.getItem(`propfs_invoice_${id}`)
-    if (localInv) {
-       setInvoice(JSON.parse(localInv) as Invoice)
+    try {
+      // Try fetching from Supabase DB first
+      if (id && !id.startsWith('local_')) {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle()
+        
+        if (data && !error) {
+          setInvoice(data as Invoice)
+          setLoading(false)
+          return
+        }
+      }
+
+      // Fallback to localStorage
+      const localInv = localStorage.getItem(`propfs_invoice_${id}`)
+      if (localInv) {
+        setInvoice(JSON.parse(localInv) as Invoice)
+      }
+    } catch (e) {
+      console.error('[PaymentPage] Error loading invoice:', e)
+      // Final fallback to localStorage
+      const localInv = localStorage.getItem(`propfs_invoice_${id}`)
+      if (localInv) setInvoice(JSON.parse(localInv) as Invoice)
     }
     setLoading(false)
   }
@@ -36,8 +59,6 @@ export default function PaymentPage() {
     setIsProcessing(true)
 
     try {
-      // In production, initiatePayment should ideally take the invoice ID and link it to Midtrans.
-      // Since it requires plan_id and months right now, we derive months = 1 as default fallback
       const months = 1 
       const paymentRes = await initiatePayment(invoice.plan_id, months, invoice.id, invoice.total_idr)
       
@@ -46,18 +67,27 @@ export default function PaymentPage() {
       await openPaymentPopup(
         paymentRes.snapToken,
         async () => {
-          // onSuccess
-          // Update Invoice in local storage
-          const updatedInv = { ...invoice, status: 'paid', paid_at: new Date().toISOString() }
+          // onSuccess — update invoice status in DB
+          const now = new Date().toISOString()
+          
+          // Update Supabase
+          if (invoice.id && !invoice.id.startsWith('local_')) {
+            await supabase
+              .from('invoices')
+              .update({ status: 'paid', paid_at: now, payment_method: 'midtrans' })
+              .eq('id', invoice.id)
+          }
+
+          // Update localStorage cache
+          const updatedInv = { ...invoice, status: 'paid' as const, paid_at: now }
           localStorage.setItem(`propfs_invoice_${invoice.id}`, JSON.stringify(updatedInv))
           
-          // Auto-provision actual Subscription in Supabase!
+          // Auto-provision subscription
           await supabase.from('subscriptions').insert({
              user_id: user.id,
              plan_id: invoice.plan_id,
              status: 'active',
-             started_at: new Date().toISOString(),
-             // expired_at approx 30 days from now
+             started_at: now,
              expired_at: new Date(Date.now() + 30 * 86400000).toISOString()
           })
 
@@ -69,7 +99,7 @@ export default function PaymentPage() {
           setIsProcessing(false)
         },
         () => {
-          toast({ title: 'Menunggu Pembayaran' })
+          toast({ title: 'Menunggu Pembayaran', description: 'Status invoice: PENDING. Kami akan memperbarui otomatis setelah pembayaran dikonfirmasi.' })
           navigate('/home')
         }
       )
