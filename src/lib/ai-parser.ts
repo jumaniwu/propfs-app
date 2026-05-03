@@ -112,7 +112,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { 
@@ -146,6 +146,11 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
         }
         await new Promise(r => setTimeout(r, waitMs));
         continue;
+      }
+
+      if (res.status === 400 || res.status === 401 || res.status === 403) {
+        const errBody = await res.text();
+        throw new Error(`API Error ${res.status}: API Key salah atau request tidak valid. (${errBody.substring(0, 50)})`);
       }
 
       if (!res.ok) {
@@ -229,7 +234,7 @@ ${JSON.stringify(components)}
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { temperature: 0.05, responseMimeType: 'application/json' }
@@ -288,9 +293,9 @@ export async function parseRABwithGemini(
   extractedText: string,
   onProgress?: (done: number, total: number) => void
 ): Promise<BudgetComponent[]> {
-  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-  const orKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const groqKey = (import.meta as any).env.VITE_GROQ_API_KEY;
+  const orKey = (import.meta as any).env.VITE_OPENROUTER_API_KEY;
+  const geminiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
   
   let provider = '';
   let activeKey = '';
