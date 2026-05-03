@@ -315,17 +315,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         const v = data.value as any
         
         // Simple merge: Start with defaults, overwrite with anything from DB
-        set(state => ({
-          landingContent: {
-            branding: { ...state.landingContent.branding, ...(v.branding || {}) },
-            hero: { ...state.landingContent.hero, ...(v.hero || {}) },
-            suitableFor: { ...state.landingContent.suitableFor, ...(v.suitableFor || {}) },
-            features: Array.isArray(v.features) && v.features.length > 0 ? v.features : state.landingContent.features,
-            auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
-            marketingHighlight: { ...state.landingContent.marketingHighlight, ...(v.marketingHighlight || {}) },
-            footer: { ...state.landingContent.footer, ...(v.footer || {}) },
+        set(state => {
+          const content = state.landingContent;
+          const branding = { ...content.branding, ...(v.branding || {}) };
+          
+          // Hero logic: If DB title is just 'PropFS' or empty, keep the professional default title
+          let hero = { ...content.hero, ...(v.hero || {}) };
+          if (!v.hero?.title || v.hero.title === 'PropFS') {
+            hero.title = content.hero.title;
+            hero.subtitle = content.hero.subtitle;
+            hero.imageUrl = content.hero.imageUrl;
           }
-        }))
+
+          return {
+            landingContent: {
+              branding,
+              hero,
+              suitableFor: { ...content.suitableFor, ...(v.suitableFor || {}) },
+              features: Array.isArray(v.features) && v.features.length > 0 ? v.features : content.features,
+              auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : content.auxiliaryProducts,
+              marketingHighlight: { ...content.marketingHighlight, ...(v.marketingHighlight || {}) },
+              footer: { ...content.footer, ...(v.footer || {}) },
+            }
+          };
+        })
       }
     } catch (err) {
       console.error('[authStore] loadLandingContent error:', err)
