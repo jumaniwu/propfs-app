@@ -27,6 +27,20 @@ export const PLAN_LIMITS: Record<PlanId, {
   pro: { maxProjects: 10, canExportPDF: true, canAccessCashflow: true, canAccessARAP: true, projectSlotPermanent: false },
 }
 
+export interface BankDetails {
+  bankName: string
+  accountNumber: string
+  accountName: string
+  whatsapp: string
+}
+
+export const DEFAULT_BANK_DETAILS: BankDetails = {
+  bankName: 'BANK BCA',
+  accountNumber: '8210 555 XXX',
+  accountName: 'PT. PropFS Digital Indonesia',
+  whatsapp: '08110000000',
+}
+
 // ── Store Interface ─────────────────────────────────────────
 interface AuthStore {
   user: User | null
@@ -35,6 +49,7 @@ interface AuthStore {
   subscription: Subscription | null
   isSubscriptionEnabled: boolean
   globalFeatures: Record<AppFeature, boolean>
+  bankDetails: BankDetails
   isLoading: boolean
   authError: string | null
   landingContent: LandingPageContent
@@ -103,6 +118,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   subscription: null,
   isSubscriptionEnabled: false,
   globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
+  bankDetails: DEFAULT_BANK_DETAILS,
   isLoading: true,
   authError: null,
   landingContent: DEFAULT_LANDING_CONTENT,
@@ -275,14 +291,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
+      const bankDetails = data?.find(i => i.key === 'bank_details')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
-        globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures
+        globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
+        bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails
       })
     } catch {
       // DB not available — keep defaults

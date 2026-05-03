@@ -7,6 +7,7 @@ import { Receipt, Search, Download, CheckCircle2, XCircle, Clock, RefreshCw, Fil
 import { supabase } from '@/lib/supabase'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/hooks/use-toast'
 import { generateInvoicePDF, type Invoice } from '@/lib/invoice'
 
 export default function AdminInvoices() {
@@ -26,7 +27,7 @@ export default function AdminInvoices() {
         .from('invoices')
         .select(`
           *,
-          profiles:user_id ( full_name, company, phone )
+          profiles:user_id ( id, full_name, company, phone )
         `)
         .order('created_at', { ascending: false })
       
@@ -36,6 +37,48 @@ export default function AdminInvoices() {
       if (data) setInvoices(data)
     } catch (e) {
       console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleMarkAsPaid(inv: any) {
+    const confirmPay = confirm(`Konfirmasi manual pembayaran untuk ${inv.invoice_number}?\nPaket ${inv.plan_id} akan otomatis aktif untuk user ini.`)
+    if (!confirmPay) return
+
+    setLoading(true)
+    try {
+      const now = new Date().toISOString()
+      
+      // 1. Update Invoice
+      const { error: invErr } = await supabase
+        .from('invoices')
+        .update({ status: 'paid', paid_at: now, payment_method: 'manual_verification' })
+        .eq('id', inv.id)
+      
+      if (invErr) throw invErr
+
+      // 2. Activate Subscription
+      const durationMonths = 1 // Default to 1 month for manual
+      const expiry = new Date()
+      expiry.setMonth(expiry.getMonth() + durationMonths)
+
+      const { error: subErr } = await supabase
+        .from('subscriptions')
+        .insert({
+          user_id: inv.user_id,
+          plan_id: inv.plan_id,
+          status: 'active',
+          started_at: now,
+          expired_at: expiry.toISOString()
+        })
+      
+      if (subErr) throw subErr
+
+      toast({ title: 'Invoice Berhasil Dilunasi', description: 'Paket user telah diaktifkan secara manual.' })
+      loadInvoices()
+    } catch (err: any) {
+      toast({ title: 'Gagal memproses', description: err.message, variant: 'destructive' })
     } finally {
       setLoading(false)
     }
@@ -186,11 +229,18 @@ export default function AdminInvoices() {
                     {inv.paid_at && <div className="text-emerald-600 font-medium">Lunas: {formatDate(inv.paid_at)}</div>}
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={() => {
-                      if (inv) generateInvoicePDF(inv as Invoice)
-                    }}>
-                      <Download className="w-3.5 h-3.5" /> PDF
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      {inv.status === 'pending' && (
+                        <Button variant="outline" size="sm" className="h-8 gap-1 border-emerald-200 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => handleMarkAsPaid(inv)}>
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Konfirmasi
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-8 gap-1" onClick={() => {
+                        if (inv) generateInvoicePDF(inv as Invoice)
+                      }}>
+                        <Download className="w-3.5 h-3.5" /> PDF
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

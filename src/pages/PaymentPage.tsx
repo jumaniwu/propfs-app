@@ -11,12 +11,12 @@ import Header from '@/components/layout/Header'
 export default function PaymentPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const { user, bankDetails } = useAuthStore()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'gopay'>('bank_transfer')
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'gopay' | 'manual'>('bank_transfer')
 
   useEffect(() => {
     if (id) fetchInvoice()
@@ -247,14 +247,58 @@ export default function PaymentPage() {
                       </div>
                       <ShieldCheck className="w-6 h-6 text-slate-400" />
                     </div>
+
+                    <div 
+                      onClick={() => setPaymentMethod('manual')}
+                      className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'manual' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'manual' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm">Transfer Bank Manual (Verifikasi Admin)</span>
+                          <span className="text-xs text-muted-foreground">Gunakan ini jika pembayaran otomatis bermasalah</span>
+                        </div>
+                      </div>
+                      <Receipt className="w-6 h-6 text-slate-400" />
+                    </div>
                   </div>
+
+                  {paymentMethod === 'manual' && (
+                    <div className="mt-6 p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                       <p className="text-sm font-bold text-navy">Instruksi Transfer Manual:</p>
+                       <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                          <p className="text-xs text-slate-500 uppercase tracking-widest font-black">Transfer Ke Rekening:</p>
+                          <div className="flex justify-between items-center">
+                             <span className="font-bold">{bankDetails?.bankName || 'BANK BCA'}</span>
+                             <span className="font-mono font-black text-lg">{bankDetails?.accountNumber || '8210 555 XXX'}</span>
+                          </div>
+                          <p className="text-sm font-medium">A/N {bankDetails?.accountName || 'PT. PropFS Digital Indonesia'}</p>
+                       </div>
+                       <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4">
+                          <li>Transfer tepat sesuai nominal: <strong>Rp {invoice.total_idr.toLocaleString('id-ID')}</strong></li>
+                          <li>Kirim bukti transfer ke WhatsApp: <strong>{bankDetails?.whatsapp || '08110000000'}</strong></li>
+                          <li>Lampirkan nomor invoice: <strong>{invoice.invoice_number}</strong></li>
+                          <li>Admin akan memverifikasi dalam 1-2 jam kerja.</li>
+                       </ul>
+                    </div>
+                  )}
 
                   <Button 
                     className="w-full mt-6 h-14 text-lg font-black bg-navy hover:bg-navy/90 text-gold"
-                    onClick={handlePay}
+                    onClick={() => {
+                      if (paymentMethod === 'manual') {
+                         const cleanWa = (bankDetails?.whatsapp || '628110000000').replace(/\D/g, '')
+                         const waNumber = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa
+                         window.open(`https://wa.me/${waNumber}?text=Halo%20Admin%2C%20saya%20sudah%20transfer%20untuk%20invoice%20${invoice.invoice_number}.%20Mohon%20verifikasinya.`, '_blank')
+                      } else {
+                         handlePay()
+                      }
+                    }}
                     disabled={isProcessing}
                   >
-                    {isProcessing ? 'Memproses...' : 'Bayar'}
+                    {isProcessing ? 'Memproses...' : paymentMethod === 'manual' ? 'Konfirmasi via WhatsApp' : 'Bayar'}
                   </Button>
                 </div>
               </section>

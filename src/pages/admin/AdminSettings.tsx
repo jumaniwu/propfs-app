@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2 } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,13 +22,21 @@ const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
 export default function AdminSettings() {
   const [globalFlags, setGlobalFlags] = useState<Record<string, boolean>>({})
   const [toggling, setToggling] = useState(false)
-  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures } = useAuthStore()
+  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures, bankDetails } = useAuthStore()
 
   // PPN State
   const [ppnPct, setPpnPct]       = useState(11)
   const [ppnInput, setPpnInput]   = useState('11')
   const [savingPPN, setSavingPPN] = useState(false)
   const [loadingPPN, setLoadingPPN] = useState(true)
+
+  // Bank Details State
+  const [bankForm, setBankForm] = useState<BankDetails>(DEFAULT_BANK_DETAILS)
+  const [savingBank, setSavingBank] = useState(false)
+
+  useEffect(() => {
+    if (bankDetails) setBankForm(bankDetails)
+  }, [bankDetails])
 
   useEffect(() => {
     setGlobalFlags(globalFeatures)
@@ -93,6 +101,23 @@ export default function AdminSettings() {
     } catch (err: any) {
       toast({ title: 'Gagal menyimpan PPN', description: err.message, variant: 'destructive' })
     } finally { setSavingPPN(false) }
+  }
+
+  async function saveBankDetails() {
+    setSavingBank(true)
+    try {
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'bank_details', value: bankForm })
+      
+      if (error) throw error
+      await loadFeatureFlags()
+      toast({ title: 'Detail Bank Berhasil Disimpan' })
+    } catch (err: any) {
+      toast({ title: 'Gagal menyimpan Detail Bank', description: err.message, variant: 'destructive' })
+    } finally {
+      setSavingBank(false)
+    }
   }
 
   async function toggleSubscription() {
@@ -196,6 +221,45 @@ export default function AdminSettings() {
                </div>
             </button>
          </div>
+      </div>
+
+      {/* ── Bank & Manual Payment Management ── */}
+      <div className="bg-card border border-border shadow-sm rounded-2xl p-6 lg:p-8 space-y-6">
+        <div className="flex items-center gap-3 border-b border-border pb-4">
+          <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl">
+            <Building2 className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="font-serif text-xl font-bold text-navy">Rekening Transfer Manual</h2>
+            <p className="text-sm text-muted-foreground">Detail rekening BCA dan WhatsApp tujuan untuk konfirmasi pembayaran manual.</p>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+           <div className="space-y-2">
+              <label className="text-sm font-bold text-navy">Nama Bank</label>
+              <Input value={bankForm.bankName} onChange={e => setBankForm({...bankForm, bankName: e.target.value})} placeholder="Contoh: BANK BCA" />
+           </div>
+           <div className="space-y-2">
+              <label className="text-sm font-bold text-navy">Nomor Rekening</label>
+              <Input value={bankForm.accountNumber} onChange={e => setBankForm({...bankForm, accountNumber: e.target.value})} placeholder="Contoh: 8210 555 123" />
+           </div>
+           <div className="space-y-2">
+              <label className="text-sm font-bold text-navy">Atas Nama (A/N)</label>
+              <Input value={bankForm.accountName} onChange={e => setBankForm({...bankForm, accountName: e.target.value})} placeholder="Contoh: PT. PropFS Digital Indonesia" />
+           </div>
+           <div className="space-y-2">
+              <label className="text-sm font-bold text-navy">Nomor WhatsApp (Mulai dengan 08 / 62)</label>
+              <Input value={bankForm.whatsapp} onChange={e => setBankForm({...bankForm, whatsapp: e.target.value})} placeholder="Contoh: 08110000000" />
+           </div>
+        </div>
+
+        <div className="pt-2">
+           <Button onClick={saveBankDetails} disabled={savingBank} className="w-full sm:w-auto gap-2">
+             {savingBank ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+             Simpan Detail Rekening
+           </Button>
+        </div>
       </div>
 
       {/* ── Global Feature Management ── */}
