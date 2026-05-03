@@ -18,6 +18,7 @@ import AIUsageWidget from '@/components/usage/AIUsageWidget'
 import SubscriptionCard from '@/components/subscription/SubscriptionCard'
 import { supabase } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
+import { toast } from '@/hooks/use-toast'
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -27,6 +28,18 @@ export default function HomePage() {
 
   const [invoices, setInvoices] = useState<any[]>([])
   const { getCurrentPlan } = useAuthStore()
+
+  // Show upgrade toast when redirected from a locked feature
+  useEffect(() => {
+    const state = location.state as { upgradeNeeded?: string } | null
+    if (state?.upgradeNeeded) {
+      toast({
+        title: 'Fitur Terkunci 🔒',
+        description: 'Fitur Cost Control & RAB hanya tersedia untuk paket berbayar. Upgrade sekarang untuk mengakses.',
+        variant: 'destructive',
+      })
+    }
+  }, [])
 
   useEffect(() => {
     async function handleIncomingInvoiceAndFetch() {
@@ -98,7 +111,7 @@ export default function HomePage() {
       path: '/cost-control',
       color: 'bg-slate-100 text-navy',
       visible: true,
-      available: true
+      available: isFeatureEnabled('cost_control')
     },
     {
       id: 'admin_panel',

@@ -1,8 +1,10 @@
 // ── Auth Route Guards ────────────────────────────────────
 import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import type { AppFeature } from '@/lib/supabase'
 
 interface Props { children: React.ReactNode }
+interface FeatureProps { children: React.ReactNode; feature: AppFeature }
 
 function Spinner() {
   return (
@@ -43,5 +45,17 @@ export function AdminRoute({ children }: Props) {
   const { user, profile, isLoading } = useAuthStore()
   if (isLoading) return <Spinner />
   if (!user || profile?.role !== 'superadmin') return <Navigate to="/home" replace />
+  return <>{children}</>
+}
+
+/** Block access to feature-gated routes for users without the feature.
+ *  Superadmin always passes through. Free users are redirected to /home. */
+export function FeatureRoute({ children, feature }: FeatureProps) {
+  const { user, isLoading, isFeatureEnabled } = useAuthStore()
+  if (isLoading) return <Spinner />
+  if (!user) return <Navigate to="/auth" replace />
+  if (!isFeatureEnabled(feature)) {
+    return <Navigate to="/home" replace state={{ upgradeNeeded: feature }} />
+  }
   return <>{children}</>
 }

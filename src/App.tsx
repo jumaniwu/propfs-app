@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useFSStore } from './store/fsStore'
 import { useAuthStore } from './store/authStore'
 import { Toaster } from './components/ui/toaster'
-import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute } from './components/auth/RouteGuards'
+import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute, FeatureRoute } from './components/auth/RouteGuards'
 
 // Code-split routes
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -49,6 +49,8 @@ export default function App() {
   const initialize = useAuthStore(s => s.initialize)
   const faviconUrl = useAuthStore(s => s.landingContent.branding.faviconUrl)
 
+  const siteName = useAuthStore(s => s.landingContent.branding.siteName)
+
   // Apply dark mode
   useEffect(() => {
     if (isDarkMode) {
@@ -58,8 +60,10 @@ export default function App() {
     }
   }, [isDarkMode])
 
-  // Apply custom favicon
+  // Apply custom favicon and site name
   useEffect(() => {
+    if (siteName) document.title = siteName
+
     if (!faviconUrl) return
     let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
     if (!link) {
@@ -68,7 +72,7 @@ export default function App() {
       document.head.appendChild(link)
     }
     link.href = faviconUrl
-  }, [faviconUrl])
+  }, [faviconUrl, siteName])
 
   // Initialize auth (check session, load profile, load feature flags)
   useEffect(() => {
@@ -94,8 +98,8 @@ export default function App() {
           <Route path="/profile"    element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
           <Route path="/payment/:id" element={<PrivateRoute><PaymentPage /></PrivateRoute>} />
           
-          {/* Cost Control Module */}
-          <Route path="/cost-control" element={<PrivateRoute><CostDashboard /></PrivateRoute>} />
+          {/* Cost Control Module — blocked for free plan */}
+          <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
 
           {/* ── Super Admin Only ── */}
           <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>

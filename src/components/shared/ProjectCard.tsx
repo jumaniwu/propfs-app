@@ -40,7 +40,7 @@ export default function ProjectCard({ project, onDelete, onDuplicate }: ProjectC
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100">
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

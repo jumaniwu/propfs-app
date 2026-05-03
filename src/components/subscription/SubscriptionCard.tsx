@@ -152,7 +152,7 @@ export default function SubscriptionCard({ variant = 'compact' }: Props) {
 
         {/* Actions */}
         <div className="flex gap-2 pt-1">
-          {planId === 'free' || planId === 'starter' ? (
+          {(planId === 'free' || planId === 'basic') ? (
             <Button size="sm" className="text-xs h-8 bg-gold text-navy font-bold hover:bg-gold/90 gap-1" onClick={() => navigate('/pricing')}>
               <Crown className="w-3 h-3" /> Upgrade
             </Button>
@@ -208,7 +208,7 @@ export default function SubscriptionCard({ variant = 'compact' }: Props) {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
-          {planId !== 'enterprise' && (
+          {planId !== 'pro' && (
             <Button variant="gold" size="sm" className="gap-2" onClick={() => navigate('/pricing')}>
               <Crown className="h-3.5 w-3.5" />
               {planId === 'free' ? 'Upgrade Paket' : 'Upgrade / Perpanjang'}
@@ -265,7 +265,7 @@ export default function SubscriptionCard({ variant = 'compact' }: Props) {
                     size="sm"
                     variant="outline"
                     className="h-8 gap-1.5 text-xs"
-                    onClick={() => generateInvoicePDF(inv)}
+                    onClick={() => generateInvoicePDF(inv as any)}
                   >
                     <Download className="h-3.5 w-3.5" /> PDF
                   </Button>

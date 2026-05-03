@@ -299,15 +299,15 @@ export default function Dashboard() {
               className="pl-9"
             />
           </div>
-          <div className="flex gap-2">
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap">
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <span className="flex items-center gap-1.5 text-sm text-muted-foreground whitespace-nowrap shrink-0">
               <SortAsc className="h-4 w-4" /> Urutkan:
             </span>
             {([['date', 'Terbaru'], ['name', 'Nama'], ['revenue', 'Revenue'], ['status', 'Status']] as [SortKey, string][]).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setSortKey(key)}
-                className={`px-3 py-1.5 rounded-md text-sm transition-all ${
+                className={`px-3 py-1.5 rounded-md text-sm whitespace-nowrap transition-all ${
                   sortKey === key
                     ? 'bg-navy text-white'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'

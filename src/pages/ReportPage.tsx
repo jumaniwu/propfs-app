@@ -10,6 +10,7 @@ import TabCashFlow from '@/components/outputs/TabCashFlow'
 import TabBagiHasil from '@/components/outputs/TabBagiHasil'
 import TabSensitivitas from '@/components/outputs/TabSensitivitas'
 import StatusBadge from '@/components/shared/StatusBadge'
+import SubscriptionGate from '@/components/subscription/SubscriptionGate'
 import { useFSStore } from '@/store/fsStore'
 import { exportToPDF, exportToJSON } from '@/utils/export'
 import { formatRupiah, formatPct } from '@/engine/formatter'
@@ -227,12 +228,14 @@ export default function ReportPage() {
         </div>
 
         {/* ── Page 6: Cash Flow ── */}
-        <div className="print:break-before-page p-10 space-y-6">
-          <h2 className="font-serif text-2xl font-bold text-navy border-b-2 border-gold pb-3">
-            Proyeksi Cash Flow
-          </h2>
-          <TabCashFlow results={r} />
-        </div>
+        <SubscriptionGate requiredPlan="pro" feature="Proyeksi Cash Flow">
+          <div className="print:break-before-page p-10 space-y-6">
+            <h2 className="font-serif text-2xl font-bold text-navy border-b-2 border-gold pb-3">
+              Proyeksi Cash Flow
+            </h2>
+            <TabCashFlow results={r} />
+          </div>
+        </SubscriptionGate>
 
         {/* ── Page 7: Bagi Hasil ── */}
         <div className="print:break-before-page p-10 space-y-6">
@@ -243,12 +246,14 @@ export default function ReportPage() {
         </div>
 
         {/* ── Page 8: Sensitivitas ── */}
-        <div className="print:break-before-page p-10 space-y-6">
-          <h2 className="font-serif text-2xl font-bold text-navy border-b-2 border-gold pb-3">
-            Analisis Sensitivitas
-          </h2>
-          <TabSensitivitas results={r} />
-        </div>
+        <SubscriptionGate requiredPlan="basic" feature="Analisis Sensitivitas">
+          <div className="print:break-before-page p-10 space-y-6">
+            <h2 className="font-serif text-2xl font-bold text-navy border-b-2 border-gold pb-3">
+              Analisis Sensitivitas
+            </h2>
+            <TabSensitivitas results={r} />
+          </div>
+        </SubscriptionGate>
 
         {/* ── Footer ── */}
         <div className="p-10 border-t border-gray-200 text-center text-xs text-gray-400 space-y-1">

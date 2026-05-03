@@ -402,14 +402,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   // ── canCreateProject ──────────────────────────────────────
   canCreateProject: (activeProjectCount: number): boolean => {
     const { profile, isSubscriptionEnabled } = get()
-    if (!isSubscriptionEnabled) return true
-
+    
     const plan = get().getCurrentPlan()
     const limits = PLAN_LIMITS[plan]
 
+    // ALWAYS enforce free plan permanent slot limit (total_projects_created)
+    // regardless of whether the subscription system is enabled globally.
+    // This prevents free users from creating unlimited projects.
     if (limits.projectSlotPermanent) {
       return (profile?.total_projects_created ?? 0) < limits.maxProjects
     }
+
+    // For paid plans: only enforce active project count limit when subscription is enabled
+    if (!isSubscriptionEnabled) return true
     return activeProjectCount < limits.maxProjects
   },
 

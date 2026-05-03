@@ -180,7 +180,7 @@ async function callGemini(
   newMessage: ChatMessage,
   model: string
 ): Promise<string> {
-  const key = import.meta.env.VITE_GEMINI_API_KEY
+  const key = (import.meta as any).env.VITE_GEMINI_API_KEY
   if (!key) throw new Error('No Gemini key')
 
   const contents = history
@@ -228,7 +228,7 @@ async function callOpenRouter(
   history: ChatMessage[],
   newMessage: ChatMessage
 ): Promise<string> {
-  const key = import.meta.env.VITE_OPENROUTER_API_KEY
+  const key = (import.meta as any).env.VITE_OPENROUTER_API_KEY
   if (!key) throw new Error('No OpenRouter key')
 
   const messages: any[] = [{ role: 'system', content: sysInstruction }]
@@ -257,7 +257,7 @@ async function callGroq(
   history: ChatMessage[],
   newMessage: ChatMessage
 ): Promise<string> {
-  const key = import.meta.env.VITE_GROQ_API_KEY
+  const key = (import.meta as any).env.VITE_GROQ_API_KEY
   if (!key) throw new Error('No Groq key')
 
   const messages: any[] = [{ role: 'system', content: sysInstruction.substring(0, 2000) }]

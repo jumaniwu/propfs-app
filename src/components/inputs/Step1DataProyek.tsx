@@ -183,7 +183,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
           hint="Berapa fase pembangunan? (1–6)"
           error={errors.jumlahFase?.message}
         >
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {[1, 2, 3, 4, 5, 6].map(n => (
               <button
                 key={n}
@@ -210,7 +210,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
           hint="Berapa bulan setiap fase berlangsung?"
           error={errors.durasiPerFase?.message}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="relative flex-1">
               <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -221,7 +221,7 @@ export default function Step1DataProyek({ inputs, onChange }: Props) {
                 max={120}
               />
             </div>
-            <div className="text-sm text-muted-foreground whitespace-nowrap">
+            <div className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap bg-muted/30 px-3 py-1.5 rounded-md border border-border/50 w-fit">
               = {((watchAll.durasiPerFase || 24) * (watchAll.jumlahFase || 3) / 12).toFixed(1)} tahun total
             </div>
           </div>

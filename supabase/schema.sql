@@ -99,6 +99,21 @@ INSERT INTO app_settings (key, value)
 VALUES ('subscription_enabled', 'false')
 ON CONFLICT (key) DO NOTHING;
 
+-- Feature flags: all modules ON by default
+INSERT INTO app_settings (key, value)
+VALUES ('feature_flags', '{"fs_module":true,"cost_control":true,"cost_rab":true,"cost_material":false,"cost_realisasi":true,"ai_solver":true,"pdf_export":true,"scurve":true,"dashboard_admin":false}')
+ON CONFLICT (key) DO NOTHING;
+
+-- PPN rate: 11% default
+INSERT INTO app_settings (key, value)
+VALUES ('ppn_rate', '0.11')
+ON CONFLICT (key) DO NOTHING;
+
+-- Landing page CMS: initial blank state (will be populated from admin)
+INSERT INTO app_settings (key, value)
+VALUES ('landing_page_cms', '{"branding":{"logoUrl":"","siteName":"PropFS","tagline":"Feasibility Study & Cost Control System"},"hero":{"title":"Analisa Kelayakan Proyek Properti Lebih Cepat","subtitle":"Platform terintegrasi untuk menghitung cashflow, IRR, NPV hingga kontrol budget pembangunan dan Kurva S dalam satu dashboard.","hashtags":["#DeveloperProperti","#AnalisaKelayakan","#CostControl"],"imageUrl":""},"suitableFor":{"label":"SOLUSI TERBAIK UNTUK :","tags":["Developer Perumahan","Kontraktor","Investor Properti","Management Project"]},"features":[{"id":"1","title":"Feasibility Study","desc":"Analisa kelayakan finansial mendetail (IRR, NPV, ROI).","iconName":"Calculator"},{"id":"2","title":"Cost Control","desc":"Pelacakan budget RAB vs Realisasi proyek.","iconName":"BarChart"},{"id":"3","title":"Kurva S Otomatis","desc":"Visualisasi progres fisik dan finansial proyek.","iconName":"TrendingUp"},{"id":"4","title":"Laporan PDF","desc":"Ekspor laporan profesional siap cetak.","iconName":"FileText"}],"auxiliaryProducts":[{"id":"a1","title":"AI Profit Solver","desc":"Optimasi harga jual otomatis berbasis AI.","iconName":"Sparkles"},{"id":"a2","title":"Manajemen User","desc":"Akses hirarki untuk tim internal.","iconName":"Users"}],"marketingHighlight":{"title":"Digitalkan Analisa Properti Anda Secara Profesional","desc":"PropFS dirancang khusus untuk developer, kontraktor, dan investor properti Indonesia yang ingin bergerak lebih cepat dengan data yang akurat.","stats":[{"value":"10x","label":"Lebih Cepat Analisa"},{"value":"99%","label":"Akurasi Kalkulasi"},{"value":"500+","label":"Proyek Dibuat"}]}}')
+ON CONFLICT (key) DO NOTHING;
+
 -- ── Row Level Security ─────────────────────────────────────
 
 ALTER TABLE profiles              ENABLE ROW LEVEL SECURITY;
@@ -115,6 +130,16 @@ CREATE POLICY "User can update own profile"
   ON profiles FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "User can insert own profile"
   ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- profiles: superadmin bisa baca SEMUA profil
+CREATE POLICY "Superadmin can read all profiles"
+  ON profiles FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM profiles p
+      WHERE p.id = auth.uid() AND p.role = 'superadmin'
+    )
+  );
 
 -- subscriptions: user bisa baca milik sendiri
 CREATE POLICY "User can read own subscriptions"

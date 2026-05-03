@@ -171,9 +171,9 @@ async function callAIMaterialChunk(provider: string, apiKey: string, chunk: stri
 export async function predictMaterialSchedule(
   components: BudgetComponent[]
 ): Promise<MaterialScheduleItem[]> {
-  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  const groqKey = import.meta.env.VITE_GROQ_API_KEY;
-  const orKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  const geminiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
+  const groqKey = (import.meta as any).env.VITE_GROQ_API_KEY;
+  const orKey = (import.meta as any).env.VITE_OPENROUTER_API_KEY;
   
   // Prioritas: Gemini (terbaik untuk reasoning AHSP) → OpenRouter → Groq
   let provider = '';
@@ -205,8 +205,8 @@ export async function predictMaterialSchedule(
   for (let i = 0; i < validComponents.length; i += CHUNK_SIZE) {
     const slice = validComponents.slice(i, i + CHUNK_SIZE);
     const chunkText = slice.map(c => {
-      const budgetMaterial = c.unitMaterialCost > 0
-        ? `Rp${(c.unitMaterialCost * c.plannedVolume).toLocaleString('id-ID')}`
+      const budgetMaterial = (c.unitMaterialCost ?? 0) > 0
+        ? `Rp${((c.unitMaterialCost ?? 0) * c.plannedVolume).toLocaleString('id-ID')}`
         : `Rp${(c.totalPlannedCost * 0.6).toFixed(0)} (estimasi 60% dari total)`;
       return `- ${c.name} | Vol: ${c.plannedVolume} ${c.unit} | Anggaran Material: ${budgetMaterial}`;
     }).join('\n');

@@ -79,7 +79,7 @@ export default function KPICards({ results: r }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
       {cards.map((card, i) => {
         const Icon = card.icon
         return (

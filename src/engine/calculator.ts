@@ -14,6 +14,7 @@ import type {
   SensitivityCell,
   StatusKelayakan,
   PenjualanPerFase,
+  AssetLahan,
 } from '../types/fs.types'
 import { calcCashFlow } from './cashflow'
 

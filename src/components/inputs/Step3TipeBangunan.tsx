@@ -65,7 +65,7 @@ export default function Step3TipeBangunan({ inputs, onChange }: Props) {
   function addUnitApt(towerId: string) {
     const t = tipes.find(x => x.id === towerId)
     if (!t) return
-    const newUnit: TipeUnitApartemen = { id: uuidv4(), nama: 'Studio', luasUnit: 24, jumlahUnit: 10, marginUnitPerM2: 0, kelipatanMarginUnit: 1 }
+    const newUnit: TipeUnitApartemen = { id: uuidv4(), nama: 'Studio', luasSemigross: 24, jumlahUnit: 10, marginUnitPerM2: 0, kelipatanMarginUnit: 1 }
     updateTipe(towerId, 'tipeUnit', [...(t.tipeUnit || []), newUnit])
   }
   
