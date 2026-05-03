@@ -316,18 +316,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
         // Helper: only merge keys that have a truthy non-empty value from DB
         // This prevents blank DB values from wiping out defaults
-        const safeMerge = (defaults: Record<string, any>, overrides: Record<string, any> = {}, section?: string) => {
+        const safeMerge = (defaults: Record<string, any>, overrides: Record<string, any> = {}) => {
           const result = { ...defaults }
           for (const key of Object.keys(overrides)) {
             let val = overrides[key]
             
             // Trim if it's a string
             if (typeof val === 'string') val = val.trim();
-
-            // Special check: If hero content is just "PropFS" or too short, it's likely a placeholder/corrupted
-            if (section === 'hero' && (key === 'title' || key === 'subtitle' || key === 'imageUrl')) {
-               if (val === 'PropFS' || !val || (key !== 'imageUrl' && val.length < 10)) continue;
-            }
 
             // Only override if value is non-empty
             if (val !== undefined && val !== null && val !== '') {
@@ -340,7 +335,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set(state => ({
           landingContent: {
             branding: safeMerge(state.landingContent.branding, v.branding) as typeof state.landingContent.branding,
-            hero: safeMerge(state.landingContent.hero, v.hero, 'hero') as typeof state.landingContent.hero,
+            hero: safeMerge(state.landingContent.hero, v.hero) as typeof state.landingContent.hero,
             suitableFor: safeMerge(state.landingContent.suitableFor, v.suitableFor) as typeof state.landingContent.suitableFor,
             features: Array.isArray(v.features) && v.features.length > 0 ? v.features : state.landingContent.features,
             auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
