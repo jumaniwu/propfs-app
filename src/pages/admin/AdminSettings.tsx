@@ -75,9 +75,17 @@ export default function AdminSettings() {
     setSavingPPN(true)
     try {
       const rate = pct / 100
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'ppn_rate', value: rate })
+      
+      const { data: existing } = await supabase.from('app_settings').select('key').eq('key', 'ppn_rate').maybeSingle()
+      let error
+      if (existing) {
+        const res = await supabase.from('app_settings').update({ value: rate }).eq('key', 'ppn_rate')
+        error = res.error
+      } else {
+        const res = await supabase.from('app_settings').insert({ key: 'ppn_rate', value: rate })
+        error = res.error
+      }
+      
       if (error) throw error
       invalidatePPNCache()
       setPpnPct(pct)
@@ -91,9 +99,16 @@ export default function AdminSettings() {
     setToggling(true)
     try {
       const newVal = !isSubscriptionEnabled
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'subscription_enabled', value: newVal })
+      
+      const { data: existing } = await supabase.from('app_settings').select('key').eq('key', 'subscription_enabled').maybeSingle()
+      let error
+      if (existing) {
+        const res = await supabase.from('app_settings').update({ value: newVal }).eq('key', 'subscription_enabled')
+        error = res.error
+      } else {
+        const res = await supabase.from('app_settings').insert({ key: 'subscription_enabled', value: newVal })
+        error = res.error
+      }
       
       if (error) throw error
       await loadFeatureFlags()

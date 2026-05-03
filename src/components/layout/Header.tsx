@@ -35,9 +35,12 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
   }, [menuOpen])
 
   async function handleSignOut() {
-    setMenuOpen(false)
-    await signOut()
-    navigate('/auth')
+    try {
+      setMenuOpen(false)
+      await signOut()
+    } finally {
+      navigate('/auth')
+    }
   }
 
   const initials = (profile?.full_name ?? user?.email ?? 'U')

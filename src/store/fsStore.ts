@@ -134,7 +134,12 @@ export const useFSStore = create<FSStore>((set, get) => ({
     }
 
     const { data, error } = await query.order('updated_at', { ascending: false })
-    if (!error && data) {
+    if (error) {
+      console.error("[fsStore] fetchProjects error:", error)
+      return
+    }
+    
+    if (data) {
       set({ projects: data.map(rowToProject) })
     }
   },

@@ -210,8 +210,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // ── signOut ───────────────────────────────────────────────
   signOut: async () => {
-    await supabase.auth.signOut()
-    set({ user: null, session: null, profile: null, subscription: null })
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.error("SignOut error:", e)
+    } finally {
+      set({ user: null, session: null, profile: null, subscription: null })
+    }
   },
 
   // ── resetPassword ─────────────────────────────────────────
