@@ -56,6 +56,13 @@ export interface LandingPageContent {
     desc: string
     imageUrl: string
   }
+  footer: {
+    copyrightText: string
+    email: string
+    phone: string
+    address: string
+    whatsappUrl: string
+  }
 }
 
 export interface AppSetting {

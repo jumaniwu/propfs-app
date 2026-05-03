@@ -13,10 +13,14 @@ import {
   Building2,
   Mail,
   Phone,
-  MapPin
+  MapPin,
+  Loader2,
+  Send,
+  CheckCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/hooks/use-toast'
 
 const ICON_MAP: Record<string, any> = {
   Calculator,
@@ -32,7 +36,41 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
   const { landingContent, user } = useAuthStore()
-  const { branding, hero, suitableFor, features, auxiliaryProducts, marketingHighlight } = landingContent
+  const { branding, hero, suitableFor, features, auxiliaryProducts, marketingHighlight, footer } = landingContent
+
+  // Contact form state
+  const [contactName, setContactName] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactMsg, setContactMsg] = useState('')
+  const [contactSending, setContactSending] = useState(false)
+  const [contactSent, setContactSent] = useState(false)
+
+  async function handleContactSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!contactName.trim() || !contactEmail.trim() || !contactMsg.trim()) {
+      toast({ title: 'Lengkapi semua field', variant: 'destructive' })
+      return
+    }
+    setContactSending(true)
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: contactName, email: contactEmail, message: contactMsg })
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || 'Gagal mengirim pesan.')
+      setContactSent(true)
+      setContactName('')
+      setContactEmail('')
+      setContactMsg('')
+      toast({ title: '✅ Pesan Terkirim!', description: 'Tim kami akan menghubungi Anda segera.' })
+    } catch (err: any) {
+      toast({ title: 'Gagal Mengirim', description: err.message, variant: 'destructive' })
+    } finally {
+      setContactSending(false)
+    }
+  }
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -434,54 +472,111 @@ export default function LandingPage() {
               <h2 className="font-serif text-4xl font-bold">Hubungi Tim Kami</h2>
               <p className="text-muted-foreground leading-relaxed font-medium">Tim konsultan kami siap membantu integrasi PropFS ke dalam proses operasional developer Anda.</p>
               <div className="space-y-4">
+                <a href={`mailto:${footer.email}`} className="flex items-center gap-4 text-navy dark:text-gold font-bold hover:opacity-70 transition-opacity">
+                  <Mail className="h-5 w-5" /> {footer.email}
+                </a>
+                <a href={footer.whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 text-navy dark:text-gold font-bold hover:opacity-70 transition-opacity">
+                  <Phone className="h-5 w-5" /> {footer.phone}
+                </a>
                 <div className="flex items-center gap-4 text-navy dark:text-gold font-bold">
-                  <Mail className="h-5 w-5" /> hello@propfs.id
-                </div>
-                <div className="flex items-center gap-4 text-navy dark:text-gold font-bold">
-                  <Phone className="h-5 w-5" /> +62 811 0000 000
-                </div>
-                <div className="flex items-center gap-4 text-navy dark:text-gold font-bold">
-                  <MapPin className="h-5 w-5" /> Batam Centre, Kepulauan Riau
+                  <MapPin className="h-5 w-5" /> {footer.address}
                 </div>
               </div>
             </div>
             <div className="lg:col-span-2">
-              <div className="grid sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Nama Lengkap</label>
-                  <input className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold" placeholder="Masukkan nama..." />
+              {contactSent ? (
+                <div className="flex flex-col items-center justify-center h-full py-16 gap-6 text-center">
+                  <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <CheckCircle className="h-10 w-10 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-navy mb-2">Pesan Terkirim! 🎉</h3>
+                    <p className="text-muted-foreground">Tim kami akan segera menghubungi Anda.</p>
+                  </div>
+                  <button onClick={() => setContactSent(false)} className="text-sm text-gold font-bold hover:underline">Kirim pesan lain</button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Email</label>
-                  <input className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold" placeholder="email@perusahaan.com" />
-                </div>
-                <div className="sm:col-span-2 space-y-2">
-                  <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Pesan Anda</label>
-                  <textarea rows={4} className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold" placeholder="Tuliskan pertanyaan atau kebutuhan Anda..." />
-                </div>
-                <Button variant="gold" className="sm:col-span-2 h-16 font-bold text-lg shadow-xl shadow-gold/20">Kirim Pesan Sekarang</Button>
-              </div>
+              ) : (
+                <form onSubmit={handleContactSubmit} className="grid sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Nama Lengkap</label>
+                    <input
+                      required
+                      value={contactName}
+                      onChange={e => setContactName(e.target.value)}
+                      className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold outline-none"
+                      placeholder="Masukkan nama..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Email</label>
+                    <input
+                      required
+                      type="email"
+                      value={contactEmail}
+                      onChange={e => setContactEmail(e.target.value)}
+                      className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold outline-none"
+                      placeholder="email@perusahaan.com"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Pesan Anda</label>
+                    <textarea
+                      required
+                      rows={4}
+                      value={contactMsg}
+                      onChange={e => setContactMsg(e.target.value)}
+                      className="w-full bg-muted border-none rounded-2xl p-4 focus:ring-2 focus:ring-gold outline-none resize-none"
+                      placeholder="Tuliskan pertanyaan atau kebutuhan Anda..."
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="gold"
+                    className="sm:col-span-2 h-16 font-bold text-lg shadow-xl shadow-gold/20 gap-3"
+                    disabled={contactSending}
+                  >
+                    {contactSending ? <><Loader2 className="h-5 w-5 animate-spin" /> Mengirim...</> : <><Send className="h-5 w-5" /> Kirim Pesan Sekarang</>}
+                  </Button>
+                </form>
+              )}
             </div>
           </div>
         </section>
       </main>
 
       <footer className="bg-navy py-12 border-t border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex items-center gap-3">
-             {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.siteName} className="h-8 w-auto" />
-              ) : (
-                <div className="w-8 h-8 rounded-lg bg-gold flex items-center justify-center">
-                  <span className="text-navy font-serif font-bold text-lg">P</span>
-                </div>
-              )}
-              <span className="text-white font-serif font-bold text-lg">{branding.siteName}</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-8">
+            <div className="flex items-center gap-3">
+               {branding.logoUrl ? (
+                  <img src={branding.logoUrl} alt={branding.siteName} className="h-8 w-auto" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-gold flex items-center justify-center">
+                    <span className="text-navy font-serif font-bold text-lg">P</span>
+                  </div>
+                )}
+                <span className="text-white font-serif font-bold text-lg">{branding.siteName}</span>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-6 text-sm text-white/50">
+              <a href={`mailto:${footer.email}`} className="hover:text-gold transition-colors flex items-center gap-2">
+                <Mail className="h-4 w-4" /> {footer.email}
+              </a>
+              <a href={footer.whatsappUrl} target="_blank" rel="noopener noreferrer" className="hover:text-gold transition-colors flex items-center gap-2">
+                <Phone className="h-4 w-4" /> {footer.phone}
+              </a>
+              <span className="flex items-center gap-2">
+                <MapPin className="h-4 w-4" /> {footer.address}
+              </span>
+            </div>
           </div>
-          <p className="text-white/40 text-sm font-medium">© {new Date().getFullYear()} PT. Mettaland Batam Sukses. All rights reserved.</p>
-          <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-white/40">
-            <Link to="/legal/privacy" className="hover:text-gold transition-colors">Privacy</Link>
-            <Link to="/legal/terms" className="hover:text-gold transition-colors">Terms</Link>
+          <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-white/40 text-sm font-medium">
+              {footer.copyrightText.replace('{year}', String(new Date().getFullYear()))}
+            </p>
+            <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-white/40">
+              <Link to="/legal/privacy" className="hover:text-gold transition-colors">Privacy</Link>
+              <Link to="/legal/terms" className="hover:text-gold transition-colors">Terms</Link>
+            </div>
           </div>
         </div>
       </footer>

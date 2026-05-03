@@ -37,41 +37,59 @@ export default function AdminLandingCMS() {
       return
     }
 
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: 'File Terlalu Besar', description: 'Maksimal ukuran gambar 2MB. Silakan kompres gambar terlebih dahulu.', variant: 'destructive' })
+      e.target.value = ''
+      return
+    }
+
     setUploading(target)
     try {
       const fileExt = file.name.split('.').pop()
       const fileName = `${target}_${Math.random().toString(36).substring(7)}.${fileExt}`
-      const filePath = `hero/${fileName}`
+      const filePath = `${target}/${fileName}`
 
       // Attempt Supabase Upload First
       const { error: uploadError } = await supabase.storage
         .from('landing-assets')
-        .upload(filePath, file)
+        .upload(filePath, file, { upsert: true })
 
       let resultUrl = ''
 
       if (!uploadError) {
         const { data } = supabase.storage.from('landing-assets').getPublicUrl(filePath)
         resultUrl = data.publicUrl
-        toast({ title: 'Berhasil Upload', description: 'Gambar disimpan di Cloud Storage.' })
+        toast({ title: '✅ Berhasil Upload', description: 'Gambar tersimpan di Cloud Storage Supabase.' })
       } else {
-        // FALLBACK: Auto convert to Base64 if bucket doesn't exist
-        resultUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result as string)
-          reader.onerror = reject
-          reader.readAsDataURL(file)
-        })
-        toast({ title: 'Tersimpan Lokal', description: 'Gambar ukuran kecil disimpan ke dalam data text.' })
+        // FALLBACK: Compress then convert to Base64
+        resultUrl = await compressAndEncodeImage(file, target === 'hero' ? 0.7 : 0.9)
+        if (uploadError.message?.includes('Bucket not found') || uploadError.message?.includes('not found')) {
+          toast({ title: '💾 Tersimpan Lokal', description: 'Bucket Cloud belum dibuat. Gambar disimpan sebagai data inline. Buat bucket "landing-assets" di Supabase untuk performa lebih baik.' })
+        } else {
+          toast({ title: '💾 Tersimpan Lokal', description: `Cloud: ${uploadError.message}. Gambar disimpan sebagai inline data.` })
+        }
       }
 
-      setCmsData(prev => {
-        const next = { ...prev }
-        if (target === 'hero') next.hero = { ...next.hero, imageUrl: resultUrl }
-        else if (target === 'logo') next.branding = { ...next.branding, logoUrl: resultUrl }
-        else if (target === 'favicon') next.branding = { ...next.branding, faviconUrl: resultUrl }
-        return next
+      // Update local state and then auto-save to DB
+      const updatedCmsData = await new Promise<typeof cmsData>((resolve) => {
+        setCmsData(prev => {
+          const next = { ...prev }
+          if (target === 'hero') next.hero = { ...next.hero, imageUrl: resultUrl }
+          else if (target === 'logo') next.branding = { ...next.branding, logoUrl: resultUrl }
+          else if (target === 'favicon') next.branding = { ...next.branding, faviconUrl: resultUrl }
+          resolve(next)
+          return next
+        })
       })
+
+      // Auto-save to Supabase DB so changes persist immediately
+      try {
+        await updateLandingContent(updatedCmsData)
+        toast({ title: '✅ Disimpan ke Database', description: 'Perubahan akan langsung tampil di halaman depan.' })
+      } catch (saveErr: any) {
+        toast({ title: '⚠️ Upload OK, Simpan Gagal', description: `Gambar berhasil diproses tapi gagal disimpan: ${saveErr.message}. Klik SIMPAN PERUBAHAN secara manual.`, variant: 'destructive' })
+      }
 
     } catch (err: any) {
       toast({ title: 'Gagal Memproses Gambar', description: err.message, variant: 'destructive' })
@@ -80,6 +98,35 @@ export default function AdminLandingCMS() {
       // Reset input value so same file can be uploaded again if needed
       e.target.value = ''
     }
+  }
+
+  // Compress image and return as base64 data URL
+  function compressAndEncodeImage(file: File, quality = 0.8): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          // Max dimension 800px for logos/favicons, 1200px for hero
+          const maxDim = quality > 0.8 ? 800 : 1200
+          let { width, height } = img
+          if (width > maxDim || height > maxDim) {
+            if (width > height) { height = Math.round(height * maxDim / width); width = maxDim }
+            else { width = Math.round(width * maxDim / height); height = maxDim }
+          }
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', quality))
+        }
+        img.onerror = reject
+        img.src = ev.target?.result as string
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
   }
 
   return (
@@ -245,6 +292,46 @@ export default function AdminLandingCMS() {
         </section>
 
       </div>
+
+      {/* Footer Settings */}
+      <section className="bg-white border border-slate-100 rounded-[32px] sm:rounded-[40px] p-6 sm:p-10 shadow-sm space-y-8 max-w-5xl mt-10">
+        <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+          <div className="w-12 h-12 bg-navy/5 text-navy rounded-2xl flex items-center justify-center">
+             <Layout className="h-6 w-6" />
+          </div>
+          <div>
+             <h3 className="text-xl font-black text-navy">Footer & Kontak</h3>
+             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Informasi di Bagian Bawah Web</p>
+          </div>
+        </div>
+
+        <div className="grid gap-6">
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Teks Copyright (gunakan {`{year}`} untuk tahun otomatis)</Label>
+            <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.footer?.copyrightText || ''} onChange={e => setCmsData({...cmsData, footer: {...(cmsData.footer || DEFAULT_LANDING_CONTENT.footer), copyrightText: e.target.value}})} />
+          </div>
+          
+          <div className="grid sm:grid-cols-2 gap-6">
+             <div className="space-y-2">
+               <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Email Kontak</Label>
+               <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.footer?.email || ''} onChange={e => setCmsData({...cmsData, footer: {...(cmsData.footer || DEFAULT_LANDING_CONTENT.footer), email: e.target.value}})} />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Telepon</Label>
+               <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.footer?.phone || ''} onChange={e => setCmsData({...cmsData, footer: {...(cmsData.footer || DEFAULT_LANDING_CONTENT.footer), phone: e.target.value}})} />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Alamat Lengkap</Label>
+               <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.footer?.address || ''} onChange={e => setCmsData({...cmsData, footer: {...(cmsData.footer || DEFAULT_LANDING_CONTENT.footer), address: e.target.value}})} />
+             </div>
+             <div className="space-y-2">
+               <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Link WhatsApp (https://wa.me/...)</Label>
+               <input className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all" value={cmsData.footer?.whatsappUrl || ''} onChange={e => setCmsData({...cmsData, footer: {...(cmsData.footer || DEFAULT_LANDING_CONTENT.footer), whatsappUrl: e.target.value}})} />
+             </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   )
 }

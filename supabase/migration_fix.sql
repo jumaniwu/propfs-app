@@ -262,8 +262,21 @@ END$$;
 
 -- ============================================================
 -- 5. APP_SETTINGS TABLE — RLS Policies (public read, admin write)
+-- Drop old catch-all policy first to avoid conflicts
 -- ============================================================
 
+-- Drop old combined policy if it exists (it blocked INSERTs without WITH CHECK)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'app_settings' AND policyname = 'Superadmin can upsert app_settings'
+  ) THEN
+    EXECUTE 'DROP POLICY "Superadmin can upsert app_settings" ON app_settings';
+  END IF;
+END$$;
+
+-- Public SELECT
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -278,16 +291,43 @@ BEGIN
   END IF;
 END$$;
 
+-- Superadmin INSERT (needed for upsert when row doesn't exist yet)
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies 
-    WHERE tablename = 'app_settings' AND policyname = 'Superadmin can upsert app_settings'
+    WHERE tablename = 'app_settings' AND policyname = 'Superadmin can insert app_settings'
   ) THEN
     EXECUTE '
-      CREATE POLICY "Superadmin can upsert app_settings"
-        ON app_settings FOR ALL
+      CREATE POLICY "Superadmin can insert app_settings"
+        ON app_settings FOR INSERT
+        WITH CHECK (
+          EXISTS (
+            SELECT 1 FROM profiles p
+            WHERE p.id = auth.uid() AND p.role = ''superadmin''
+          )
+        )
+    ';
+  END IF;
+END$$;
+
+-- Superadmin UPDATE
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'app_settings' AND policyname = 'Superadmin can update app_settings'
+  ) THEN
+    EXECUTE '
+      CREATE POLICY "Superadmin can update app_settings"
+        ON app_settings FOR UPDATE
         USING (
+          EXISTS (
+            SELECT 1 FROM profiles p
+            WHERE p.id = auth.uid() AND p.role = ''superadmin''
+          )
+        )
+        WITH CHECK (
           EXISTS (
             SELECT 1 FROM profiles p
             WHERE p.id = auth.uid() AND p.role = ''superadmin''
@@ -298,3 +338,4 @@ BEGIN
 END$$;
 
 -- ✅ Done! Refresh the browser to apply all changes.
+

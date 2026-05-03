@@ -48,6 +48,21 @@ export default function AuthPage() {
   const [regPass2, setRegPass2] = useState('')
   const [regError, setRegError] = useState('')
 
+  // CAPTCHA State
+  const [captchaNum1, setCaptchaNum1] = useState(0)
+  const [captchaNum2, setCaptchaNum2] = useState(0)
+  const [captchaAnswer, setCaptchaAnswer] = useState('')
+
+  function generateCaptcha() {
+    setCaptchaNum1(Math.floor(Math.random() * 10) + 1)
+    setCaptchaNum2(Math.floor(Math.random() * 10) + 1)
+    setCaptchaAnswer('')
+  }
+
+  useEffect(() => {
+    generateCaptcha()
+  }, [])
+
   useEffect(() => {
     clearError()
   }, [tab])
@@ -80,6 +95,11 @@ export default function AuthPage() {
     }
     if (!regEmail) {
       setRegError('Email wajib diisi.')
+      return
+    }
+    if (parseInt(captchaAnswer) !== captchaNum1 + captchaNum2) {
+      setRegError('Jawaban keamanan (CAPTCHA) salah. Silakan coba lagi.')
+      generateCaptcha()
       return
     }
 
@@ -263,6 +283,34 @@ export default function AuthPage() {
                        <Input className="pl-14 h-16 rounded-2xl bg-white" type="password" placeholder="Konfirmasi sandi Anda" value={regPass2} onChange={e => setRegPass2(e.target.value)} />
                     </div>
                   </div>
+                  
+                  {/* Math CAPTCHA */}
+                  <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Verifikasi Keamanan</Label>
+                      <button 
+                        type="button" 
+                        onClick={generateCaptcha}
+                        className="text-[10px] font-bold text-navy hover:text-gold"
+                      >
+                        Ganti Soal
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="h-14 px-6 bg-white border border-slate-200 rounded-xl flex items-center justify-center font-black text-lg text-navy shadow-inner w-32 shrink-0">
+                        {captchaNum1} + {captchaNum2} =
+                      </div>
+                      <Input 
+                        className="h-14 rounded-xl bg-white text-lg font-bold text-center flex-1" 
+                        type="number" 
+                        placeholder="?" 
+                        value={captchaAnswer} 
+                        onChange={e => setCaptchaAnswer(e.target.value)} 
+                        onKeyDown={e => e.key === 'Enter' && handleRegisterSubmit()}
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex gap-4 pt-4">
                     <Button variant="outline" className="h-16 rounded-2xl px-10 border-slate-200 font-bold" onClick={() => setRegStep(1)}>BACK</Button>
                     <Button className="flex-1 h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleRegisterSubmit} disabled={isLoading}>

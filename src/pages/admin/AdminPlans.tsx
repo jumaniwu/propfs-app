@@ -107,14 +107,38 @@ export default function AdminPlans() {
   async function handleSave() {
     setSaving(true)
     try {
-      const { error } = await supabase
+      // Check if row already exists
+      const { data: existing } = await supabase
         .from('app_settings')
-        .upsert({ key: 'plan_catalog', value: plans })
+        .select('key')
+        .eq('key', 'plan_catalog')
+        .maybeSingle()
+
+      let error
+      if (existing) {
+        // UPDATE existing row
+        const { error: updateErr } = await supabase
+          .from('app_settings')
+          .update({ value: plans })
+          .eq('key', 'plan_catalog')
+        error = updateErr
+      } else {
+        // INSERT new row
+        const { error: insertErr } = await supabase
+          .from('app_settings')
+          .insert({ key: 'plan_catalog', value: plans })
+        error = insertErr
+      }
 
       if (error) throw error
       toast({ title: '✅ Katalog Harga Tersimpan', description: 'Perubahan harga dan fitur paket berhasil disimpan ke database.' })
     } catch (err: any) {
-      toast({ title: 'Gagal Menyimpan', description: err.message, variant: 'destructive' })
+      console.error('[AdminPlans] Save error:', err)
+      toast({ 
+        title: 'Gagal Menyimpan', 
+        description: err?.message || 'Pastikan SQL migration sudah dijalankan di Supabase.',
+        variant: 'destructive' 
+      })
     } finally {
       setSaving(false)
     }

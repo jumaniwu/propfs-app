@@ -85,6 +85,13 @@ export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
       title: 'Digitalkan Analisa Properti Anda Secara Profesional',
       desc: 'Tinggalkan spreadsheet yang rumit dan mulailah menggunakan sistem yang terstandarisasi untuk meminimalkan risiko investasi.',
       imageUrl: 'https://images.unsplash.com/photo-1554232456-8727aae0cfa4?q=80&w=2070&auto=format&fit=crop'
+    },
+    footer: {
+      copyrightText: '© {year} PropFS. All rights reserved.',
+      email: 'hello@propfs.id',
+      phone: '+62 811 0000 000',
+      address: 'Batam Centre, Kepulauan Riau',
+      whatsappUrl: 'https://wa.me/628110000000'
     }
 }
 
@@ -315,6 +322,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             features: Array.isArray(v.features) && v.features.length > 0 ? v.features : state.landingContent.features,
             auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
             marketingHighlight: safeMerge(state.landingContent.marketingHighlight, v.marketingHighlight) as typeof state.landingContent.marketingHighlight,
+            footer: v.footer ? safeMerge(state.landingContent.footer, v.footer) as typeof state.landingContent.footer : state.landingContent.footer,
           }
         }))
       }
