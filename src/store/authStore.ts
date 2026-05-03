@@ -313,47 +313,28 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase.from('app_settings').select('value').eq('key', 'landing_page_cms').maybeSingle()
       if (data?.value && typeof data.value === 'object') {
         const v = data.value as any
-
-        // Helper: only merge keys that have a truthy non-empty value from DB
-        // This prevents blank DB values from wiping out defaults
-        const safeMerge = (defaults: Record<string, any>, overrides: Record<string, any> = {}) => {
-          const result = { ...defaults }
-          for (const key of Object.keys(overrides)) {
-            let val = overrides[key]
-            
-            // Trim if it's a string
-            if (typeof val === 'string') val = val.trim();
-
-            // Only override if value is non-empty
-            if (val !== undefined && val !== null && val !== '') {
-              result[key] = val
-            }
-          }
-          return result
-        }
-
+        
+        // Simple merge: Start with defaults, overwrite with anything from DB
         set(state => ({
           landingContent: {
-            branding: safeMerge(state.landingContent.branding, v.branding) as typeof state.landingContent.branding,
-            hero: safeMerge(state.landingContent.hero, v.hero) as typeof state.landingContent.hero,
-            suitableFor: safeMerge(state.landingContent.suitableFor, v.suitableFor) as typeof state.landingContent.suitableFor,
+            branding: { ...state.landingContent.branding, ...(v.branding || {}) },
+            hero: { ...state.landingContent.hero, ...(v.hero || {}) },
+            suitableFor: { ...state.landingContent.suitableFor, ...(v.suitableFor || {}) },
             features: Array.isArray(v.features) && v.features.length > 0 ? v.features : state.landingContent.features,
             auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : state.landingContent.auxiliaryProducts,
-            marketingHighlight: safeMerge(state.landingContent.marketingHighlight, v.marketingHighlight) as typeof state.landingContent.marketingHighlight,
-            footer: v.footer ? safeMerge(state.landingContent.footer, v.footer) as typeof state.landingContent.footer : state.landingContent.footer,
+            marketingHighlight: { ...state.landingContent.marketingHighlight, ...(v.marketingHighlight || {}) },
+            footer: { ...state.landingContent.footer, ...(v.footer || {}) },
           }
         }))
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('[authStore] loadLandingContent error:', err)
+    }
   },
 
   updateLandingContent: async (content: LandingPageContent) => {
-    const fullContent = {
-      ...get().landingContent,
-      ...content
-    }
-
-    // Check if row exists first to avoid upsert issues with RLS
+    // Save directly to DB without complex local merging
+    // This ensures what the user sees in the CMS is what gets saved
     const { data: existing } = await supabase
       .from('app_settings')
       .select('key')
@@ -364,13 +345,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     if (existing) {
       const { error: updateErr } = await supabase
         .from('app_settings')
-        .update({ value: fullContent })
+        .update({ value: content })
         .eq('key', 'landing_page_cms')
       error = updateErr
     } else {
       const { error: insertErr } = await supabase
         .from('app_settings')
-        .insert({ key: 'landing_page_cms', value: fullContent })
+        .insert({ key: 'landing_page_cms', value: content })
       error = insertErr
     }
 
@@ -379,7 +360,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       throw error
     }
     
-    // Force a reload from DB to ensure local state perfectly matches
+    // Update local state and reload from DB to confirm
+    set({ landingContent: content })
     await get().loadLandingContent()
   },
 
