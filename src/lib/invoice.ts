@@ -104,8 +104,10 @@ export function loadMidtransSnap(): Promise<void> {
       return resolve()
     }
 
-    const isProduction = (import.meta as any).env.VITE_MIDTRANS_ENV === 'production'
     const clientKey   = (import.meta as any).env.VITE_MIDTRANS_CLIENT_KEY
+    const envVar = (import.meta as any).env.VITE_MIDTRANS_ENV
+    // Auto-detect production environment based on key prefix or env var
+    const isProduction = envVar === 'production' || (clientKey && !clientKey.startsWith('SB-'))
 
     if (!clientKey) {
       console.warn('[Midtrans] No client key set. Using demo mode.')

@@ -21,16 +21,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ message: 'plan_id is required' });
   }
 
-  const serverKey = process.env.VITE_MIDTRANS_SERVER_KEY || process.env.MIDTRANS_SERVER_KEY;
+  const serverKey = process.env.MIDTRANS_SERVER_KEY || process.env.VITE_MIDTRANS_SERVER_KEY;
   if (!serverKey || serverKey.startsWith('isi_')) {
     return res.status(500).json({ message: 'Server key Midtrans belum dikonfigurasi di environment variables Vercel.' });
   }
 
-  const isProd = (process.env.VITE_MIDTRANS_ENV || process.env.MIDTRANS_ENV) === 'production';
+  // Auto-detect production environment based on key prefix or env var
+  const isProd = process.env.MIDTRANS_ENV === 'production' || process.env.VERCEL_ENV === 'production' || !serverKey.startsWith('SB-');
+  
   const midtransUrl = isProd
     ? 'https://app.midtrans.com/snap/v1/transactions'
     : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
 
+  // Authorization header Base64(SERVER_KEY + ":")
   const authString = Buffer.from(`${serverKey}:`).toString('base64');
   const orderId = `PROPFS-${plan_id.toUpperCase()}-${invoice_id || Date.now()}`;
 

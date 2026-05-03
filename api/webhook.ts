@@ -22,7 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } = req.body;
 
   // 1. Verify Signature for security
-  const serverKey = process.env.VITE_MIDTRANS_SERVER_KEY!;
+  const serverKey = process.env.MIDTRANS_SERVER_KEY || process.env.VITE_MIDTRANS_SERVER_KEY;
+  if (!serverKey) return res.status(500).json({ message: 'Server key not configured' });
   const hashed = crypto
     .createHash('sha512')
     .update(`${order_id}${status_code}${gross_amount}${serverKey}`)
