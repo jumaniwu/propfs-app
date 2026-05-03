@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase'
 
 const ICON_MAP: Record<string, any> = {
   Calculator,
@@ -71,6 +72,30 @@ export default function LandingPage() {
       setContactSending(false)
     }
   }
+
+  // Load promo prices from DB
+  const [promoPrices, setPromoPrices] = useState<Record<string, number | null>>({})
+  useEffect(() => {
+    async function loadCatalog() {
+      try {
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'plan_catalog')
+          .maybeSingle()
+        if (data?.value && Array.isArray(data.value)) {
+          const promos: Record<string, number | null> = {}
+          for (const p of data.value) {
+            if (p.promoPriceIdr && p.promoPriceIdr > 0) {
+              promos[p.id] = p.promoPriceIdr
+            }
+          }
+          setPromoPrices(promos)
+        }
+      } catch { /* ignore */ }
+    }
+    loadCatalog()
+  }, [])
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
@@ -331,13 +356,23 @@ export default function LandingPage() {
               </div>
 
               {/* ── STARTER ── */}
-              <div className="bg-white/5 border border-white/20 rounded-[28px] p-8 flex flex-col">
+              <div className="bg-white/5 border border-white/20 rounded-[28px] p-8 flex flex-col relative">
+                {promoPrices['starter'] && promoPrices['starter'] < 149000 && (
+                  <div className="absolute -top-3 right-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
+                    🔥 HEMAT {Math.round((1 - promoPrices['starter'] / 149000) * 100)}%
+                  </div>
+                )}
                 <div className="mb-8">
                   <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">PEMULA</p>
                   <h3 className="text-2xl font-black mb-1">Starter</h3>
-                  <div className="flex items-end gap-1 mt-4">
-                    <span className="text-4xl font-black text-gold">Rp 149K</span>
-                    <span className="text-white/40 text-sm pb-1">/bulan</span>
+                  <div className="flex flex-col gap-1 mt-4">
+                    {promoPrices['starter'] && promoPrices['starter'] < 149000 && (
+                      <span className="text-sm line-through text-white/40">Rp 149.000</span>
+                    )}
+                    <div className="flex items-end gap-1">
+                      <span className="text-4xl font-black text-gold">Rp {(promoPrices['starter'] ? promoPrices['starter'] : 149000).toLocaleString('id-ID')}</span>
+                      <span className="text-white/40 text-sm pb-1">/bulan</span>
+                    </div>
                   </div>
                   <p className="text-white/40 text-xs mt-2">Cocok untuk kontraktor kecil & mandiri</p>
                 </div>
@@ -370,18 +405,28 @@ export default function LandingPage() {
 
               {/* ── PRO (Recommended) ── */}
               <div className="bg-gold rounded-[28px] p-8 flex flex-col text-navy relative overflow-hidden group">
+                {promoPrices['pro'] && promoPrices['pro'] < 399000 && (
+                  <div className="absolute -top-3 left-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg z-10">
+                    🔥 HEMAT {Math.round((1 - promoPrices['pro'] / 399000) * 100)}%
+                  </div>
+                )}
                 <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-150 transition-transform duration-700 pointer-events-none">
                   <Sparkles className="h-28 w-28" />
                 </div>
-                <div className="mb-8">
+                <div className="mb-8 relative z-10">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-[10px] font-black uppercase tracking-widest text-navy/50">POPULER</p>
                     <span className="bg-navy text-gold text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">Rekomendasi</span>
                   </div>
                   <h3 className="text-2xl font-black mb-1">Pro</h3>
-                  <div className="flex items-end gap-1 mt-4">
-                    <span className="text-4xl font-black">Rp 399K</span>
-                    <span className="text-navy/50 text-sm pb-1">/bulan</span>
+                  <div className="flex flex-col gap-1 mt-4">
+                    {promoPrices['pro'] && promoPrices['pro'] < 399000 && (
+                      <span className="text-sm line-through text-navy/50">Rp 399.000</span>
+                    )}
+                    <div className="flex items-end gap-1">
+                      <span className="text-4xl font-black text-navy">Rp {(promoPrices['pro'] ? promoPrices['pro'] : 399000).toLocaleString('id-ID')}</span>
+                      <span className="text-navy/50 text-sm pb-1">/bulan</span>
+                    </div>
                   </div>
                   <p className="text-navy/60 text-xs mt-2">Untuk kontraktor & developer aktif</p>
                 </div>
@@ -413,13 +458,23 @@ export default function LandingPage() {
               </div>
 
               {/* ── ENTERPRISE ── */}
-              <div className="bg-white/5 border border-gold/20 rounded-[28px] p-8 flex flex-col">
+              <div className="bg-white/5 border border-gold/20 rounded-[28px] p-8 flex flex-col relative">
+                {promoPrices['enterprise'] && promoPrices['enterprise'] < 999000 && (
+                  <div className="absolute -top-3 right-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
+                    🔥 HEMAT {Math.round((1 - promoPrices['enterprise'] / 999000) * 100)}%
+                  </div>
+                )}
                 <div className="mb-8">
                   <p className="text-[10px] font-black uppercase tracking-widest text-gold/60 mb-2">KORPORAT</p>
                   <h3 className="text-2xl font-black mb-1">Enterprise</h3>
-                  <div className="flex items-end gap-1 mt-4">
-                    <span className="text-4xl font-black text-gold">Rp 999K</span>
-                    <span className="text-white/40 text-sm pb-1">/bulan</span>
+                  <div className="flex flex-col gap-1 mt-4">
+                    {promoPrices['enterprise'] && promoPrices['enterprise'] < 999000 && (
+                      <span className="text-sm line-through text-white/40">Rp 999.000</span>
+                    )}
+                    <div className="flex items-end gap-1">
+                      <span className="text-4xl font-black text-gold">Rp {(promoPrices['enterprise'] ? promoPrices['enterprise'] : 999000).toLocaleString('id-ID')}</span>
+                      <span className="text-white/40 text-sm pb-1">/bulan</span>
+                    </div>
                   </div>
                   <p className="text-white/40 text-xs mt-2">Untuk developer besar & management proyek</p>
                 </div>

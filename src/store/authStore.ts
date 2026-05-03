@@ -335,12 +335,32 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       ...content
     }
 
-    const { error } = await supabase
+    // Check if row exists first to avoid upsert issues with RLS
+    const { data: existing } = await supabase
       .from('app_settings')
-      .upsert({ key: 'landing_page_cms', value: fullContent })
+      .select('key')
       .eq('key', 'landing_page_cms')
+      .maybeSingle()
 
-    if (error) throw error
+    let error
+    if (existing) {
+      const { error: updateErr } = await supabase
+        .from('app_settings')
+        .update({ value: fullContent })
+        .eq('key', 'landing_page_cms')
+      error = updateErr
+    } else {
+      const { error: insertErr } = await supabase
+        .from('app_settings')
+        .insert({ key: 'landing_page_cms', value: fullContent })
+      error = insertErr
+    }
+
+    if (error) {
+      console.error('[authStore] updateLandingContent error:', error)
+      throw error
+    }
+    
     set({ landingContent: fullContent })
   },
 
