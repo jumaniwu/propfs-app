@@ -4,8 +4,8 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl  = (import.meta.env.VITE_SUPABASE_URL as string) || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
-const supabaseKey  = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD'
+const supabaseUrl  = ((import.meta as any).env.VITE_SUPABASE_URL as string) || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
+const supabaseKey  = ((import.meta as any).env.VITE_SUPABASE_ANON_KEY as string) || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD'
 
 export const supabase = createClient(supabaseUrl, supabaseKey)
 

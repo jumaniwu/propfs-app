@@ -12,9 +12,7 @@ import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from '@/components/ui/dropdown-menu' // using native or just a simpler approach, actually I will just use standard confirm for delete for now or a dialog
+// using native or just a simpler approach, actually I will just use standard confirm for delete for now or a dialog
 import { Trash2 } from 'lucide-react'
 
 type TabKey = 'rab' | 'material' | 'realisasi' | 'kurva_s'

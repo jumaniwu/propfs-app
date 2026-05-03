@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { CheckCircle2, ChevronLeft, CreditCard, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, CreditCard, ShieldCheck, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { initiatePayment, openPaymentPopup, generateInvoicePDF, Invoice } from '@/lib/invoice'
 import { useAuthStore } from '@/store/authStore'
@@ -289,7 +289,8 @@ export default function PaymentPage() {
                     className="w-full mt-6 h-14 text-lg font-black bg-navy hover:bg-navy/90 text-gold"
                     onClick={() => {
                       if (paymentMethod === 'manual') {
-                         const cleanWa = (bankDetails?.whatsapp || '628110000000').replace(/\D/g, '')
+                         const rawWa = bankDetails?.whatsapp || '628110000000'
+                         const cleanWa = String(rawWa).replace(/\D/g, '')
                          const waNumber = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa
                          window.open(`https://wa.me/${waNumber}?text=Halo%20Admin%2C%20saya%20sudah%20transfer%20untuk%20invoice%20${invoice.invoice_number}.%20Mohon%20verifikasinya.`, '_blank')
                       } else {

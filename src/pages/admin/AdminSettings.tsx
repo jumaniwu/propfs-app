@@ -106,9 +106,16 @@ export default function AdminSettings() {
   async function saveBankDetails() {
     setSavingBank(true)
     try {
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'bank_details', value: bankForm })
+      const { data: existing } = await supabase.from('app_settings').select('key').eq('key', 'bank_details').maybeSingle()
+      let error
+      
+      if (existing) {
+        const res = await supabase.from('app_settings').update({ value: bankForm }).eq('key', 'bank_details')
+        error = res.error
+      } else {
+        const res = await supabase.from('app_settings').insert({ key: 'bank_details', value: bankForm })
+        error = res.error
+      }
       
       if (error) throw error
       await loadFeatureFlags()

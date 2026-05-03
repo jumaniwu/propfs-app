@@ -287,8 +287,8 @@ export default function HomePage() {
                       <div className="text-xs text-muted-foreground font-medium">{new Date(p.updatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
                     </div>
                   </div>
-                  <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${p.results?.status === 'sangat_layak' ? 'bg-green-500/20 text-green-400' : 'bg-gold/20 text-gold'}`}>
-                    {p.results?.status?.replace('_', ' ') || 'Draft'}
+                  <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${p.results?.statusKelayakan === 'sangat_layak' ? 'bg-green-500/20 text-green-400' : 'bg-gold/20 text-gold'}`}>
+                    {p.results?.statusKelayakan?.replace('_', ' ') || 'Draft'}
                   </div>
                 </div>
               ))}
@@ -321,7 +321,7 @@ export default function HomePage() {
                   <div className="text-sm font-bold uppercase tracking-widest text-navy/60">Success Rate</div>
                   <div className="text-5xl font-serif font-black">
                     {projects.length > 0 
-                      ? Math.round((projects.filter(p => p.results?.status === 'sangat_layak').length / projects.length) * 100) 
+                      ? Math.round((projects.filter(p => p.results?.statusKelayakan === 'sangat_layak').length / projects.length) * 100) 
                       : 0}%
                   </div>
                 </div>

@@ -104,8 +104,8 @@ export function loadMidtransSnap(): Promise<void> {
       return resolve()
     }
 
-    const isProduction = import.meta.env.VITE_MIDTRANS_ENV === 'production'
-    const clientKey   = import.meta.env.VITE_MIDTRANS_CLIENT_KEY
+    const isProduction = (import.meta as any).env.VITE_MIDTRANS_ENV === 'production'
+    const clientKey   = (import.meta as any).env.VITE_MIDTRANS_CLIENT_KEY
 
     if (!clientKey) {
       console.warn('[Midtrans] No client key set. Using demo mode.')

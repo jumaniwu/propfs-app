@@ -13,7 +13,7 @@ import { useAuthStore } from './authStore'
 const APP_VERSION = '1.0.0'
 
 // ── DEV MODE: use localStorage when Supabase is not configured ──
-const IS_DEV_MODE = import.meta.env.VITE_SUPABASE_URL?.includes('placeholder')
+const IS_DEV_MODE = (import.meta as any).env?.VITE_SUPABASE_URL?.includes('placeholder')
 const LS_DEV_KEY  = 'propfs-projects-dev'
 const LS_DARK_KEY = 'propfs-dark-mode'
 
@@ -316,7 +316,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
       throw error
     }
 
-    await supabase.rpc('increment_project_counter', { uid: user.id }).catch(() => {})
+    try { await supabase.rpc('increment_project_counter', { uid: user.id }) } catch { /* ignore */ }
 
     set(state => ({ projects: [copy, ...state.projects] }))
     return newId
