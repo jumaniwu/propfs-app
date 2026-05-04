@@ -15,4 +15,4 @@ END$$;
 
 -- 2. RELOAD SCHEMA CACHE
 -- Ini sangat penting untuk memperbaiki error "Could not find the table 'public.subscriptions' in the schema cache"
-NOTIFY pgrst, reload_schema;
+NOTIFY pgrst, 'reload schema';
