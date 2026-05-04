@@ -355,22 +355,33 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       .maybeSingle()
 
     let error
+    let affectedRows = 0
+
     if (existing) {
-      const { error: updateErr } = await supabase
+      const { data, error: updateErr } = await supabase
         .from('app_settings')
         .update({ value: content })
         .eq('key', 'landing_page_cms')
+        .select()
       error = updateErr
+      affectedRows = data ? data.length : 0
     } else {
-      const { error: insertErr } = await supabase
+      const { data, error: insertErr } = await supabase
         .from('app_settings')
         .insert({ key: 'landing_page_cms', value: content })
+        .select()
       error = insertErr
+      affectedRows = data ? data.length : 0
     }
 
     if (error) {
       console.error('[authStore] updateLandingContent error:', error)
       throw error
+    }
+
+    if (affectedRows === 0) {
+      console.error('[authStore] updateLandingContent silent failure: 0 rows affected. Check RLS or Schema Cache.')
+      throw new Error('Gagal menyimpan ke database. Sinkronisasi terblokir oleh sistem keamanan (RLS) atau Schema Cache belum di-reload.')
     }
     
     // Update local state and reload from DB to confirm
