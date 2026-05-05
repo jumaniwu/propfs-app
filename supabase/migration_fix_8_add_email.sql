@@ -9,6 +9,18 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='email') THEN
     ALTER TABLE public.profiles ADD COLUMN email TEXT;
   END IF;
+  
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='company') THEN
+    ALTER TABLE public.profiles ADD COLUMN company TEXT;
+  END IF;
+
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='phone') THEN
+    ALTER TABLE public.profiles ADD COLUMN phone TEXT;
+  END IF;
+
+  IF NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name='full_name') THEN
+    ALTER TABLE public.profiles ADD COLUMN full_name TEXT;
+  END IF;
 END $$;
 
 -- 2. Buat fungsi trigger otomatis untuk sinkronisasi data dari auth.users ke profiles
