@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2 } from 'lucide-react'
+import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +49,7 @@ export default function AuthPage() {
   const [regPass, setRegPass] = useState('')
   const [regPass2, setRegPass2] = useState('')
   const [regError, setRegError] = useState('')
+  const [regSuccess, setRegSuccess] = useState(false)
 
   // CAPTCHA State
   const [captchaNum1, setCaptchaNum1] = useState(0)
@@ -110,16 +111,17 @@ export default function AuthPage() {
       await signUp(regEmail, regPass, regName, regCompany, regPhone)
       // Try to auto-login directly
       await signIn(regEmail, regPass)
-      if (selectedPlan && selectedPlan !== 'free') {
-        navigate(`/home?create_invoice=${selectedPlan}&months=${selectedMonths}`)
-      } else {
-        navigate('/home')
-      }
+      // After successful registration & login, always go to Pricing page
+      // so user can choose their plan — don't auto-assign free
+      navigate('/pricing')
     } catch (err: any) {
       const msg: string = err.message || ''
-      if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email')) {
-        setRegError('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi, lalu login kembali.')
-        setTab('login')
+      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('sudah terdaftar')) {
+        setRegError('Email tersebut sudah terdaftar di sistem kami! Silakan gunakan email lain untuk mendaftar, atau klik tombol LOG IN di atas untuk masuk menggunakan email tersebut.')
+      } else if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email') || msg.includes('Pendaftaran berhasil')) {
+        // Show clear success message — DO NOT switch to login tab silently
+        setRegSuccess(true)
+        setRegError('')
       } else {
         setRegError(err.message)
       }
@@ -222,7 +224,22 @@ export default function AuthPage() {
                 </p>
               </div>
 
-              {regError && (
+              {regSuccess && (
+                <div className="p-5 bg-emerald-50 border-2 border-emerald-200 rounded-[24px] space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="flex gap-3 items-start">
+                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600 mt-0.5" />
+                    <div>
+                      <p className="font-black text-emerald-800 text-sm mb-1">Pendaftaran Berhasil! 🎉</p>
+                      <p className="text-xs text-emerald-700 leading-relaxed">Kami telah mengirim email konfirmasi ke <strong>{regEmail}</strong>. Silakan cek inbox (atau folder spam) Anda dan klik link konfirmasi, lalu login kembali untuk memilih paket.</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full h-12 rounded-xl border-emerald-300 font-bold text-emerald-700 hover:bg-emerald-100" onClick={() => { setRegSuccess(false); setTab('login') }}>
+                    Sudah Konfirmasi? Login Sekarang →
+                  </Button>
+                </div>
+              )}
+
+              {regError && !regSuccess && (
                 <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700 leading-relaxed">
                   <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
                   <p>{regError}</p>
