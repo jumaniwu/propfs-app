@@ -1,21 +1,43 @@
 -- ============================================================
--- PROPFS: MIGRATION SQL - FIX RLS RECURSION
+-- PROPFS: MIGRATION SQL - FIX RLS RECURSION & MISSING TABLES
 -- ============================================================
--- Masalah: Query "EXISTS(SELECT 1 FROM profiles ...)" di dalam 
--- policy RLS menyebabkan infinite recursion (loop tanpa akhir) 
--- ketika tabel profiles diakses. Akibatnya, query dari Superadmin
--- diblokir secara diam-diam oleh PostgreSQL.
--- Solusi: Gunakan fungsi SECURITY DEFINER untuk mengecek role
--- tanpa memicu RLS, lalu gunakan fungsi itu di semua policy.
+-- Skrip ini menggabungkan pembuatan tabel yang hilang (invoices)
+-- dan perbaikan struktur RLS (Row Level Security) agar terhindar 
+-- dari infinite recursion yang menyebabkan dashboard admin kosong.
 -- ============================================================
 
--- 1. Buat fungsi helper untuk cek superadmin bypass RLS
+-- ==========================================
+-- 1. BUAT TABEL INVOICES (JIKA BELUM ADA)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS invoices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  plan_id         TEXT NOT NULL,
+  invoice_number  TEXT NOT NULL,
+  period_start    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  period_end      TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
+  subtotal_idr    INT NOT NULL DEFAULT 0,
+  ppn_idr         INT NOT NULL DEFAULT 0,
+  total_idr       INT NOT NULL DEFAULT 0,
+  status          TEXT NOT NULL DEFAULT 'pending',  -- 'pending' | 'paid' | 'failed' | 'cancelled'
+  payment_method  TEXT,
+  midtrans_order_id TEXT,
+  paid_at         TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+
+-- ==========================================
+-- 2. BUAT FUNGSI HELPER SUPERADMIN
+-- ==========================================
+-- Fungsi SECURITY DEFINER ini memungkinkan kita mengecek role
+-- tanpa memicu infinite loop pada RLS profiles.
 CREATE OR REPLACE FUNCTION is_superadmin()
 RETURNS boolean AS $$
 DECLARE
   is_admin boolean;
 BEGIN
-  -- Akses tabel profiles bypass RLS (karena SECURITY DEFINER)
   SELECT (role = 'superadmin') INTO is_admin 
   FROM public.profiles 
   WHERE id = auth.uid();
@@ -24,7 +46,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2. Perbaiki RLS Profiles (menghindari recursion)
+-- ==========================================
+-- 3. PERBAIKI KEBIJAKAN RLS PROFILES
+-- ==========================================
 DROP POLICY IF EXISTS "Superadmin can read all profiles" ON profiles;
 CREATE POLICY "Superadmin can read all profiles"
   ON profiles FOR SELECT
@@ -35,7 +59,26 @@ CREATE POLICY "Superadmin can update all profiles"
   ON profiles FOR UPDATE
   USING (is_superadmin());
 
--- 3. Perbaiki RLS Invoices
+-- ==========================================
+-- 4. PERBAIKI KEBIJAKAN RLS INVOICES
+-- ==========================================
+-- User biasa
+DROP POLICY IF EXISTS "Users can insert own invoices" ON invoices;
+CREATE POLICY "Users can insert own invoices"
+  ON invoices FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can read own invoices" ON invoices;
+CREATE POLICY "Users can read own invoices"
+  ON invoices FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own invoices" ON invoices;
+CREATE POLICY "Users can update own invoices"
+  ON invoices FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- Superadmin
 DROP POLICY IF EXISTS "Superadmin can read all invoices" ON invoices;
 CREATE POLICY "Superadmin can read all invoices"
   ON invoices FOR SELECT
@@ -46,7 +89,9 @@ CREATE POLICY "Superadmin can update all invoices"
   ON invoices FOR UPDATE
   USING (is_superadmin());
 
--- 4. Perbaiki RLS Subscriptions
+-- ==========================================
+-- 5. PERBAIKI KEBIJAKAN RLS SUBSCRIPTIONS
+-- ==========================================
 DROP POLICY IF EXISTS "Superadmin can read all subscriptions" ON subscriptions;
 CREATE POLICY "Superadmin can read all subscriptions"
   ON subscriptions FOR SELECT
@@ -57,7 +102,9 @@ CREATE POLICY "Superadmin can update subscriptions"
   ON subscriptions FOR UPDATE
   USING (is_superadmin());
 
--- 5. Perbaiki RLS App_Settings
+-- ==========================================
+-- 6. PERBAIKI KEBIJAKAN RLS APP_SETTINGS
+-- ==========================================
 DROP POLICY IF EXISTS "Superadmin can insert app_settings" ON app_settings;
 CREATE POLICY "Superadmin can insert app_settings"
   ON app_settings FOR INSERT
@@ -69,8 +116,9 @@ CREATE POLICY "Superadmin can update app_settings"
   USING (is_superadmin())
   WITH CHECK (is_superadmin());
 
--- Reload schema cache
+-- ==========================================
+-- 7. RELOAD SCHEMA CACHE
+-- ==========================================
 NOTIFY pgrst, 'reload schema';
 
--- ✅ Selesai! Data pelanggan dan invoice sekarang akan muncul 
--- secara normal di Dashboard Admin.
+-- ✅ SELESAI! Struktur database Anda sekarang sudah lengkap dan aman.
