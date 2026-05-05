@@ -198,6 +198,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         try {
           await supabase.from('profiles').upsert({
             id: data.user.id,
+            email: email,
             full_name: fullName,
             company,
             phone,
@@ -259,6 +260,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
            full_name: meta.full_name || user.email?.split('@')[0] || 'Unknown',
            company: meta.company || '-',
            phone: meta.phone || '-',
+           email: user.email || '',
            role: 'user',
            total_projects_created: 0
         }

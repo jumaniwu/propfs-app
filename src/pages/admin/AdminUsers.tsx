@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus } from 'lucide-react'
+import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus, Key } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,7 @@ export default function AdminUsers() {
   const [subStart, setSubStart] = useState('')
   const [subEnd, setSubEnd] = useState('')
   const [isUpdatingSub, setIsUpdatingSub] = useState(false)
+  const [isSendingReset, setIsSendingReset] = useState(false)
 
   useEffect(() => {
     loadUsers()
@@ -128,6 +129,25 @@ export default function AdminUsers() {
     }
   }
 
+  async function handleResetPassword() {
+    if (!selectedUser || !selectedUser.email) {
+      toast({ title: 'Gagal', description: 'Pengguna ini tidak memiliki data email.', variant: 'destructive' })
+      return
+    }
+    setIsSendingReset(true)
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (error) throw error
+      toast({ title: 'Berhasil', description: `Link reset password telah dikirim ke ${selectedUser.email}` })
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsSendingReset(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-end">
@@ -165,7 +185,7 @@ export default function AdminUsers() {
                   <tr key={u.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-4 py-4">
                       <div className="font-bold text-navy">{u.company || '-'}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{u.full_name || 'Tanpa Nama'}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{u.full_name || 'Tanpa Nama'} • {u.email || 'Email tidak tersedia'}</div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-xs">{u.phone || '-'}</div>
@@ -215,7 +235,8 @@ export default function AdminUsers() {
                <h3 className="text-2xl font-serif font-bold text-navy mb-1">{selectedUser.company || selectedUser.full_name}</h3>
                <p className="text-sm text-muted-foreground flex items-center gap-4">
                  <span>ID: <span className="font-mono text-xs">{selectedUser.id.substring(0,8)}</span></span>
-                 {selectedUser.phone}
+                 {selectedUser.email && <span>{selectedUser.email}</span>}
+                 <span>{selectedUser.phone}</span>
                </p>
             </div>
 
@@ -258,6 +279,20 @@ export default function AdminUsers() {
                  </Button>
               </div>
 
+
+               {/* SECTION: Keamanan Akun */}
+               <div className="space-y-4">
+                 <div className="flex items-center gap-2 mb-2">
+                   <Key className="h-5 w-5 text-red-500" />
+                   <h4 className="font-bold text-navy text-lg">Keamanan Akun</h4>
+                 </div>
+                 <p className="text-xs text-muted-foreground -mt-3 mb-4">Kirimkan tautan reset password aman langsung ke email pengguna. Pengguna dapat mengubah passwordnya sendiri melalui tautan tersebut.</p>
+                 <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 font-bold" onClick={handleResetPassword} disabled={isSendingReset || !selectedUser.email}>
+                   {isSendingReset ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                   Kirim Link Reset Password
+                 </Button>
+                 {!selectedUser.email && <p className="text-xs text-red-500 mt-2">Tidak dapat mengirim link: Data email kosong.</p>}
+               </div>
 
               {/* SECTION: Bypass Feature Flags */}
               <div className="space-y-4">

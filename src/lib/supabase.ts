@@ -73,6 +73,7 @@ export interface AppSetting {
 
 export interface Profile {
   id:                     string
+  email?:                 string | null
   full_name:              string | null
   company:                string | null
   phone:                  string | null

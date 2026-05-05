@@ -6,12 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-type Tab = 'login' | 'register'
+type Tab = 'login' | 'register' | 'forgot-password'
 
 export default function AuthPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { signIn, signUp, authError, clearError, isLoading } = useAuthStore()
+  const { signIn, signUp, resetPassword, authError, clearError, isLoading } = useAuthStore()
 
   const [tab, setTab] = useState<Tab>(() => {
     const params = new URLSearchParams(window.location.search)
@@ -41,6 +41,8 @@ export default function AuthPage() {
   // Form State
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPass, setLoginPass] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSuccess, setResetSuccess] = useState(false)
 
   const [regName, setRegName] = useState('')
   const [regCompany, setRegCompany] = useState('')
@@ -133,6 +135,24 @@ export default function AuthPage() {
     }
   }
 
+  async function handleResetSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    clearError()
+    setRegError('')
+    
+    if (!resetEmail) {
+      setRegError('Masukkan email Anda')
+      return
+    }
+
+    try {
+      await resetPassword(resetEmail)
+      setResetSuccess(true)
+    } catch (err: any) {
+      setRegError(err.message || 'Gagal mengirim link reset password.')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col lg:flex-row font-sans">
       {/* ── Left panel: branding ── */}
@@ -211,6 +231,12 @@ export default function AuthPage() {
                     <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-5 top-5 text-slate-400 p-1 hover:text-navy transition-colors">{showPass ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
                   </div>
                 </div>
+              </div>
+              
+              <div className="flex justify-end">
+                <button type="button" onClick={() => { setTab('forgot-password'); clearError(); setRegError(''); setResetSuccess(false); }} className="text-sm font-bold text-navy/60 hover:text-gold transition-colors">
+                  Lupa Password?
+                </button>
               </div>
               
               <Button type="submit" variant="gold" className="w-full h-16 rounded-[22px] text-xl font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all" disabled={isLoading}>
@@ -384,6 +410,55 @@ export default function AuthPage() {
                     </Button>
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* FORGOT PASSWORD */}
+          {tab === 'forgot-password' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+              <div className="space-y-2">
+                <button onClick={() => setTab('login')} className="text-sm font-bold text-navy/60 hover:text-gold transition-colors mb-2 inline-flex items-center gap-1">
+                  ← Kembali ke Login
+                </button>
+                <h2 className="text-4xl font-serif font-black text-navy leading-none">Reset Password</h2>
+                <p className="text-slate-500 font-medium">Masukkan email Anda untuk menerima tautan pemulihan.</p>
+              </div>
+
+              {resetSuccess ? (
+                <div className="p-5 bg-emerald-50 border-2 border-emerald-200 rounded-[24px] space-y-3">
+                  <div className="flex gap-3 items-start">
+                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600 mt-0.5" />
+                    <div>
+                      <p className="font-black text-emerald-800 text-sm mb-1">Link Terkirim!</p>
+                      <p className="text-xs text-emerald-700 leading-relaxed">Periksa kotak masuk email <strong>{resetEmail}</strong> (dan folder spam) untuk petunjuk mengatur ulang kata sandi Anda.</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" className="w-full h-12 rounded-xl border-emerald-300 font-bold text-emerald-700 hover:bg-emerald-100" onClick={() => setTab('login')}>
+                    Kembali ke Halaman Login
+                  </Button>
+                </div>
+              ) : (
+                <form onSubmit={handleResetSubmit} className="space-y-6">
+                  {regError && (
+                    <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700 leading-relaxed">
+                      <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                      <p>{regError}</p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Terdaftar</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
+                      <Input className="pl-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium" type="email" placeholder="name@company.com" value={resetEmail} onChange={e => setResetEmail(e.target.value)} required />
+                    </div>
+                  </div>
+
+                  <Button type="submit" variant="gold" className="w-full h-16 rounded-[22px] text-xl font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <><span>KIRIM LINK RESET</span> <ArrowRight className="h-5 w-5 ml-3" /></>}
+                  </Button>
+                </form>
               )}
             </div>
           )}
