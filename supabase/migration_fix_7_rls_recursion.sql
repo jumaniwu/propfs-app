@@ -42,10 +42,18 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   plan_id             TEXT NOT NULL REFERENCES subscription_plans(id),
   status              TEXT NOT NULL DEFAULT 'active',
   started_at          TIMESTAMPTZ,
-  expires_at          TIMESTAMPTZ,
+  expired_at          TIMESTAMPTZ,
   midtrans_order_id   TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Fix column name for those who ran the previous version of this script
+DO $$
+BEGIN
+  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='subscriptions' AND column_name='expires_at') THEN
+    ALTER TABLE public.subscriptions RENAME COLUMN expires_at TO expired_at;
+  END IF;
+END $$;
 
 -- 4. Payments
 CREATE TABLE IF NOT EXISTS payments (
