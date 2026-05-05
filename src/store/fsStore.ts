@@ -124,16 +124,19 @@ export const useFSStore = create<FSStore>((set, get) => ({
       set({ projects: loadLocalProjects() })
       return
     }
-    const { user, profile } = useAuthStore.getState()
+    const { user } = useAuthStore.getState()
     if (!user) return
 
-    let query = supabase.from('projects').select('*')
-    // If not superadmin, only show own projects
-    if (profile?.role !== 'superadmin') {
-      query = query.eq('user_id', user.id)
-    }
+    // SECURITY: Always filter by the logged-in user's ID.
+    // Even superadmin only sees their own projects here.
+    // Superadmin access to ALL users' projects is exclusively
+    // handled in the Admin Panel (AdminDashboard) via a separate query.
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('updated_at', { ascending: false })
 
-    const { data, error } = await query.order('updated_at', { ascending: false })
     if (error) {
       console.error("[fsStore] fetchProjects error:", error)
       return
@@ -200,15 +203,16 @@ export const useFSStore = create<FSStore>((set, get) => ({
     }
     if (IS_DEV_MODE) return
 
-    const { user, profile } = useAuthStore.getState()
+    const { user } = useAuthStore.getState()
     if (!user) return
 
-    let query = supabase.from('projects').select('*').eq('id', id)
-    if (profile?.role !== 'superadmin') {
-      query = query.eq('user_id', user.id)
-    }
-
-    const { data } = await query.single()
+    // SECURITY: Always filter by user_id to prevent cross-user project access
+    const { data } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single()
     if (data) {
       const p = rowToProject(data)
       set({ currentProjectId: id, currentInputs: p.inputs, currentResults: p.results, currentStep: 1 })
@@ -259,16 +263,15 @@ export const useFSStore = create<FSStore>((set, get) => ({
       saveLocalProjects(next)
       return
     }
-    const { user, profile } = useAuthStore.getState()
+    const { user } = useAuthStore.getState()
     if (!user) throw new Error('Belum login')
     
-    // Perform delete in Supabase
-    let query = supabase.from('projects').delete().eq('id', id)
-    if (profile?.role !== 'superadmin') {
-      query = query.eq('user_id', user.id)
-    }
-
-    const { error } = await query
+    // SECURITY: Always enforce user_id so only the owner can delete their own project.
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
     if (error) {
       console.error("Supabase delete error:", error)
       throw error
