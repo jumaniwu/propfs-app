@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2 } from 'lucide-react'
+import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2, Check } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -50,6 +50,7 @@ export default function AuthPage() {
   const [regPass2, setRegPass2] = useState('')
   const [regError, setRegError] = useState('')
   const [regSuccess, setRegSuccess] = useState(false)
+  const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   // CAPTCHA State
   const [captchaNum1, setCaptchaNum1] = useState(0)
@@ -103,6 +104,10 @@ export default function AuthPage() {
     if (parseInt(captchaAnswer) !== captchaNum1 + captchaNum2) {
       setRegError('Jawaban keamanan (CAPTCHA) salah. Silakan coba lagi.')
       generateCaptcha()
+      return
+    }
+    if (!agreedToTerms) {
+      setRegError('Anda harus menyetujui Syarat & Ketentuan dan Kebijakan Privasi.')
       return
     }
 
@@ -357,6 +362,19 @@ export default function AuthPage() {
                         onKeyDown={e => e.key === 'Enter' && handleRegisterSubmit()}
                       />
                     </div>
+                  </div>
+
+                  {/* Terms & Privacy Agreement */}
+                  <div 
+                    className="flex items-start gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl cursor-pointer hover:bg-slate-100 transition-colors"
+                    onClick={() => setAgreedToTerms(!agreedToTerms)}
+                  >
+                    <div className={`w-5 h-5 mt-0.5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${agreedToTerms ? 'bg-gold border-gold' : 'bg-white border-slate-300'}`}>
+                      {agreedToTerms && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                    </div>
+                    <p className="text-sm text-slate-600 leading-snug">
+                      Saya telah membaca dan menyetujui <a href="/legal/terms" target="_blank" className="text-navy hover:text-gold font-bold transition-colors" onClick={e => e.stopPropagation()}>Syarat & Ketentuan</a> dan <a href="/legal/privacy" target="_blank" className="text-navy hover:text-gold font-bold transition-colors" onClick={e => e.stopPropagation()}>Kebijakan Privasi</a> PropFS.
+                    </p>
                   </div>
 
                   <div className="flex gap-4 pt-4">
