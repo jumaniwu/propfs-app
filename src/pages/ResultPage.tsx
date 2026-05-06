@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Edit, Printer, Download, RefreshCw, Lock } from 'lucide-react'
+import { Edit, Printer, Download, RefreshCw, Lock, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import Header from '@/components/layout/Header'
@@ -28,20 +28,28 @@ export default function ResultPage() {
   const currentInputs    = useFSStore(s => s.currentInputs)
   const currentResults   = useFSStore(s => s.currentResults)
   const loadProject      = useFSStore(s => s.loadProject)
+  const fetchProjects    = useFSStore(s => s.fetchProjects)
   const calculate        = useFSStore(s => s.calculate)
+
+  const [ready, setReady] = useState(false)
 
   const { canAccessCashflow, canAccessARAP, needsUpgradeForCashflow, isSubscriptionEnabled } = useSubscription()
 
   // Load project if needed
   useEffect(() => {
-    if (id && id !== currentProjectId) {
-      const project = projects.find(p => p.id === id)
-      if (project) {
-        loadProject(id)
-      } else {
-        navigate('/', { replace: true })
+    let cancelled = false
+    async function init() {
+      if (id) {
+        if (projects.length === 0) {
+          await fetchProjects()
+        }
+        await loadProject(id)
       }
+      if (!cancelled) setReady(true)
     }
+    setReady(false)
+    init()
+    return () => { cancelled = true }
   }, [id])
 
   // Auto-calculate if results missing
@@ -77,6 +85,18 @@ export default function ResultPage() {
     { value: 'bagihasil',    label: 'Bagi Hasil',        requiredPlan: null    },
     { value: 'sensitivitas', label: 'Sensitivitas',      requiredPlan: 'basic' as const },
   ] as const
+
+  // Loading guard — prevents blank page while fetching data
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-gold mx-auto" />
+          <p className="text-muted-foreground text-sm">Memuat hasil analisa...</p>
+        </div>
+      </div>
+    )
+  }
 
   // No results
   if (!currentResults) {

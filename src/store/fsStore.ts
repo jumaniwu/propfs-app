@@ -196,17 +196,22 @@ export const useFSStore = create<FSStore>((set, get) => ({
 
   // ── LOAD PROJECT ────────────────────────────────────────
   loadProject: async (id) => {
+    // Step 1: Show cached data immediately so UI doesn't go blank
     const cached = get().projects.find(p => p.id === id)
     if (cached) {
-      set({ currentProjectId: id, currentInputs: migrateInputs(cached.inputs), currentResults: cached.results, currentStep: 1 })
-      return
+      set({
+        currentProjectId: id,
+        currentInputs: migrateInputs(cached.inputs),
+        currentResults: cached.results,
+        currentStep: 1,
+      })
     }
     if (IS_DEV_MODE) return
 
     const { user } = useAuthStore.getState()
     if (!user) return
 
-    // SECURITY: Always filter by user_id to prevent cross-user project access
+    // Step 2: Always fetch fresh data from Supabase to ensure sync
     const { data } = await supabase
       .from('projects')
       .select('*')
@@ -215,7 +220,16 @@ export const useFSStore = create<FSStore>((set, get) => ({
       .single()
     if (data) {
       const p = rowToProject(data)
-      set({ currentProjectId: id, currentInputs: p.inputs, currentResults: p.results, currentStep: 1 })
+      set(state => ({
+        currentProjectId: id,
+        currentInputs: p.inputs,
+        currentResults: p.results,
+        currentStep: state.currentProjectId === id ? state.currentStep : 1,
+        // Also update the projects list with the fresh data
+        projects: state.projects.some(pr => pr.id === id)
+          ? state.projects.map(pr => pr.id === id ? p : pr)
+          : [p, ...state.projects],
+      }))
     }
   },
 

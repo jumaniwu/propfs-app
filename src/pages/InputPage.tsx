@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Save, Calculator, AlertCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Save, Calculator, AlertCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Header from '@/components/layout/Header'
 import ProgressSteps from '@/components/shared/ProgressSteps'
@@ -33,6 +33,7 @@ export default function InputPage() {
   const currentInputs    = useFSStore(s => s.currentInputs)
   const currentProjectId = useFSStore(s => s.currentProjectId)
   const projects         = useFSStore(s => s.projects)
+  const fetchProjects    = useFSStore(s => s.fetchProjects)
   const loadProject      = useFSStore(s => s.loadProject)
   const createProject    = useFSStore(s => s.createProject)
   const updateInputs     = useFSStore(s => s.updateInputs)
@@ -40,20 +41,30 @@ export default function InputPage() {
   const calculate        = useFSStore(s => s.calculate)
   const saveProject      = useFSStore(s => s.saveCurrentProject)
 
+  const [ready, setReady] = useState(false)
+
   // Load project from URL param
   useEffect(() => {
-    if (id && id !== currentProjectId) {
-      const project = projects.find(p => p.id === id)
-      if (project) {
-        loadProject(id)
+    let cancelled = false
+    async function init() {
+      if (id) {
+        // If project list is empty, fetch first to ensure the project exists
+        if (projects.length === 0) {
+          await fetchProjects()
+        }
+        await loadProject(id)
+        if (!cancelled) setReady(true)
+      } else if (!id && !currentProjectId) {
+        const newId = await createProject()
+        navigate(`/input/${newId}`, { replace: true })
+        if (!cancelled) setReady(true)
       } else {
-        // Create new project if id not found
-        navigate('/', { replace: true })
+        if (!cancelled) setReady(true)
       }
-    } else if (!id && !currentProjectId) {
-      const newId = createProject()
-      navigate(`/input/${newId}`, { replace: true })
     }
+    setReady(false)
+    init()
+    return () => { cancelled = true }
   }, [id])
 
   const handleChange = useCallback((partial: Partial<typeof currentInputs>) => {
@@ -74,9 +85,10 @@ export default function InputPage() {
     }
   }
 
-  function handleSaveDraft() {
-    saveProject()
-    toast({ title: 'Draft tersimpan', description: 'Data proyek berhasil disimpan.', variant: 'success' })
+  async function handleSaveDraft() {
+    await saveProject()
+    toast({ title: 'Draft tersimpan', description: 'Data proyek berhasil disimpan.', variant: 'success' as any })
+    navigate('/dashboard')
   }
 
   function handleCalculate() {
@@ -121,6 +133,17 @@ export default function InputPage() {
       case 7: return <Step7PotongandanBagiHasil inputs={currentInputs} onChange={handleChange} />
       default: return null
     }
+  }
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="h-10 w-10 animate-spin text-gold mx-auto" />
+          <p className="text-muted-foreground text-sm">Memuat data proyek...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
