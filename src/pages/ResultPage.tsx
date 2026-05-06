@@ -34,7 +34,7 @@ function ResultPageContent() {
 
   const [ready, setReady] = useState(false)
 
-  const { canAccessCashflow, canAccessARAP, needsUpgradeForCashflow, isSubscriptionEnabled } = useSubscription()
+  const { canAccessCashflow, canAccessARAP, needsUpgradeForCashflow, isSubscriptionEnabled, canExportPDF } = useSubscription()
 
   // Load project if needed
   useEffect(() => {
@@ -111,7 +111,7 @@ function ResultPageContent() {
             Lengkapi data input dan klik "Hitung Feasibility Study" untuk melihat hasil.
           </p>
           <div className="flex justify-center gap-3">
-            <Button variant="outline" onClick={() => navigate('/')}>Dashboard</Button>
+            <Button variant="outline" onClick={() => navigate('/dashboard')}>Dashboard</Button>
             <Button variant="gold" onClick={() => navigate(`/input/${id || currentProjectId}`)}>
               <Edit className="h-4 w-4 mr-2" />
               Lengkapi Data Input
@@ -190,7 +190,7 @@ function ResultPageContent() {
               {TABS.map(({ value, label, requiredPlan }) => {
                 const isLocked = isSubscriptionEnabled && requiredPlan && (
                   (requiredPlan === 'pro' && !canAccessCashflow) ||
-                  (requiredPlan === 'basic' && !useSubscription().canExportPDF)
+                  (requiredPlan === 'basic' && !canExportPDF)
                 )
                 return (
                   <TabsTrigger
