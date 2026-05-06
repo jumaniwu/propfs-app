@@ -19,7 +19,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
 import ErrorBoundary from '@/components/shared/ErrorBoundary'
 
-export default function ResultPage() {
+function ResultPageContent() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [tabValue, setTabValue] = useState('ringkasan')
@@ -126,9 +126,8 @@ export default function ResultPage() {
   const projectName = currentInputs.namaProyek || 'Proyek'
 
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-background">
-        <Header
+    <div className="min-h-screen bg-background">
+      <Header
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: projectName, href: `/input/${id}` },
@@ -255,6 +254,13 @@ export default function ResultPage() {
         </Tabs>
       </main>
     </div>
+  )
+}
+
+export default function ResultPage() {
+  return (
+    <ErrorBoundary>
+      <ResultPageContent />
     </ErrorBoundary>
   )
 }

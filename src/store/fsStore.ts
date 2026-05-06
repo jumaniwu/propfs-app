@@ -85,12 +85,12 @@ function migrateInputs(stored: FSInputs): FSInputs {
       ...def.potongan,
       ...(stored.potongan || {}),
       skenarioBagiHasil:
-        (stored.potongan?.skenarioBagiHasil?.length ?? 0) > 0
+        Array.isArray(stored.potongan?.skenarioBagiHasil) && stored.potongan!.skenarioBagiHasil.length > 0
           ? stored.potongan!.skenarioBagiHasil
           : def.potongan.skenarioBagiHasil,
     },
-    tipeBangunan: stored.tipeBangunan ?? [],
-    penjualan:    stored.penjualan    ?? [],
+    tipeBangunan: Array.isArray(stored.tipeBangunan) ? stored.tipeBangunan : [],
+    penjualan:    Array.isArray(stored.penjualan) ? stored.penjualan : [],
   }
 }
 
