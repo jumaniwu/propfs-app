@@ -199,10 +199,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
     // Step 1: Show cached data immediately so UI doesn't go blank
     const cached = get().projects.find(p => p.id === id)
     if (cached) {
+      const migratedInputs = migrateInputs(cached.inputs)
+      let freshResults = null
+      try { freshResults = calculateFS(migratedInputs) } catch { /* ignore */ }
+      
       set({
         currentProjectId: id,
-        currentInputs: migrateInputs(cached.inputs),
-        currentResults: cached.results,
+        currentInputs: migratedInputs,
+        currentResults: freshResults || cached.results,
         currentStep: 1,
       })
     }
@@ -220,15 +224,19 @@ export const useFSStore = create<FSStore>((set, get) => ({
       .single()
     if (data) {
       const p = rowToProject(data)
+      const inputs = migrateInputs(p.inputs)
+      let freshResults = null
+      try { freshResults = calculateFS(inputs) } catch { /* ignore */ }
+
       set(state => ({
         currentProjectId: id,
-        currentInputs: p.inputs,
-        currentResults: p.results,
+        currentInputs: inputs,
+        currentResults: freshResults || p.results,
         currentStep: state.currentProjectId === id ? state.currentStep : 1,
         // Also update the projects list with the fresh data
         projects: state.projects.some(pr => pr.id === id)
-          ? state.projects.map(pr => pr.id === id ? p : pr)
-          : [p, ...state.projects],
+          ? state.projects.map(pr => pr.id === id ? { ...p, inputs, results: freshResults || p.results } : pr)
+          : [{ ...p, inputs, results: freshResults || p.results }, ...state.projects],
       }))
     }
   },
