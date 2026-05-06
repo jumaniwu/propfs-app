@@ -17,6 +17,7 @@ import { useFSStore } from '@/store/fsStore'
 import { exportToJSON } from '@/utils/export'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
+import ErrorBoundary from '@/components/shared/ErrorBoundary'
 
 export default function ResultPage() {
   const { id } = useParams()
@@ -125,8 +126,9 @@ export default function ResultPage() {
   const projectName = currentInputs.namaProyek || 'Proyek'
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header
+    <ErrorBoundary>
+      <div className="min-h-screen bg-background">
+        <Header
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: projectName, href: `/input/${id}` },
@@ -253,5 +255,6 @@ export default function ResultPage() {
         </Tabs>
       </main>
     </div>
+    </ErrorBoundary>
   )
 }
