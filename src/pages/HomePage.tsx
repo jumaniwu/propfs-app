@@ -8,12 +8,15 @@ import {
   TrendingUp,
   FilePieChart,
   LayoutDashboard,
-  LogOut
+  LogOut,
+  CheckCircle2,
+  ArrowRight
 } from 'lucide-react'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { useFSStore } from '@/store/fsStore'
+import { useCostStore } from '@/store/costStore'
 import AIUsageWidget from '@/components/usage/AIUsageWidget'
 import SubscriptionCard from '@/components/subscription/SubscriptionCard'
 import { supabase } from '@/lib/supabase'
@@ -25,9 +28,15 @@ export default function HomePage() {
   const location = useLocation()
   const { profile, isFeatureEnabled, landingContent, signOut } = useAuthStore()
   const projects = useFSStore(s => s.projects)
+  const costProjects = useCostStore(s => s.savedProjects)
+  const activeCostProject = useCostStore(s => s.projectInfo)
 
   const [invoices, setInvoices] = useState<any[]>([])
   const { getCurrentPlan } = useAuthStore()
+
+  const totalRAB = costProjects.reduce((acc, p) => acc + (p.plan?.totalBaselineBudget || 0), 0)
+  const sangatLayakCount = projects.filter(p => p.results?.statusKelayakan === 'sangat_layak').length
+  const totalRABFormatted = totalRAB > 0 ? `Rp ${(totalRAB / 1000000000).toFixed(1)}M` : '—'
 
   // Show upgrade toast when redirected from a locked feature
   useEffect(() => {
@@ -149,6 +158,31 @@ export default function HomePage() {
             <p className="text-muted-foreground text-xl font-medium max-w-2xl">
               Pusat kendali operasional dan analisa sistem {landingContent.branding.siteName}.
             </p>
+
+            {/* Stats Bar */}
+            <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-sm border border-border/50 rounded-xl px-5 py-3 mt-4 w-fit shadow-sm">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total proyek</span>
+                <span className="text-base font-bold text-navy">{projects.length}</span>
+              </div>
+              <div className="w-px h-8 bg-border/60 mx-2" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sangat Layak</span>
+                <span className="text-base font-bold text-emerald-600">{sangatLayakCount} proyek</span>
+              </div>
+              <div className="w-px h-8 bg-border/60 mx-2" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Nilai RAB</span>
+                <span className="text-base font-bold text-navy">{totalRABFormatted}</span>
+              </div>
+              <div className="w-px h-8 bg-border/60 mx-2" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bergabung sejak</span>
+                <span className="text-base font-bold text-navy">
+                  {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-'}
+                </span>
+              </div>
+            </div>
           </div>
           
           <Button 
@@ -174,8 +208,7 @@ export default function HomePage() {
                    <th className="px-4 py-3 border-r border-[#7ab332]">Nama Produk</th>
                    <th className="px-4 py-3 border-r border-[#7ab332] w-32">Paket</th>
                    <th className="px-4 py-3 border-r border-[#7ab332] w-24">Proyek</th>
-                   <th className="px-4 py-3 border-r border-[#7ab332] w-32">Tanggal Join</th>
-                   <th className="px-4 py-3 w-40 text-center">Link Login</th>
+                   <th className="px-4 py-3 w-40">Tanggal Join</th>
                  </tr>
                </thead>
                <tbody>
@@ -188,19 +221,14 @@ export default function HomePage() {
                       <button onClick={() => navigate('/pricing')} className="text-blue-600 font-medium hover:underline mt-1 font-normal flex items-center gap-1">↑ Upgrade Paket</button>
                     </td>
                     <td className="px-4 py-5 border-r border-b align-top font-bold text-navy">{projects.length}</td>
-                    <td className="px-4 py-5 border-r border-b align-top text-xs text-muted-foreground whitespace-nowrap">
+                    <td className="px-4 py-5 border-b align-top text-xs text-muted-foreground whitespace-nowrap">
                       {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-'}
-                    </td>
-                    <td className="px-4 py-5 border-b text-center align-top">
-                      <Button size="sm" className="bg-navy hover:bg-navy/90 text-white font-bold w-full" onClick={() => navigate('/dashboard')}>
-                        Akses Sistem
-                      </Button>
                     </td>
                   </tr>
                   
                   {/* Invoices List Row */}
                   <tr>
-                    <td colSpan={6} className="px-6 py-6 bg-slate-50 border-b">
+                    <td colSpan={5} className="px-6 py-6 bg-slate-50 border-b">
                       <div className="space-y-6">
                         {invoices.length === 0 && (
                            <div className="flex flex-col gap-1.5 border-l-4 border-emerald-500 pl-4 py-1">
@@ -220,15 +248,19 @@ export default function HomePage() {
                                </div>
                                {isPaid ? (
                                  <div className="text-muted-foreground text-xs font-medium flex items-center gap-2">
-                                   <span className="text-blue-600 hover:underline cursor-pointer" onClick={() => navigate('/profile')}>Invoice</span> (Sudah Dibayar)
+                                   <span className="text-emerald-600 flex items-center gap-1 font-bold">
+                                     <CheckCircle2 className="w-3.5 h-3.5" /> Lunas
+                                   </span>
+                                   ·
+                                   <span className="text-blue-600 hover:underline cursor-pointer" onClick={() => navigate('/profile')}>Invoice No: {inv.invoice_number}</span>
                                  </div>
                                ) : (
                                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-1">
                                     <span className="text-muted-foreground text-xs font-medium">
                                       Invoice No: <span className="font-bold text-navy">{inv.invoice_number}</span> ({new Date(inv.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})})
                                     </span>
-                                    <Button size="sm" className="h-7 px-4 text-xs bg-blue-600 hover:bg-blue-700 font-bold rounded shadow-sm self-start sm:self-auto" onClick={() => navigate(`/payment/${inv.id}`)}>
-                                       Bayar
+                                    <Button size="sm" className="h-7 px-4 text-xs bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm self-start sm:self-auto" onClick={() => navigate(`/payment/${inv.id}`)}>
+                                       Bayar sekarang
                                     </Button>
                                  </div>
                                )}
@@ -245,22 +277,32 @@ export default function HomePage() {
 
         {/* Feature Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-          {features.map((feature) => (
+          {features.map((feature) => {
+            const isActiveCC = feature.id === 'cost_control' && activeCostProject
+            return (
             <div 
               key={feature.id}
               onClick={() => feature.available && navigate(feature.path)}
               className={`
-                group relative bg-white border border-border shadow-sm rounded-3xl p-8 
+                group relative bg-white shadow-sm rounded-3xl p-8 
                 transition-all duration-300 overflow-hidden
                 ${feature.available 
-                  ? 'cursor-pointer hover:bg-slate-50 hover:border-gold/30 hover:shadow-xl hover:shadow-gold/5 hover:-translate-y-1' 
+                  ? 'cursor-pointer hover:bg-slate-50 hover:shadow-xl hover:shadow-gold/5 hover:-translate-y-1' 
                   : 'opacity-40 grayscale cursor-not-allowed border-dashed'
                 }
+                ${isActiveCC ? 'border-2 border-[#639922]' : 'border border-border hover:border-slate-300'}
               `}
             >
               <div className="relative z-10 space-y-6">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 bg-slate-100 text-navy`}>
-                  {feature.icon}
+                <div className="flex items-start justify-between">
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 bg-slate-100 text-navy">
+                    {feature.icon}
+                  </div>
+                  {isActiveCC && (
+                    <div className="bg-[#639922]/10 text-[#639922] text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">
+                      Sedang aktif
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -268,10 +310,17 @@ export default function HomePage() {
                   <p className="text-muted-foreground text-sm font-medium">
                     {feature.desc}
                   </p>
+                  {isActiveCC && (
+                    <p className="text-[#639922] text-[10px] font-medium pt-2">
+                      Lanjutkan: {activeCostProject.projectName} · {activeCostProject.location} →
+                    </p>
+                  )}
                 </div>
               </div>
+              <ArrowRight className={`absolute bottom-6 right-6 w-5 h-5 transition-transform duration-200 ${feature.available ? 'text-navy/20 group-hover:text-navy/50 group-hover:translate-x-1' : 'text-slate-200'}`} />
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Stats / Recent Activity Section */}
