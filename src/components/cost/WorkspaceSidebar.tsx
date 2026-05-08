@@ -7,13 +7,15 @@ import {
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 
+import { AppFeature } from '@/lib/supabase'
+
 export type WorkspaceTab = 'overview' | 'rab' | 'material' | 'realisasi' | 'kurva_s' | 'laporan' | 'settings'
 
 interface SidebarItem {
   key: WorkspaceTab
   label: string
   icon: React.ReactNode
-  feature?: string
+  feature?: AppFeature
   disabled?: boolean
 }
 
