@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { LegalModal } from '@/components/ui/LegalModal'
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -45,6 +46,8 @@ export default function LandingPage() {
   const [contactMsg, setContactMsg] = useState('')
   const [contactSending, setContactSending] = useState(false)
   const [contactSent, setContactSent] = useState(false)
+
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null)
 
   async function handleContactSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -629,12 +632,28 @@ export default function LandingPage() {
               {footer.copyrightText.replace('{year}', String(new Date().getFullYear()))}
             </p>
             <div className="flex gap-8 text-xs font-bold uppercase tracking-widest text-white/40">
-              <Link to="/legal/privacy" className="hover:text-gold transition-colors">Privacy</Link>
-              <Link to="/legal/terms" className="hover:text-gold transition-colors">Terms</Link>
+              <button
+                onClick={() => setLegalModal('privacy')}
+                className="hover:text-gold transition-colors text-xs font-bold uppercase tracking-widest text-white/40"
+              >
+                Privacy
+              </button>
+              <button
+                onClick={() => setLegalModal('terms')}
+                className="hover:text-gold transition-colors text-xs font-bold uppercase tracking-widest text-white/40"
+              >
+                Terms
+              </button>
             </div>
           </div>
         </div>
       </footer>
+      
+      <LegalModal
+        type={legalModal!}
+        isOpen={legalModal !== null}
+        onClose={() => setLegalModal(null)}
+      />
     </div>
   )
 }

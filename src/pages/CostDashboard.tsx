@@ -151,7 +151,7 @@ export default function CostDashboard() {
 
       // Items
       items.forEach(c => {
-        const r = ws1.addRow([no++, c.itemCode || '-', c.name, c.unit, c.plannedVolume, c.unitPrice, c.totalPlannedCost])
+        const r = ws1.addRow([no++, '-', c.name, c.unit, c.plannedVolume, c.unitPrice, c.totalPlannedCost])
         r.font = { name: 'Calibri', size: 10 }
         r.getCell(5).numFmt = '#,##0.00'
         r.getCell(6).numFmt = '"Rp "#,##0'

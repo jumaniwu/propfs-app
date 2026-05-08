@@ -16,7 +16,7 @@ export default function CostReportPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  const { projectInfo, activePlan, realisasiEntries, getActualProgressPct, getTotalRealisasi, setProject } = useCostStore()
+  const { projectInfo, activePlan, realisasiEntries, getActualProgressPct, getTotalRealisasi } = useCostStore()
 
   useEffect(() => {
     // If we land here directly, we must ensure project is loaded.

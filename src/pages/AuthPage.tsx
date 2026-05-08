@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { LegalModal } from '@/components/ui/LegalModal'
 import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2, Check } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export default function AuthPage() {
   
   const [regStep, setRegStep] = useState<1 | 2>(1)
   const [showPass, setShowPass] = useState(false)
+  const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null)
   
   // Form State
   const [loginEmail, setLoginEmail] = useState('')
@@ -363,6 +365,27 @@ export default function AuthPage() {
                     )}
                   </div>
                   
+                  {/* Terms text */}
+                  <div className="text-xs text-slate-400 text-center leading-relaxed px-2">
+                    Dengan mendaftar, Anda menyetujui{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModal('terms')}
+                      className="text-gold underline hover:text-gold/80 font-medium"
+                    >
+                      Syarat & Ketentuan
+                    </button>
+                    {' '}dan{' '}
+                    <button
+                      type="button"
+                      onClick={() => setLegalModal('privacy')}
+                      className="text-gold underline hover:text-gold/80 font-medium"
+                    >
+                      Kebijakan Privasi
+                    </button>
+                    {' '}PropFS.
+                  </div>
+
                   {/* Math CAPTCHA */}
                   <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
@@ -399,7 +422,7 @@ export default function AuthPage() {
                       {agreedToTerms && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                     </div>
                     <p className="text-sm text-slate-600 leading-snug">
-                      Saya telah membaca dan menyetujui <a href="/legal/terms" target="_blank" className="text-navy hover:text-gold font-bold transition-colors" onClick={e => e.stopPropagation()}>Syarat & Ketentuan</a> dan <a href="/legal/privacy" target="_blank" className="text-navy hover:text-gold font-bold transition-colors" onClick={e => e.stopPropagation()}>Kebijakan Privasi</a> PropFS.
+                      Saya telah membaca dan menyetujui Syarat & Ketentuan dan Kebijakan Privasi di atas.
                     </p>
                   </div>
 
@@ -464,6 +487,12 @@ export default function AuthPage() {
           )}
         </div>
       </div>
+      
+      <LegalModal
+        type={legalModal!}
+        isOpen={legalModal !== null}
+        onClose={() => setLegalModal(null)}
+      />
     </div>
   )
 }
