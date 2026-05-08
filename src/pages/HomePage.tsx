@@ -27,15 +27,15 @@ export default function HomePage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { profile, isFeatureEnabled, landingContent, signOut } = useAuthStore()
-  const projects = useFSStore(s => s.projects)
-  const costProjects = useCostStore(s => s.savedProjects)
+  const projects = useFSStore(s => s.projects) || []
+  const costProjects = useCostStore(s => s.savedProjects) || []
   const activeCostProject = useCostStore(s => s.projectInfo)
 
   const [invoices, setInvoices] = useState<any[]>([])
   const { getCurrentPlan } = useAuthStore()
 
-  const totalRAB = costProjects.reduce((acc, p) => acc + (p.plan?.totalBaselineBudget || 0), 0)
-  const sangatLayakCount = projects.filter(p => p.results?.statusKelayakan === 'sangat_layak').length
+  const totalRAB = costProjects.reduce((acc, p) => acc + (p?.plan?.totalBaselineBudget || 0), 0)
+  const sangatLayakCount = projects.filter(p => p?.results?.statusKelayakan === 'sangat_layak').length
   const totalRABFormatted = totalRAB > 0 ? `Rp ${(totalRAB / 1000000000).toFixed(1)}M` : '—'
 
   // Show upgrade toast when redirected from a locked feature
@@ -82,17 +82,35 @@ export default function HomePage() {
          return
       }
 
-      // Fetch
-      let localInvoices = []
+      // Fetch from Supabase First
+      let allInvoices: any[] = []
+      try {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('user_id', profile.id)
+          .order('created_at', { ascending: false })
+          
+        if (data && !error) {
+          allInvoices = [...data]
+        }
+      } catch (err) {
+        console.error('Error fetching invoices from Supabase:', err)
+      }
+
+      // Merge with local mock invoices (if any)
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
         if (key && key.startsWith('propfs_invoice_')) {
            const inv = JSON.parse(localStorage.getItem(key) || '{}')
-           if (inv.user_id === profile.id) localInvoices.push(inv)
+           if (inv.user_id === profile.id && !allInvoices.find(existing => existing.id === inv.id)) {
+             allInvoices.push(inv)
+           }
         }
       }
-      localInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      setInvoices(localInvoices as any)
+      
+      allInvoices.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      setInvoices(allInvoices)
     }
 
     handleIncomingInvoiceAndFetch()
@@ -213,7 +231,9 @@ export default function HomePage() {
                </thead>
                <tbody>
                   <tr>
-                    <td className="px-4 py-5 border-r border-b font-medium text-emerald-600 align-top">Active</td>
+                    <td className={`px-4 py-5 border-r border-b font-medium align-top ${getCurrentPlan() !== 'free' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                      {getCurrentPlan() !== 'free' ? 'Active' : 'Free / Trial'}
+                    </td>
                     <td className="px-4 py-5 border-r border-b font-bold text-navy align-top">PropFS - Feasibility Study & Cost Control System</td>
                     <td className="px-4 py-5 border-r border-b align-top text-xs font-bold text-navy">
                       {getCurrentPlan().toUpperCase()}
@@ -334,7 +354,7 @@ export default function HomePage() {
             </div>
             
             <div className="space-y-4">
-              {projects.slice(0, 3).map(p => (
+              {[...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3).map(p => (
                 <div 
                   key={p.id} 
                   className="flex items-center justify-between p-5 rounded-[24px] bg-slate-50 hover:bg-slate-100 transition-all border border-transparent hover:border-border cursor-pointer group"
