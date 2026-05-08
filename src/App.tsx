@@ -25,6 +25,7 @@ const AdminStaff      = lazy(() => import('./pages/admin/AdminEmployeeManager'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
+const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
 const LegalPage   = lazy(() => import('./pages/LegalPage'))
 
@@ -100,6 +101,7 @@ export default function App() {
           
           {/* Cost Control Module — blocked for free plan */}
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
+          <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 
           {/* ── Super Admin Only ── */}
           <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>

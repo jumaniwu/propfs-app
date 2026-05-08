@@ -3,10 +3,11 @@ import {
   ArrowLeft, Calculator, LineChart, FileSpreadsheet, PackageOpen,
   ReceiptIcon, TrendingUp, Download, FolderPlus, Building2,
   RefreshCw, Trash2, ArrowUpRight, ArrowDownRight, Minus,
-  Info, Target, AlertTriangle, CheckCircle2
+  Info, Target, AlertTriangle, CheckCircle2, Presentation
 } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import * as xlsx from 'xlsx'
+import ExcelJS from 'exceljs'
+import { saveAs } from 'file-saver'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
@@ -83,75 +84,324 @@ export default function CostDashboard() {
   const dateStr = () => new Date().toLocaleDateString('id-ID').replace(/\//g, '')
   const projName = projectInfo?.projectName ?? 'Proyek'
 
-  const exportRAB = () => {
+  // ── Global Header Helper ─────────────────────────────────────────
+  const addGlobalHeader = (ws: ExcelJS.Worksheet, reportName: string, colCount: number) => {
+    ws.mergeCells(1, 1, 1, colCount)
+    const titleCell = ws.getCell(1, 1)
+    titleCell.value = `PROPFS — ${reportName.toUpperCase()}`
+    titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1a2744' } }
+    
+    ws.mergeCells(2, 1, 2, colCount)
+    ws.getCell(2, 1).value = `Nama Proyek  : ${projectInfo?.projectName || '-'}`
+    ws.getCell(2, 1).font = { name: 'Calibri', size: 10 }
+
+    ws.mergeCells(3, 1, 3, colCount)
+    ws.getCell(3, 1).value = `Lokasi       : ${projectInfo?.location || '-'}`
+    ws.getCell(3, 1).font = { name: 'Calibri', size: 10 }
+
+    ws.mergeCells(4, 1, 4, colCount)
+    ws.getCell(4, 1).value = `Dicetak      : ${new Date().toLocaleString('id-ID')}`
+    ws.getCell(4, 1).font = { name: 'Calibri', size: 10 }
+  }
+
+  const formatHeaderRow = (row: ExcelJS.Row) => {
+    row.eachCell(cell => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a2744' } }
+      cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+      cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} }
+    })
+  }
+
+  const exportRAB = async () => {
     if (!activePlan) return
-    const wb = xlsx.utils.book_new()
+    const wb = new ExcelJS.Workbook()
+    
+    // ── Sheet 1: RAB Proyek ──
+    const ws1 = wb.addWorksheet('RAB Proyek')
+    addGlobalHeader(ws1, 'Laporan Rencana Anggaran Biaya (RAB)', 7)
+    
+    ws1.columns = [
+      { key: 'no', width: 5 },
+      { key: 'code', width: 12 },
+      { key: 'name', width: 40 },
+      { key: 'unit', width: 10 },
+      { key: 'vol', width: 12 },
+      { key: 'price', width: 18 },
+      { key: 'total', width: 20 },
+    ]
+
+    const headerRow = ws1.addRow(['No', 'Kode Item', 'Uraian Pekerjaan', 'Satuan', 'Volume', 'Harga Satuan', 'Total Harga'])
+    formatHeaderRow(headerRow)
+
     const grouped = activePlan.components.reduce((acc, c) => {
       const g = c.groupName || 'Lainnya'; if (!acc[g]) acc[g] = []; acc[g].push(c); return acc
     }, {} as Record<string, typeof activePlan.components>)
-    const rows: any[] = []
+
     let no = 1
     Object.entries(grouped).forEach(([grp, items]) => {
-      rows.push({ 'No': '', 'Uraian Pekerjaan': grp.toUpperCase(), 'Satuan': '', 'Volume': '', 'Harga Satuan': '', 'Total': '' })
+      // Category Header
+      const catRow = ws1.addRow(['', '', grp.toUpperCase(), '', '', '', ''])
+      ws1.mergeCells(`A${catRow.number}:G${catRow.number}`)
+      const catCell = ws1.getCell(`A${catRow.number}`)
+      catCell.value = grp.toUpperCase()
+      catCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFc9a84c' } }
+      catCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1a2744' } }
+      catCell.border = { bottom: { style: 'medium' } }
+
+      // Items
       items.forEach(c => {
-        rows.push({ 'No': no++, 'Uraian Pekerjaan': c.name, 'Satuan': c.unit, 'Volume': c.plannedVolume, 'Harga Satuan': c.unitPrice, 'Total': c.totalPlannedCost })
+        const r = ws1.addRow([no++, c.itemCode || '-', c.name, c.unit, c.plannedVolume, c.unitPrice, c.totalPlannedCost])
+        r.font = { name: 'Calibri', size: 10 }
+        r.getCell(5).numFmt = '#,##0.00'
+        r.getCell(6).numFmt = '"Rp "#,##0'
+        r.getCell(7).numFmt = '"Rp "#,##0'
+        r.getCell(1).alignment = { horizontal: 'center' }
+        r.getCell(4).alignment = { horizontal: 'center' }
       })
+
+      // Subtotal
       const sub = items.reduce((s, c) => s + c.totalPlannedCost, 0)
-      rows.push({ 'No': '', 'Uraian Pekerjaan': `Sub Total ${grp}`, 'Satuan': '', 'Volume': '', 'Harga Satuan': '', 'Total': sub })
-      rows.push({})
+      const subRow = ws1.addRow(['', '', `Subtotal ${grp}`, '', '', '', sub])
+      subRow.getCell(3).font = { name: 'Calibri', size: 10, bold: true }
+      subRow.getCell(7).font = { name: 'Calibri', size: 10, bold: true }
+      subRow.getCell(7).numFmt = '"Rp "#,##0'
+      subRow.eachCell(c => {
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF3DE' } }
+        c.border = { top: { style: 'medium', color: { argb: 'FF3B6D11' } } }
+      })
+      ws1.addRow([]) // empty row
     })
-    rows.push({ 'No': '', 'Uraian Pekerjaan': 'TOTAL ANGGARAN', 'Satuan': '', 'Volume': '', 'Harga Satuan': '', 'Total': totalRAB })
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(rows), 'RAB')
-    // Summary sheet
-    const summary = Object.entries(grouped).map(([g, items]) => ({ 'Kategori': g, 'Total (Rp)': items.reduce((s, c) => s + c.totalPlannedCost, 0), 'Persentase (%)': ((items.reduce((s, c) => s + c.totalPlannedCost, 0) / totalRAB) * 100).toFixed(1) }))
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(summary), 'Summary')
-    xlsx.writeFile(wb, `RAB_${projName}_${dateStr()}.xlsx`)
-  }
 
-  const exportRealisasi = () => {
-    if (realisasiEntries.length === 0) return alert('Belum ada data realisasi biaya.')
-    const wb = xlsx.utils.book_new()
-    const rows = realisasiEntries.map((e, i) => ({
-      'No': i + 1,
-      'Tanggal': e.tanggal || '-',
-      'Uraian': e.tipe === 'material' ? (e.namaMaterial || e.keterangan) : (e.jenisKerja || e.keterangan),
-      'Kategori': e.tipe,
-      'Jumlah (Rp)': e.jumlah,
-      'Metode Bayar': e.metodePembayaran || '-',
-      'Keterangan': e.keterangan || '-',
-    }))
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(rows), 'Realisasi Biaya')
-    const totalMat = realisasiEntries.filter(e => e.tipe === 'material').reduce((s, e) => s + e.jumlah, 0)
-    const totalUpah = realisasiEntries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0)
-    const summary = [
-      { 'Keterangan': 'Total RAB', 'Nilai (Rp)': totalRAB, 'Persentase': '100%' },
-      { 'Keterangan': 'Total Realisasi', 'Nilai (Rp)': totalRealisasi, 'Persentase': totalRAB > 0 ? ((totalRealisasi/totalRAB)*100).toFixed(1)+'%' : '-' },
-      { 'Keterangan': '  - Material', 'Nilai (Rp)': totalMat, 'Persentase': totalRealisasi > 0 ? ((totalMat/totalRealisasi)*100).toFixed(1)+'%' : '-' },
-      { 'Keterangan': '  - Upah', 'Nilai (Rp)': totalUpah, 'Persentase': totalRealisasi > 0 ? ((totalUpah/totalRealisasi)*100).toFixed(1)+'%' : '-' },
-      { 'Keterangan': 'Deviasi (%)', 'Nilai (Rp)': '', 'Persentase': deviasiPct + '%' },
-      { 'Keterangan': 'Status', 'Nilai (Rp)': '', 'Persentase': isOverBudget ? 'Cost Overrun' : 'Under Budget' },
+    // Grand Total
+    const gtRow = ws1.addRow(['', '', 'GRAND TOTAL ANGGARAN', '', '', '', totalRAB])
+    gtRow.eachCell(c => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a2744' } }
+      c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      c.border = { top: { style: 'double' } }
+    })
+    gtRow.getCell(7).numFmt = '"Rp "#,##0'
+
+    // ── Sheet 2: Summary RAB ──
+    const ws2 = wb.addWorksheet('Summary RAB')
+    addGlobalHeader(ws2, 'Ringkasan Anggaran Biaya', 4)
+    ws2.columns = [
+      { key: 'cat', width: 35 },
+      { key: 'count', width: 12 },
+      { key: 'total', width: 20 },
+      { key: 'pct', width: 25 },
     ]
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(summary), 'Summary')
-    xlsx.writeFile(wb, `Realisasi_${projName}_${dateStr()}.xlsx`)
+    const sumHeader = ws2.addRow(['Nama Kategori', 'Jumlah Item', 'Total Nilai (Rp)', 'Persentase dari Total RAB (%)'])
+    formatHeaderRow(sumHeader)
+
+    Object.entries(grouped).forEach(([g, items]) => {
+      const total = items.reduce((s, c) => s + c.totalPlannedCost, 0)
+      const pct = totalRAB > 0 ? total / totalRAB : 0
+      const r = ws2.addRow([g, items.length, total, pct])
+      r.font = { name: 'Calibri', size: 10 }
+      r.getCell(2).alignment = { horizontal: 'center' }
+      r.getCell(3).numFmt = '"Rp "#,##0'
+      r.getCell(4).numFmt = '0.00"%"'
+      // Add data bar simulation
+      r.getCell(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } }
+    })
+
+    const gtSumRow = ws2.addRow(['GRAND TOTAL', activePlan.components.length, totalRAB, 1])
+    gtSumRow.eachCell(c => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a2744' } }
+      c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+    })
+    gtSumRow.getCell(3).numFmt = '"Rp "#,##0'
+    gtSumRow.getCell(4).numFmt = '0.00"%"'
+
+    const buffer = await wb.xlsx.writeBuffer()
+    saveAs(new Blob([buffer]), `RAB_${projName}_${dateStr()}.xlsx`)
   }
 
-  const exportMaterial = () => {
+  const exportRealisasi = async () => {
+    if (realisasiEntries.length === 0) return alert('Belum ada data realisasi biaya.')
+    const wb = new ExcelJS.Workbook()
+    
+    // ── Sheet 1: Realisasi Biaya ──
+    const ws1 = wb.addWorksheet('Realisasi Biaya')
+    addGlobalHeader(ws1, 'Laporan Realisasi Biaya', 7)
+    
+    ws1.columns = [
+      { key: 'no', width: 5 },
+      { key: 'date', width: 14 },
+      { key: 'desc', width: 35 },
+      { key: 'cat', width: 15 },
+      { key: 'amount', width: 18 },
+      { key: 'method', width: 16 },
+      { key: 'notes', width: 30 },
+    ]
+
+    const header = ws1.addRow(['No', 'Tanggal', 'Uraian', 'Kategori', 'Jumlah (Rp)', 'Metode Bayar', 'Keterangan'])
+    formatHeaderRow(header)
+
+    realisasiEntries.forEach((e, i) => {
+      const r = ws1.addRow([
+        i + 1,
+        e.tanggal ? new Date(e.tanggal) : '-',
+        e.tipe === 'material' ? (e.namaMaterial || e.keterangan) : (e.jenisKerja || e.keterangan),
+        e.tipe.toUpperCase(),
+        e.jumlah,
+        e.metodePembayaran?.toUpperCase() || '-',
+        e.keterangan || '-'
+      ])
+      r.font = { name: 'Calibri', size: 10 }
+      r.getCell(1).alignment = { horizontal: 'center' }
+      r.getCell(2).numFmt = 'DD MMM YYYY'
+      r.getCell(2).alignment = { horizontal: 'center' }
+      r.getCell(4).alignment = { horizontal: 'center' }
+      r.getCell(5).numFmt = '"Rp "#,##0'
+      r.getCell(6).alignment = { horizontal: 'center' }
+      
+      if (i % 2 === 1) {
+        r.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } })
+      }
+    })
+
+    const totRow = ws1.addRow(['', '', 'TOTAL REALISASI BIAYA', '', totalRealisasi, '', ''])
+    totRow.eachCell(c => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF3DE' } }
+      c.font = { name: 'Calibri', size: 10, bold: true }
+      c.border = { top: { style: 'medium', color: { argb: 'FF3B6D11' } } }
+    })
+    totRow.getCell(5).numFmt = '"Rp "#,##0'
+
+    // ── Sheet 2: Summary ──
+    const ws2 = wb.addWorksheet('Summary')
+    addGlobalHeader(ws2, 'Executive Summary - Cost Control', 2)
+    ws2.columns = [{ width: 35 }, { width: 25 }]
+
+    const sHead = ws2.addRow(['Keterangan', 'Nilai'])
+    formatHeaderRow(sHead)
+
+    const sisa = totalRAB - totalRealisasi
+    const pct = totalRAB > 0 ? totalRealisasi / totalRAB : 0
+    const deviasi = pct * 100 - actualProgressPct
+    
+    // SPI/CPI placeholder values (since they require month elapsed logic from Kurva S)
+    const spi = actualProgressPct > 0 ? (actualProgressPct / Math.max(1, pct*100)) : 1 
+    const cpi = totalRealisasi > 0 ? ((actualProgressPct/100 * totalRAB) / totalRealisasi) : 1
+    const eac = cpi > 0 ? totalRAB / cpi : totalRAB
+
+    const addSumRow = (label: string, val: any, isRp: boolean, color?: string, bg?: string) => {
+      const r = ws2.addRow([label, val])
+      r.font = { name: 'Calibri', size: 10, bold: !!color, color: { argb: color || 'FF000000' } }
+      if (bg) r.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } })
+      if (isRp) r.getCell(2).numFmt = '"Rp "#,##0'
+      else if (typeof val === 'number' && label.includes('%')) r.getCell(2).numFmt = '0.00"%"'
+    }
+
+    addSumRow('Total Anggaran (RAB)', totalRAB, true)
+    addSumRow('Total Realisasi', totalRealisasi, true)
+    addSumRow('Sisa Anggaran', sisa, true, sisa >= 0 ? 'FF3B6D11' : 'FFA32D2D', sisa < 0 ? 'FFFCEBEB' : undefined)
+    addSumRow('% Terpakai', pct, false)
+    addSumRow('Progress Fisik Aktual', actualProgressPct / 100, false)
+    addSumRow('Deviasi Cost vs Progress', deviasi / 100, false, deviasi <= 0 ? 'FF3B6D11' : 'FFA32D2D', deviasi > 0 ? 'FFFCEBEB' : undefined)
+    
+    const statusText = deviasi > 5 ? '⚠ Perlu Perhatian' : deviasi < -5 ? '✓ Sangat Efisien' : '✓ On Track'
+    addSumRow('Status', statusText, false, deviasi > 5 ? 'FFA32D2D' : 'FF3B6D11', deviasi > 5 ? 'FFFCEBEB' : undefined)
+    
+    addSumRow('SPI', `${spi.toFixed(2)} — ${spi < 1 ? 'Behind Sched.' : 'On Track'}`, false, spi < 1 ? 'FFA32D2D' : 'FF3B6D11')
+    addSumRow('CPI', `${cpi.toFixed(2)} — ${cpi < 1 ? 'Over Budget' : 'Under Budget'}`, false, cpi < 1 ? 'FFA32D2D' : 'FF3B6D11')
+    addSumRow('EAC (Forecast Akhir)', eac, true)
+
+    const buffer = await wb.xlsx.writeBuffer()
+    saveAs(new Blob([buffer]), `Realisasi_${projName}_${dateStr()}.xlsx`)
+  }
+
+  const exportMaterial = async () => {
     const mat = useCostStore.getState().materialSchedule
     if (mat.length === 0) return alert('Belum ada data Material Schedule. Generate terlebih dahulu di tab Material.')
-    const wb = xlsx.utils.book_new()
-    const rows = mat.map((m, i) => ({
-      'No': i+1, 'Nama Material': m.materialName, 'Satuan': m.unit,
-      'Vol. Kebutuhan': m.estimatedVolume, 'Harga Satuan (Rp)': m.estimatedUnitPrice,
-      'Total Estimasi (Rp)': m.estimatedTotalCost, 'Lead Time (Hari)': m.leadTimeDays ?? '',
-      'Status': m.status ?? 'belum_order', 'Supplier': m.supplier ?? '',
-      'Qty Aktual': m.actualQty ?? '', 'Harga Aktual': m.actualUnitPrice ?? '',
-      'Total Aktual': m.actualTotalCost ?? '', 'Tgl Order': m.orderDate ?? '', 'Tgl Datang': m.arrivalDate ?? '',
-    }))
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(rows), 'Material Schedule')
-    xlsx.writeFile(wb, `MaterialSchedule_${projName}_${dateStr()}.xlsx`)
+    const wb = new ExcelJS.Workbook()
+
+    // ── Sheet 1: Material Schedule ──
+    const ws1 = wb.addWorksheet('Material Schedule')
+    addGlobalHeader(ws1, 'Laporan Material Schedule', 9)
+
+    ws1.columns = [
+      { key: 'no', width: 5 },
+      { key: 'name', width: 30 },
+      { key: 'spec', width: 20 },
+      { key: 'unit', width: 10 },
+      { key: 'vol', width: 14 },
+      { key: 'price', width: 18 },
+      { key: 'total', width: 20 },
+      { key: 'lead', width: 12 },
+      { key: 'status', width: 18 },
+    ]
+
+    const header = ws1.addRow(['No', 'Nama Material', 'Spesifikasi', 'Satuan', 'Volume Total', 'Harga Satuan', 'Total Nilai', 'Lead Time', 'Status'])
+    formatHeaderRow(header)
+
+    let matTotal = 0
+    mat.forEach((m, i) => {
+      matTotal += m.estimatedTotalCost
+      const r = ws1.addRow([
+        i + 1, m.materialName, m.supplier || '-', m.unit, m.estimatedVolume, m.estimatedUnitPrice, m.estimatedTotalCost, m.leadTimeDays || '-', m.status || 'belum_order'
+      ])
+      r.font = { name: 'Calibri', size: 10 }
+      r.getCell(1).alignment = { horizontal: 'center' }
+      r.getCell(4).alignment = { horizontal: 'center' }
+      r.getCell(5).numFmt = '#,##0.00'
+      r.getCell(6).numFmt = '"Rp "#,##0'
+      r.getCell(7).numFmt = '"Rp "#,##0'
+      r.getCell(8).alignment = { horizontal: 'center' }
+      r.getCell(9).alignment = { horizontal: 'center' }
+
+      // Conditional formatting for status
+      const statCell = r.getCell(9)
+      const st = m.status || 'belum_order'
+      if (st === 'belum_order') { statCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } }; statCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF854F0B' } } }
+      else if (st === 'sudah_order') { statCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F1FB' } }; statCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF185FA5' } } }
+      else if (st === 'sudah_datang') { statCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEAF3DE' } }; statCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF3B6D11' } } }
+      else if (st === 'terpakai') { statCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1EFE8' } }; statCell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF5F5E5A' } } }
+      statCell.value = st.replace('_', ' ').toUpperCase()
+    })
+
+    const totRow = ws1.addRow(['', '', 'TOTAL NILAI MATERIAL', '', '', '', matTotal, '', ''])
+    totRow.eachCell(c => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a2744' } }
+      c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+    })
+    totRow.getCell(7).numFmt = '"Rp "#,##0'
+
+    // ── Sheet 2: Top 10 Material ──
+    const ws2 = wb.addWorksheet('Top 10 Material')
+    addGlobalHeader(ws2, 'Top 10 Material Termahal', 4)
+    ws2.columns = [{ width: 12 }, { width: 35 }, { width: 20 }, { width: 15 }]
+    const tHead = ws2.addRow(['Ranking', 'Nama Material', 'Total Nilai (Rp)', '% dari Total RAB'])
+    formatHeaderRow(tHead)
+
+    const top10 = [...mat].sort((a,b) => b.estimatedTotalCost - a.estimatedTotalCost).slice(0, 10)
+    top10.forEach((m, i) => {
+      const rank = i + 1
+      const pct = totalRAB > 0 ? m.estimatedTotalCost / totalRAB : 0
+      const r = ws2.addRow([rank, m.materialName, m.estimatedTotalCost, pct])
+      r.font = { name: 'Calibri', size: 10 }
+      r.getCell(1).alignment = { horizontal: 'center' }
+      r.getCell(3).numFmt = '"Rp "#,##0'
+      r.getCell(4).numFmt = '0.00"%"'
+
+      if (rank === 1) {
+        r.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFc9a84c' } }; c.font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1a2744' } } })
+      } else if (rank <= 3) {
+        r.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F0E0' } }; c.font = { name: 'Calibri', size: 10, color: { argb: 'FF1a2744' } } })
+      } else if (i % 2 === 1) {
+        r.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F7FA' } } })
+      }
+    })
+
+    const buffer = await wb.xlsx.writeBuffer()
+    saveAs(new Blob([buffer]), `MaterialSchedule_${projName}_${dateStr()}.xlsx`)
   }
 
-  const exportKurvaS = () => window.print()
+  const exportKurvaS = () => {
+    navigate(`/cost-report/${projectInfo?.id}?print=true`)
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -422,6 +672,7 @@ export default function CostDashboard() {
                         { label: 'Export Realisasi Biaya', desc: `Realisasi_${projName}_${dateStr()}.xlsx · Material + Upah + Deviasi`, icon: <ReceiptIcon className="w-6 h-6" />, action: exportRealisasi, color: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
                         { label: 'Export Material Schedule', desc: `MaterialSchedule_${projName}_${dateStr()}.xlsx · Kebutuhan + Realisasi`, icon: <PackageOpen className="w-6 h-6" />, action: exportMaterial, color: 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100' },
                         { label: 'Export Kurva S (PDF)', desc: 'Print / Save as PDF via browser · Dual curve Rencana vs Aktual', icon: <TrendingUp className="w-6 h-6" />, action: exportKurvaS, color: 'bg-purple-50 border-purple-200 hover:bg-purple-100' },
+                        { label: 'Presentasi Laporan', desc: 'Lihat Laporan Eksekutif Cost Control di browser (Web View / PDF)', icon: <Presentation className="w-6 h-6" />, action: () => navigate(`/cost-report/${projectInfo?.id}`), color: 'bg-gold/10 border-gold/30 hover:bg-gold/20' },
                       ].map(r => (
                         <button key={r.label} onClick={r.action}
                           className={`w-full text-left border rounded-2xl p-5 flex items-center gap-4 transition-colors cursor-pointer ${r.color}`}>
