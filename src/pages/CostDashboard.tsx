@@ -112,8 +112,13 @@ export default function CostDashboard() {
     if (realisasiEntries.length === 0) return alert('Belum ada data realisasi biaya.')
     const wb = xlsx.utils.book_new()
     const rows = realisasiEntries.map((e, i) => ({
-      'No': i + 1, 'Tanggal': e.tanggal || '-', 'Uraian': e.uraian, 'Kategori': e.tipe,
-      'Jumlah (Rp)': e.jumlah, 'Metode Bayar': e.metodePembayaran || '-', 'Keterangan': e.keterangan || '-'
+      'No': i + 1,
+      'Tanggal': e.tanggal || '-',
+      'Uraian': e.tipe === 'material' ? (e.namaMaterial || e.keterangan) : (e.jenisKerja || e.keterangan),
+      'Kategori': e.tipe,
+      'Jumlah (Rp)': e.jumlah,
+      'Metode Bayar': e.metodePembayaran || '-',
+      'Keterangan': e.keterangan || '-',
     }))
     xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(rows), 'Realisasi Biaya')
     const totalMat = realisasiEntries.filter(e => e.tipe === 'material').reduce((s, e) => s + e.jumlah, 0)
