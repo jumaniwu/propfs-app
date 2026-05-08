@@ -92,7 +92,7 @@ export default function LegalPage() {
 
         {/* Section konten — sama persis dengan konten di LegalModal */}
         <div className="space-y-0">
-          {isPrivacy ? (
+          {(isPrivacy ? (
             // Section Kebijakan Privasi
             [
               { num: '1', title: 'Pengumpulan Data', body: 'Kami mengumpulkan informasi yang Anda berikan langsung kepada kami saat Anda mendaftar, membuat proyek, atau menggunakan fitur AI kami (seperti mengunggah file RAB). Ini mencakup informasi profil dan metrik finansial proyek yang diinput.' },
