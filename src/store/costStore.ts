@@ -29,7 +29,7 @@ interface CostStore {
   activePlan: BudgetPlan | null
   draftComponents: BudgetComponent[]
   materialSchedule: MaterialScheduleItem[]
-  realisasiEntries: RealisasiEntry[]  // ← BARU: persisten
+  realisasiEntries: RealisasiEntry[]  // persisten
   
   // States
   isProcessingUpload: boolean
@@ -55,8 +55,12 @@ interface CostStore {
 
   updateActivePlanComponents: (components: BudgetComponent[]) => void
   setMaterialSchedule: (items: MaterialScheduleItem[]) => void
+  updateMaterialItem: (id: string, patch: Partial<MaterialScheduleItem>) => void
   applyActualCost: (componentId: string, actualCost: number) => void
   clearActivePlan: () => void
+
+  // Progress tracking per component
+  updateComponentProgress: (componentId: string, percentage: number) => void
 
   // Realisasi Biaya persistence
   addRealisasiEntries: (entries: RealisasiEntry[]) => void
@@ -64,6 +68,10 @@ interface CostStore {
 
   // S-Curve config
   updateSCurveConfig: (duration: number, generated: boolean) => void
+
+  // Computed helpers (derived values, not stored separately)
+  getTotalRealisasi: () => number
+  getActualProgressPct: () => number
 }
 
 const STORAGE_KEY = 'propfs-cost-projects'
@@ -145,7 +153,6 @@ export const useCostStore = create<CostStore>((set, get) => ({
     set({ savedProjects: next })
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
     
-    // if currently open, close it
     if (get().projectInfo?.id === id) {
       get().clearProject()
     }
@@ -184,9 +191,29 @@ export const useCostStore = create<CostStore>((set, get) => ({
     setTimeout(() => get().saveToStorage(), 100)
   },
 
+  updateComponentProgress: (componentId, percentage) => {
+    const { activePlan } = get()
+    if (!activePlan) return
+    const pct = Math.max(0, Math.min(100, percentage))
+    const updated = activePlan.components.map(c =>
+      c.id === componentId
+        ? { ...c, progressPercentage: pct, progressUpdatedAt: new Date().toISOString() }
+        : c
+    )
+    set({ activePlan: { ...activePlan, components: updated } })
+    setTimeout(() => get().saveToStorage(), 300)
+  },
+
   setMaterialSchedule: (items) => {
     set({ materialSchedule: items })
     setTimeout(() => get().saveToStorage(), 100)
+  },
+
+  updateMaterialItem: (id, patch) => {
+    const { materialSchedule } = get()
+    const updated = materialSchedule.map(m => m.id === id ? { ...m, ...patch } : m)
+    set({ materialSchedule: updated })
+    setTimeout(() => get().saveToStorage(), 300)
   },
 
   applyActualCost: (componentId, actualCost) => {
@@ -215,5 +242,22 @@ export const useCostStore = create<CostStore>((set, get) => ({
   clearRealisasiEntries: () => {
     set({ realisasiEntries: [] })
     setTimeout(() => get().saveToStorage(), 300)
+  },
+
+  // ── Computed helpers ───────────────────────────────────────────────────────
+  getTotalRealisasi: () => {
+    return get().realisasiEntries.reduce((sum, e) => sum + e.jumlah, 0)
+  },
+
+  getActualProgressPct: () => {
+    const components = get().activePlan?.components ?? []
+    if (components.length === 0) return 0
+    const totalBudget = components.reduce((s, c) => s + c.totalPlannedCost, 0)
+    if (totalBudget === 0) return 0
+    const weightedProgress = components.reduce((s, c) => {
+      const pct = c.progressPercentage ?? 0
+      return s + (pct * c.totalPlannedCost)
+    }, 0)
+    return weightedProgress / totalBudget
   },
 }))
