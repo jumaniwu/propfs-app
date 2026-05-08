@@ -58,26 +58,50 @@ export default function HomePage() {
       const createInvoicePlan = query.get('create_invoice')
 
       if (createInvoicePlan) {
-         // Generate mock invoice
-         const invoiceId = `mock_inv_${Math.random().toString(36).substr(2,9)}`
+         // Create real invoice in Supabase
          const subtotal = createInvoicePlan === 'pro' ? 399000 : 149000
          const ppn = Math.round(subtotal * 0.11)
+         const grandTotal = subtotal + ppn
          
-         const invoice = {
-            id: invoiceId,
+         const invoiceNumber = `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`
+         const periodStart = new Date().toISOString()
+         const periodEnd = new Date(Date.now() + 30 * 86400000).toISOString()
+         
+         const invoicePayload = {
             user_id: profile.id,
             plan_id: createInvoicePlan,
-            invoice_number: `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`,
-            period_start: new Date().toISOString(),
-            period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
+            invoice_number: invoiceNumber,
+            period_start: periodStart,
+            period_end: periodEnd,
             subtotal_idr: subtotal,
             ppn_idr: ppn,
-            total_idr: subtotal + ppn,
-            status: 'pending',
-            created_at: new Date().toISOString()
+            total_idr: grandTotal,
+            status: 'pending' as const,
          }
          
-         localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify(invoice))
+         const { data: dbInvoice, error: dbError } = await supabase
+            .from('invoices')
+            .insert(invoicePayload)
+            .select()
+            .single()
+
+         let invoiceId: string
+         if (dbInvoice && !dbError) {
+            invoiceId = dbInvoice.id
+            localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify({
+               ...invoicePayload,
+               id: invoiceId,
+               created_at: dbInvoice.created_at,
+            }))
+         } else {
+            console.warn('[Invoice] DB insert failed, using localStorage:', dbError?.message)
+            invoiceId = `local_${Math.random().toString(36).substr(2,9)}`
+            localStorage.setItem(`propfs_invoice_${invoiceId}`, JSON.stringify({
+               ...invoicePayload,
+               id: invoiceId,
+               created_at: new Date().toISOString(),
+            }))
+         }
          navigate(`/payment/${invoiceId}`, { replace: true })
          return
       }
@@ -156,7 +180,7 @@ export default function HomePage() {
 
   async function handleLogout() {
     await signOut()
-    navigate('/')
+    window.location.href = '/'
   }
 
   return (

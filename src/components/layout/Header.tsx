@@ -39,7 +39,7 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
       setMenuOpen(false)
       await signOut()
     } finally {
-      navigate('/auth')
+      window.location.href = '/'
     }
   }
 
