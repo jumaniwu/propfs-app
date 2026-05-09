@@ -112,7 +112,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { 
@@ -124,7 +124,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
     url = provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
     headers['Authorization'] = `Bearer ${apiKey.trim()}`;
     body = {
-      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama-3.3-70b-versatile',
+      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama3-70b-8192',
       messages: [
         { role: 'system', content: systemMsg },
         { role: 'user', content: userPrompt }
@@ -234,7 +234,7 @@ ${JSON.stringify(components)}
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { temperature: 0.05, responseMimeType: 'application/json' }
@@ -243,7 +243,7 @@ ${JSON.stringify(components)}
     url = provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
     headers['Authorization'] = `Bearer ${apiKey.trim()}`;
     body = {
-      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama-3.3-70b-versatile',
+      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama3-70b-8192',
       messages: [
         { role: 'system', content: systemMsg },
         { role: 'user', content: userPrompt }
