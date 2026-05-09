@@ -112,7 +112,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { 
@@ -154,6 +154,28 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
       }
 
       if (!res.ok) {
+        if (res.status === 404) {
+          console.warn(`[AI Chunk] Model 404 - trying fallback model gemini-1.5-pro...`)
+          const fallbackUrl = url.replace('gemini-2.0-flash', 'gemini-1.5-pro')
+          const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
+          if (!fallbackRes.ok) {
+            throw new Error(`Gagal memproses bagian RAB API Error ${fallbackRes.status}`)
+          }
+          const fallbackData = await fallbackRes.json()
+          const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+          if (!fallbackText) return []
+          const cleaned = fallbackText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim()
+          try {
+            const parsed = JSON.parse(cleaned)
+            if (Array.isArray(parsed)) return parsed
+            const keys = Object.keys(parsed)
+            for (const key of keys) {
+              if (Array.isArray(parsed[key]) && parsed[key].length > 0) return parsed[key]
+            }
+            return []
+          } catch { return [] }
+        }
+
         const errBody = await res.text();
         console.error(`[AI Chunk] HTTP ${res.status}: ${errBody.substring(0, 300)}`);
         if (attempt === retries) {
@@ -234,7 +256,7 @@ ${JSON.stringify(components)}
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { temperature: 0.05, responseMimeType: 'application/json' }
@@ -255,7 +277,32 @@ ${JSON.stringify(components)}
 
   try {
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!res.ok) return components; // fallback jika validasi error
+    if (!res.ok) {
+      if (res.status === 404) {
+        console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-1.5-pro...`)
+        const fallbackUrl = url.replace('gemini-2.0-flash', 'gemini-1.5-pro')
+        const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
+        if (!fallbackRes.ok) return components;
+        const fallbackData = await fallbackRes.json()
+        const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+        if (!fallbackText) return components;
+        const cleaned = fallbackText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim()
+        const parsed = JSON.parse(cleaned)
+        let validated = []
+        if (Array.isArray(parsed)) validated = parsed
+        else {
+          const keys = Object.keys(parsed)
+          for (const k of keys) {
+            if (Array.isArray(parsed[k])) {
+              validated = parsed[k]; break;
+            }
+          }
+        }
+        if (validated.length > 0) return validated.map(mapToComponent).filter(c => c.totalPlannedCost > 0);
+        return components;
+      }
+      return components; // fallback jika validasi error
+    }
     const data = await res.json();
     
     let responseText = '';
