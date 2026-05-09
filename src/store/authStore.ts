@@ -428,9 +428,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // 1. Superadmin always has all features
     if (profile?.role === 'superadmin') return true
 
-    // 2. Check per-user explicit override
-    if (profile?.custom_features && profile.custom_features[feature] !== undefined) {
-      return profile.custom_features[feature]
+    // 2. Check per-user explicit override (only for granting access, not revoking)
+    if (profile?.custom_features && profile.custom_features[feature] === true) {
+      return true
     }
 
     // Lock cost_control for free tier
