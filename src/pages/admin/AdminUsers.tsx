@@ -24,7 +24,6 @@ export default function AdminUsers() {
   const [subPlan, setSubPlan] = useState('free')
   const [subStart, setSubStart] = useState('')
   const [subEnd, setSubEnd] = useState('')
-  const [subEnd, setSubEnd] = useState('')
   const [localFeatures, setLocalFeatures] = useState<Record<string, boolean>>({})
   const [isUpdatingSub, setIsUpdatingSub] = useState(false)
   const [isSendingReset, setIsSendingReset] = useState(false)
