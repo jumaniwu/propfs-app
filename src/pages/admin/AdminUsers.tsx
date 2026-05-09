@@ -24,6 +24,8 @@ export default function AdminUsers() {
   const [subPlan, setSubPlan] = useState('free')
   const [subStart, setSubStart] = useState('')
   const [subEnd, setSubEnd] = useState('')
+  const [subEnd, setSubEnd] = useState('')
+  const [localFeatures, setLocalFeatures] = useState<Record<string, boolean>>({})
   const [isUpdatingSub, setIsUpdatingSub] = useState(false)
   const [isSendingReset, setIsSendingReset] = useState(false)
 
@@ -75,32 +77,23 @@ export default function AdminUsers() {
       nextMonth.setMonth(nextMonth.getMonth() + 1)
       setSubEnd(nextMonth.toISOString().split('T')[0])
     }
+    
+    setLocalFeatures(u.custom_features || {})
   }
 
-  async function updateUserFlag(userId: string, key: AppFeature, val: boolean) {
-    const user = users.find(u => u.id === userId)
-    if (!user) return
-
-    const nextFeatures = { ...(user.custom_features || {}), [key]: val }
-    
-    const { error } = await supabase
-      .from('profiles')
-      .update({ custom_features: nextFeatures })
-      .eq('id', userId)
-    
-    if (!error) {
-      setUsers(users.map(u => u.id === userId ? { ...u, custom_features: nextFeatures } : u))
-      if (selectedUser?.id === userId) {
-        setSelectedUser({ ...selectedUser, custom_features: nextFeatures })
-      }
-      toast({ title: `Akses fitur pengguna diperbarui` })
-    }
-  }
-
-  async function handleSaveSubscription() {
+  async function handleSaveAll() {
     if (!selectedUser) return
     setIsUpdatingSub(true)
     try {
+      // 1. Save Features
+      const { error: featuresError } = await supabase
+        .from('profiles')
+        .update({ custom_features: localFeatures })
+        .eq('id', selectedUser.id)
+        
+      if (featuresError) throw featuresError
+
+      // 2. Save Subscription
       const activeSub = (selectedUser.subscriptions || []).find((s: any) => s.status === 'active')
       const payload = {
          user_id: selectedUser.id,
@@ -112,18 +105,19 @@ export default function AdminUsers() {
       
       let res;
       if (activeSub) {
-        // Update existing active subscription
         res = await supabase.from('subscriptions').update(payload).eq('id', activeSub.id).select().single()
       } else {
-        // Insert new subscription
         res = await supabase.from('subscriptions').insert(payload).select().single()
       }
       
-      if (res.error) throw res.error
-      toast({ title: 'Langganan berhasil diperbarui' })
-      loadUsers() // Refresh all data to sync
+      // If RLS blocks subscription update, we throw a specific error
+      if (res.error) throw new Error(`Gagal menyimpan langganan: ${res.error.message}`)
+      
+      toast({ title: 'Perubahan berhasil disimpan' })
+      setSelectedUser(null)
+      loadUsers() 
     } catch (err: any) {
-      toast({ title: 'Error menyimpan langganan', description: err.message, variant: 'destructive' })
+      toast({ title: 'Gagal menyimpan', description: err.message, variant: 'destructive' })
     } finally {
       setIsUpdatingSub(false)
     }
@@ -272,11 +266,6 @@ export default function AdminUsers() {
                        <Input type="date" className="h-12 bg-white" value={subEnd} onChange={e => setSubEnd(e.target.value)} />
                     </div>
                  </div>
-                 
-                 <Button variant="gold" className="font-bold gap-2 mt-2" onClick={handleSaveSubscription} disabled={isUpdatingSub}>
-                   {isUpdatingSub ? <RefreshCw className="h-4 w-4 animate-spin" /> : <SaveIcon />} 
-                   Simpan Durasi Langganan
-                 </Button>
               </div>
 
 
@@ -306,14 +295,14 @@ export default function AdminUsers() {
                   {AVAILABLE_FEATURES.map(f => (
                     <label key={f.key} className="flex items-start gap-4 p-3 rounded-xl border border-border border-b-2 hover:border-gold cursor-pointer transition-all bg-card">
                       <div className="pt-0.5">
-                         <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${selectedUser.custom_features?.[f.key] ? 'border-gold bg-gold' : 'border-muted-foreground/30'}`}>
-                            {selectedUser.custom_features?.[f.key] && <CheckCircle2 className="h-3.5 w-3.5 text-navy" />}
+                         <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${localFeatures[f.key] ? 'border-gold bg-gold' : 'border-muted-foreground/30'}`}>
+                            {localFeatures[f.key] && <CheckCircle2 className="h-3.5 w-3.5 text-navy" />}
                          </div>
                          <input 
                            type="checkbox" 
                            className="hidden"
-                           checked={!!(selectedUser.custom_features && selectedUser.custom_features[f.key])}
-                           onChange={(e) => updateUserFlag(selectedUser.id, f.key, e.target.checked)}
+                           checked={!!localFeatures[f.key]}
+                           onChange={(e) => setLocalFeatures(prev => ({ ...prev, [f.key]: e.target.checked }))}
                          />
                       </div>
                       <div>
@@ -328,7 +317,11 @@ export default function AdminUsers() {
             
             <div className="p-6 border-t border-border bg-slate-50 flex gap-3 justify-end mt-auto">
                <Button variant="outline" className="h-12 font-bold px-8 hover:bg-slate-200" onClick={() => setSelectedUser(null)}>
-                 Tutup Halaman
+                 Batal
+               </Button>
+               <Button variant="gold" className="h-12 font-bold px-8" onClick={handleSaveAll} disabled={isUpdatingSub}>
+                 {isUpdatingSub ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                 Simpan Perubahan
                </Button>
             </div>
           </div>

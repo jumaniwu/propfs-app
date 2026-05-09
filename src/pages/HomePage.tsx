@@ -28,8 +28,11 @@ export default function HomePage() {
   const location = useLocation()
   const { profile, isFeatureEnabled, landingContent, signOut } = useAuthStore()
   const projects = useFSStore(s => s.projects) || []
+  const fetchProjects = useFSStore(s => s.fetchProjects)
+  
   const costProjects = useCostStore(s => s.savedProjects) || []
   const activeCostProject = useCostStore(s => s.projectInfo)
+  const loadCostProjects = useCostStore(s => s.loadProjects)
 
   const [invoices, setInvoices] = useState<any[]>([])
   const { getCurrentPlan } = useAuthStore()
@@ -37,6 +40,12 @@ export default function HomePage() {
   const totalRAB = costProjects.reduce((acc, p) => acc + (p?.plan?.totalBaselineBudget || 0), 0)
   const sangatLayakCount = projects.filter(p => p?.results?.statusKelayakan === 'sangat_layak').length
   const totalRABFormatted = totalRAB > 0 ? `Rp ${(totalRAB / 1000000000).toFixed(1)}M` : '—'
+
+  // Fetch projects on mount to ensure real-time data on dashboard
+  useEffect(() => {
+    fetchProjects()
+    loadCostProjects()
+  }, [fetchProjects, loadCostProjects])
 
   // Show upgrade toast when redirected from a locked feature
   useEffect(() => {
