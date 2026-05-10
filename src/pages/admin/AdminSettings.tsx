@@ -5,6 +5,7 @@ import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/au
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { invalidatePPNCache } from '@/hooks/usePPNRate'
 
 const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [

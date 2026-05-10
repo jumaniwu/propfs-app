@@ -1,9 +1,12 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useFSStore } from './store/fsStore'
 import { useAuthStore } from './store/authStore'
 import { Toaster } from './components/ui/toaster'
+import { toast } from './hooks/use-toast'
 import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute, FeatureRoute } from './components/auth/RouteGuards'
+import { supabase } from './lib/supabase'
+import { Button } from './components/ui/button'
 
 // Code-split routes
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -120,7 +123,52 @@ export default function App() {
         </Routes>
       </Suspense>
       <Toaster />
+      <PasswordRecoveryModal />
     </BrowserRouter>
+  )
+}
+
+function PasswordRecoveryModal() {
+  const { isPasswordRecovery, user } = useAuthStore()
+  const [newPassword, setNewPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  if (!isPasswordRecovery || !user) return null
+
+  async function handleUpdate() {
+    if (newPassword.length < 8) {
+      toast({ title: 'Password minimal 8 karakter', variant: 'destructive' })
+      return
+    }
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      toast({ title: 'Password berhasil diubah!' })
+      // Reload page to clear hash and reset state
+      window.location.href = '/home'
+    } catch (e: any) {
+      toast({ title: 'Gagal mengubah password', description: e.message, variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl">
+        <h3 className="text-2xl font-serif font-black text-navy mb-2">Set Password Baru</h3>
+        <p className="text-sm text-slate-500 mb-6">Silakan masukkan password baru untuk akun Anda.</p>
+        <div className="space-y-4">
+          <div>
+             <input type="password" placeholder="Min. 8 karakter" className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-medium text-navy focus:ring-4 focus:ring-gold/10 outline-none" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+          </div>
+          <Button onClick={handleUpdate} disabled={loading} className="w-full h-14 bg-gold text-navy font-bold rounded-2xl hover:scale-[1.02] active:scale-95 transition-transform">
+            {loading ? 'Memproses...' : 'Simpan Password'}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

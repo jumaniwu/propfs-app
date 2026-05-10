@@ -50,6 +50,7 @@ interface AuthStore {
   isSubscriptionEnabled: boolean
   globalFeatures: Record<AppFeature, boolean>
   bankDetails: BankDetails
+  isPasswordRecovery: boolean
   isLoading: boolean
   authError: string | null
   landingContent: LandingPageContent
@@ -150,6 +151,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isSubscriptionEnabled: false,
   globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
   bankDetails: DEFAULT_BANK_DETAILS,
+  isPasswordRecovery: false,
   isLoading: true,
   authError: null,
   landingContent: DEFAULT_LANDING_CONTENT,
@@ -172,7 +174,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         ])
       }
 
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          set({ isPasswordRecovery: true })
+        }
         set({ user: session?.user ?? null, session })
         if (session?.user) {
           await Promise.all([get().refreshProfile(), get().refreshSubscription()])
