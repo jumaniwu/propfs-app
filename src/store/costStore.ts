@@ -64,6 +64,8 @@ interface CostStore {
 
   // Realisasi Biaya persistence
   addRealisasiEntries: (entries: RealisasiEntry[]) => void
+  updateRealisasiEntry: (id: string, patch: Partial<RealisasiEntry>) => void
+  deleteRealisasiEntry: (id: string) => void
   clearRealisasiEntries: () => void
 
   // S-Curve config
@@ -236,6 +238,20 @@ export const useCostStore = create<CostStore>((set, get) => ({
 
   addRealisasiEntries: (entries) => {
     set(state => ({ realisasiEntries: [...state.realisasiEntries, ...entries] }))
+    setTimeout(() => get().saveToStorage(), 300)
+  },
+
+  updateRealisasiEntry: (id, patch) => {
+    set(state => ({
+      realisasiEntries: state.realisasiEntries.map(e => e.id === id ? { ...e, ...patch } : e)
+    }))
+    setTimeout(() => get().saveToStorage(), 300)
+  },
+
+  deleteRealisasiEntry: (id) => {
+    set(state => ({
+      realisasiEntries: state.realisasiEntries.filter(e => e.id !== id)
+    }))
     setTimeout(() => get().saveToStorage(), 300)
   },
 

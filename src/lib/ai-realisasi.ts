@@ -43,57 +43,82 @@ export interface ChatMessage {
   text: string
   files?: Array<{ name: string; mimeType: string; base64Data: string }>
   newEntries?: RealisasiEntry[]
+  updatedEntries?: { id: string; data: Partial<RealisasiEntry> }[]
+  deletedEntryIds?: string[]
+}
+
+export interface RealisasiParsedResult {
+  clean: string;
+  added: RealisasiEntry[];
+  updated: { id: string; data: Partial<RealisasiEntry> }[];
+  deleted: string[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-function extractEntriesFromText(text: string): { clean: string; entries: RealisasiEntry[] } {
+function parseEntry(item: any): RealisasiEntry {
+  return {
+    id: item.id || uuidv4(),
+    tipe: item.tipe || (['upah','operasional','lainnya'].includes(item.tipe) ? item.tipe : 'material'),
+    tanggal: item.tanggal || new Date().toISOString().split('T')[0],
+    namaMaterial: item.namaMaterial || undefined,
+    volume: item.volume ? Number(item.volume) : undefined,
+    satuan: item.satuan || undefined,
+    hargaSatuan: item.hargaSatuan ? Number(item.hargaSatuan) : undefined,
+    namaSupplier: item.namaSupplier || item.supplier || undefined,
+    nomorNota: item.nomorNota || undefined,
+    namaTukang: item.namaTukang || undefined,
+    jenisKerja: item.jenisKerja || undefined,
+    jumlahOrang: item.jumlahOrang ? Number(item.jumlahOrang) : undefined,
+    hariKerja: item.hariKerja ? Number(item.hariKerja) : undefined,
+    upahHarian: item.upahHarian ? Number(item.upahHarian) : undefined,
+    keterangan: item.keterangan || item.pekerjaan || '-',
+    kategori: item.kategori || 'bangunan',
+    jumlah: Number(item.jumlah) || 0,
+    status: item.status || '✅ Dicatat',
+    metodePembayaran: item.metodePembayaran || 'Cash',
+    linkedComponentId: item.linkedComponentId || undefined,
+  }
+}
+
+function extractEntriesFromText(text: string): RealisasiParsedResult {
   const jsonRegex = /```json\s*([\s\S]*?)```/
   const match = text.match(jsonRegex)
-  let entries: RealisasiEntry[] = []
+  let added: RealisasiEntry[] = []
+  let updated: { id: string; data: Partial<RealisasiEntry> }[] = []
+  let deleted: string[] = []
   let clean = text
 
   if (match) {
     try {
       const parsed = JSON.parse(match[1].trim())
-      const arr = Array.isArray(parsed) ? parsed : (parsed.transaksi || parsed.entries || [])
-      if (Array.isArray(arr)) {
-        entries = arr.map((item: any): RealisasiEntry => ({
-          id: uuidv4(),
-          tipe: item.tipe || (['upah','operasional','lainnya'].includes(item.tipe) ? item.tipe : 'material'),
-          tanggal: item.tanggal || new Date().toISOString().split('T')[0],
-          namaMaterial: item.namaMaterial || undefined,
-          volume: item.volume ? Number(item.volume) : undefined,
-          satuan: item.satuan || undefined,
-          hargaSatuan: item.hargaSatuan ? Number(item.hargaSatuan) : undefined,
-          namaSupplier: item.namaSupplier || item.supplier || undefined,
-          nomorNota: item.nomorNota || undefined,
-          namaTukang: item.namaTukang || undefined,
-          jenisKerja: item.jenisKerja || undefined,
-          jumlahOrang: item.jumlahOrang ? Number(item.jumlahOrang) : undefined,
-          hariKerja: item.hariKerja ? Number(item.hariKerja) : undefined,
-          upahHarian: item.upahHarian ? Number(item.upahHarian) : undefined,
-          keterangan: item.keterangan || item.pekerjaan || '-',
-          kategori: item.kategori || 'bangunan',
-          jumlah: Number(item.jumlah) || 0,
-          status: item.status || '✅ Dicatat',
-          metodePembayaran: item.metodePembayaran || 'Cash',
-          linkedComponentId: item.linkedComponentId || undefined,
-        }))
+      
+      // Handle backward compatibility or AI fail (direct array)
+      if (Array.isArray(parsed)) {
+        added = parsed.map(parseEntry)
+      } else {
+        // Handle object with actions
+        if (Array.isArray(parsed.added)) added = parsed.added.map(parseEntry)
+        if (Array.isArray(parsed.updated)) updated = parsed.updated
+        if (Array.isArray(parsed.deleted)) deleted = parsed.deleted
+        
+        // Fallback for older structure
+        if (Array.isArray(parsed.transaksi)) added = parsed.transaksi.map(parseEntry)
+        if (Array.isArray(parsed.entries)) added = parsed.entries.map(parseEntry)
       }
     } catch (e) {
       console.error('[ai-realisasi] Gagal parsing JSON entries', e)
     }
     clean = text.replace(jsonRegex, '').trim()
   }
-  return { clean, entries }
+  return { clean, added, updated, deleted }
 }
 
 // ── System Instruction (Bisa belajar & menerima instruksi format) ─────────────
 
-function buildSysInstruction(rabList: string): string {
+function buildSysInstruction(rabList: string, currentEntriesList: string): string {
   const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   return `Kamu adalah **AI Asisten Keuangan Proyek Konstruksi** yang cerdas, teliti, dan adaptif.
 
@@ -105,6 +130,7 @@ Kamu bertugas membantu site manager / kontraktor merekap SEMUA pengeluaran lapan
 2. Membaca laporan atau rekening koran berformat PDF
 3. Merekap dari teks biasa / form lisan
 4. Belajar dari instruksi user: jika user minta format berbeda, sesuaikan.
+5. **MENGUBAH / MENGHAPUS** data transaksi yang sudah dicatat sebelumnya jika user memintanya (Revisi).
 
 **INSTRUKSI SPESIFIK JIKA MENERIMA FILE (GAMBAR/PDF):**
 - Jika user mengirim lampiran dokumen/gambar, kamu **WAJIB** membedah, membaca, dan menganalisa semua baris item di dalamnya.
@@ -113,28 +139,14 @@ Kamu bertugas membantu site manager / kontraktor merekap SEMUA pengeluaran lapan
 - Pecah nota berukuran besar menjadi beberapa baris entry JSON secara mendetail.
 - JANGAN HANYA MERANGKUM TOTALNYA SAJA, catat setiap item material atau upah agar bisa jadi laporan jelas.
 
-## DUA JENIS CATATAN UTAMA
-
-### 1. 📦 PEMBELIAN MATERIAL
-Data wajib diisi: tanggal, nama material + spesifikasi, volume, satuan, harga satuan, nama supplier/toko, nomor nota (jika ada), total.
-Contoh: "Beli Semen Portland Tipe I 50kg, 20 sak, @Rp58.000, total Rp1.160.000 dari Toko Bangunan Maju, nota #A123, 17 April"
-
-### 2. 👷 UPAH TUKANG / PEKERJA
-Data wajib diisi: tanggal, nama tukang/grup/mandor, jenis pekerjaan, jumlah orang, hari kerja, upah/orang/hari, total.
-Contoh: "Upah cor beton kolom Lt.1, 4 tukang x 2 hari x Rp150.000 = Rp1.200.000"
+## DAFTAR TRANSAKSI SAAT INI (REALISASI)
+Berikut adalah daftar transaksi yang SUDAH dicatat di sistem saat ini. Jika user meminta revisi atau penghapusan, cari ID transaksi yang relevan dari daftar ini:
+${currentEntriesList}
 
 ## CARA MENJAWAB
 
 ### Langkah 1: Konfirmasi & Rangkum
 Balas ramah dan tampilkan tabel rekap markdown. Jika dari file nota, tampilkan semuanya di tabel.
-
-Untuk MATERIAL:
-| Tgl | Material | Vol | Satuan | Harga/Satuan | Supplier | Total | Status |
-|-----|----------|-----|--------|--------------|----------|-------|--------|
-
-Untuk UPAH:
-| Tgl | Nama Pekerja | Pekerjaan | Org | Hari | Upah/Org/Hari | Total | Status |
-|-----|-------------|-----------|-----|------|---------------|-------|--------|
 
 ### Langkah 2: Tanya data yang kurang
 Jika dari foto/teks ada info penting tidak terlihat (seperti nama toko/supplier atau harga total tidak sinkron), tanyakan secara sopan.
@@ -142,24 +154,42 @@ Jika dari foto/teks ada info penting tidak terlihat (seperti nama toko/supplier 
 ### Langkah 3: JSON HARUS ADA DI AKHIR PESAN
 Lampirkan JSON transaksi HANYA di akhir pesan, dalam blok code json persis seperti contoh. Semua data yang terbaca dari PDF/Foto HARUS MASUK SINI.
 
+Jika mencatat transaksi BARU, masukkan ke dalam array \`added\`.
+Jika MENGUBAH transaksi yang sudah ada (revisi), masukkan ke \`updated\` dengan mencantumkan "id" transaksi tersebut.
+Jika MENGHAPUS transaksi, masukkan "id" nya ke array \`deleted\`.
+
 \`\`\`json
-[
-  {
-    "tipe": "material",
-    "tanggal": "2026-04-17",
-    "namaMaterial": "Semen Portland Tipe I 50kg",
-    "volume": 20,
-    "satuan": "sak",
-    "hargaSatuan": 58000,
-    "namaSupplier": "Toko Bangunan Maju",
-    "nomorNota": "A123",
-    "keterangan": "Pembelian semen untuk kolom Lt.1",
-    "kategori": "bangunan",
-    "jumlah": 1160000,
-    "status": "✅ Dicatat",
-    "metodePembayaran": "Cash"
-  }
-]
+{
+  "added": [
+    {
+      "tipe": "material",
+      "tanggal": "2026-04-17",
+      "namaMaterial": "Semen Portland Tipe I 50kg",
+      "volume": 20,
+      "satuan": "sak",
+      "hargaSatuan": 58000,
+      "namaSupplier": "Toko Bangunan Maju",
+      "nomorNota": "A123",
+      "keterangan": "Pembelian semen untuk kolom Lt.1",
+      "kategori": "bangunan",
+      "jumlah": 1160000,
+      "status": "✅ Dicatat",
+      "metodePembayaran": "Cash"
+    }
+  ],
+  "updated": [
+    {
+      "id": "contoh-id-transaksi-123",
+      "data": {
+        "jumlah": 1000000,
+        "keterangan": "Revisi pembelian semen"
+      }
+    }
+  ],
+  "deleted": [
+    "contoh-id-transaksi-456"
+  ]
+}
 \`\`\`
 
 ## ATURAN PENTING
@@ -305,10 +335,16 @@ function trackUsage(provider: 'gemini'|'groq'|'openrouter', model: string, input
 export async function chatRealisasiWithGemini(
   newMessage: ChatMessage,
   history: ChatMessage[],
-  rabComponents: BudgetComponent[]
-): Promise<{ textResponse: string; parsedEntries: RealisasiEntry[] }> {
+  rabComponents: BudgetComponent[],
+  currentEntries: RealisasiEntry[]
+): Promise<{ textResponse: string; parsedResult: RealisasiParsedResult }> {
   const rabList = rabComponents.map(c => `${c.id}|${c.name}|${c.categoryId}|Rp${c.totalPlannedCost}`).join('\n')
-  const sysInstruction = buildSysInstruction(rabList)
+  
+  const currentEntriesList = currentEntries.length === 0 
+    ? '(Belum ada transaksi dicatat)' 
+    : currentEntries.map(e => `[ID: ${e.id}] Tgl: ${e.tanggal} | Rp${e.jumlah} | ${e.keterangan}`).join('\n')
+
+  const sysInstruction = buildSysInstruction(rabList, currentEntriesList)
   const hasImages = (newMessage.files?.length ?? 0) > 0
 
   const errors: string[] = []
@@ -320,8 +356,8 @@ export async function chatRealisasiWithGemini(
       try {
         const raw = await callGemini(sysInstruction, history, newMessage, model)
         trackUsage('gemini', model, inputContext, raw) // ← record usage
-        const { clean, entries } = extractEntriesFromText(raw)
-        return { textResponse: clean, parsedEntries: entries }
+        const parsedResult = extractEntriesFromText(raw)
+        return { textResponse: parsedResult.clean, parsedResult }
       } catch (e: any) {
         const isRL = e.message?.includes('RATE_LIMIT') || e.message?.includes('429')
         const isOL = e.message?.includes('OVERLOAD') || e.message?.includes('503')
@@ -336,15 +372,15 @@ export async function chatRealisasiWithGemini(
     try {
       const raw = await callOpenRouter(sysInstruction, history, newMessage)
       trackUsage('openrouter', 'meta-llama/llama-4-scout:free', inputContext, raw)
-      const { clean, entries } = extractEntriesFromText(raw)
-      return { textResponse: '*(via OpenRouter)*\n\n' + clean, parsedEntries: entries }
+      const parsedResult = extractEntriesFromText(raw)
+      return { textResponse: '*(via OpenRouter)*\n\n' + parsedResult.clean, parsedResult }
     } catch (e: any) { errors.push(`OpenRouter: ${e.message}`) }
 
     try {
       const raw = await callGroq(sysInstruction, history, newMessage)
       trackUsage('groq', 'llama-3.1-8b-instant', inputContext, raw)
-      const { clean, entries } = extractEntriesFromText(raw)
-      return { textResponse: '*(via Groq)*\n\n' + clean, parsedEntries: entries }
+      const parsedResult = extractEntriesFromText(raw)
+      return { textResponse: '*(via Groq)*\n\n' + parsedResult.clean, parsedResult }
     } catch (e: any) { errors.push(`Groq: ${e.message}`) }
 
     throw new Error(

@@ -121,7 +121,7 @@ Saya juga bisa mengubah format laporan sesuai permintaan Anda. ✨`
 }
 
 export default function TabRealisasiBiaya() {
-  const { activePlan, realisasiEntries, addRealisasiEntries, clearRealisasiEntries } = useCostStore()
+  const { activePlan, realisasiEntries, addRealisasiEntries, updateRealisasiEntry, deleteRealisasiEntry, clearRealisasiEntries } = useCostStore()
   const { toast } = useToast()
 
   const storageKey = `propfs-chat-${activePlan?.projectId ?? 'default'}`
@@ -196,23 +196,37 @@ export default function TabRealisasiBiaya() {
     setRetryInfo('Menghubungi AI...')
 
     try {
-      const { textResponse, parsedEntries } = await chatRealisasiWithGemini(
-        userMsg, messages, activePlan.components
+      const { textResponse, parsedResult } = await chatRealisasiWithGemini(
+        userMsg, messages, activePlan.components, realisasiEntries
       )
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         text: textResponse,
-        newEntries: parsedEntries
+        newEntries: parsedResult.added,
+        updatedEntries: parsedResult.updated,
+        deletedEntryIds: parsedResult.deleted
       }
       setMessages(prev => [...prev, aiMsg])
-      if (parsedEntries.length > 0) {
-        addRealisasiEntries(parsedEntries)
-        const matCount = parsedEntries.filter(e => e.tipe === 'material').length
-        const upahCount = parsedEntries.filter(e => e.tipe === 'upah').length
+      
+      let changeCount = 0
+      if (parsedResult.added.length > 0) {
+        addRealisasiEntries(parsedResult.added)
+        changeCount += parsedResult.added.length
+      }
+      if (parsedResult.updated.length > 0) {
+        parsedResult.updated.forEach(u => updateRealisasiEntry(u.id, u.data))
+        changeCount += parsedResult.updated.length
+      }
+      if (parsedResult.deleted.length > 0) {
+        parsedResult.deleted.forEach(id => deleteRealisasiEntry(id))
+        changeCount += parsedResult.deleted.length
+      }
+
+      if (changeCount > 0) {
         toast({
-          title: `✅ ${parsedEntries.length} transaksi dicatat!`,
-          description: `${matCount > 0 ? `${matCount} material` : ''}${matCount && upahCount ? ', ' : ''}${upahCount > 0 ? `${upahCount} upah` : ''} • Data tersimpan otomatis`
+          title: `✅ ${changeCount} perubahan dicatat!`,
+          description: `${parsedResult.added.length} baru, ${parsedResult.updated.length} direvisi, ${parsedResult.deleted.length} dihapus`
         })
       }
     } catch (err: any) {
@@ -398,17 +412,27 @@ export default function TabRealisasiBiaya() {
                   </div>
                 )}
                 {/* Parsed entries mini summary */}
-                {msg.newEntries && msg.newEntries.length > 0 && (
+                {(msg.newEntries?.length || msg.updatedEntries?.length || msg.deletedEntryIds?.length) ? (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 space-y-2">
                     <p className="text-xs font-bold text-emerald-700 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      {msg.newEntries.length} transaksi berhasil dicatat & disimpan
+                      Data berhasil diupdate: {(msg.newEntries?.length || 0) + (msg.updatedEntries?.length || 0) + (msg.deletedEntryIds?.length || 0)} transaksi
                     </p>
                     <div className="space-y-2">
-                      {msg.newEntries.map(e => <EntryCard key={e.id} e={e} />)}
+                      {msg.newEntries?.map(e => <EntryCard key={e.id} e={e} />)}
+                      {msg.updatedEntries?.map(u => (
+                        <div key={u.id} className="text-xs text-amber-700 bg-amber-50 p-2 rounded-xl border border-amber-200">
+                          🔄 Revisi transaksi ID: {u.id}
+                        </div>
+                      ))}
+                      {msg.deletedEntryIds?.map(id => (
+                        <div key={id} className="text-xs text-red-700 bg-red-50 p-2 rounded-xl border border-red-200">
+                          🗑️ Dihapus transaksi ID: {id}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           ))}
