@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   ReceiptIcon, Loader2, Paperclip, Send, Download, CheckCircle2,
   FileText, ImageIcon, X, TrendingDown, Wallet, BarChart3, RefreshCw,
-  Package, Hammer, Info
+  Package, Hammer, Info, MessageSquare, LayoutDashboard
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
@@ -142,6 +142,7 @@ export default function TabRealisasiBiaya() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [retryInfo, setRetryInfo] = useState('')
   const [activeTab, setActiveTab] = useState<'semua' | 'material' | 'upah'>('semua')
+  const [mobileView, setMobileView] = useState<'chat' | 'dashboard'>('chat')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -321,10 +322,33 @@ export default function TabRealisasiBiaya() {
   const totalUpah = useMemo(() => entries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0), [entries])
 
   return (
-    <div className="flex gap-5" style={{ height: '830px' }}>
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5" style={{ minHeight: '600px', maxHeight: '90vh' }}>
+
+      {/* ── Mobile Toggle ── */}
+      <div className="flex lg:hidden gap-2 mb-1">
+        <button
+          onClick={() => setMobileView('chat')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${
+            mobileView === 'chat' ? 'bg-navy text-white shadow-lg' : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4" /> Chat AI
+        </button>
+        <button
+          onClick={() => setMobileView('dashboard')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-bold transition-all ${
+            mobileView === 'dashboard' ? 'bg-navy text-white shadow-lg' : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          <LayoutDashboard className="w-4 h-4" /> Dashboard
+          {entries.length > 0 && (
+            <span className="bg-gold text-navy text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center">{entries.length}</span>
+          )}
+        </button>
+      </div>
 
       {/* ── KIRI: Chat ─────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col rounded-3xl overflow-hidden border border-border shadow-sm bg-white">
+      <div className={`flex-1 flex flex-col rounded-3xl overflow-hidden border border-border shadow-sm bg-white ${mobileView !== 'chat' ? 'hidden lg:flex' : 'flex'}`} style={{ minHeight: '500px' }}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-border">
           <div className="flex items-center gap-3">
@@ -451,7 +475,7 @@ export default function TabRealisasiBiaya() {
       </div>
 
       {/* ── KANAN: Dashboard ─────────────────────────────────────────────── */}
-      <div className="w-80 flex flex-col gap-4">
+      <div className={`w-full lg:w-80 flex flex-col gap-4 ${mobileView !== 'dashboard' ? 'hidden lg:flex' : 'flex'}`}>
 
         {/* KPI Cards */}
         <div className="bg-navy rounded-3xl p-5 text-white">
