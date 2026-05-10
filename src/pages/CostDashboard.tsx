@@ -409,17 +409,17 @@ export default function CostDashboard() {
 
       {/* ── STATE 1: No project → Dashboard Mode ── */}
       {!projectInfo && (
-        <main className="max-w-7xl mx-auto px-4 py-12">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+        <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 md:mb-8">
             <div>
               <button onClick={() => navigate('/home')}
                 className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
                 <ArrowLeft className="h-4 w-4" /> Kembali ke Portal
               </button>
-              <h1 className="font-serif text-3xl font-bold">Dashboard Cost Control</h1>
+              <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Cost Control</h1>
               <p className="text-muted-foreground mt-1 text-sm">{savedProjects.length} proyek tersimpan</p>
             </div>
-            <Button className="bg-navy text-white hover:bg-navy/90 font-bold gap-2" onClick={() => setShowCreateModal(true)}>
+            <Button className="bg-navy text-white hover:bg-navy/90 font-bold gap-2 w-full sm:w-auto" onClick={() => setShowCreateModal(true)}>
               <FolderPlus className="h-4 w-4" /> Buat Proyek Baru
             </Button>
           </div>
@@ -454,25 +454,25 @@ export default function CostDashboard() {
 
       {/* ── STATE 2: Project open, no RAB yet ── */}
       {projectInfo && !activePlan && (
-        <main className="max-w-7xl mx-auto px-4 py-12">
-          <div className="flex items-center justify-between mb-8">
+        <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 md:mb-8">
             <div>
               <button onClick={() => clearProject()}
                 className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
                 <ArrowLeft className="h-4 w-4" /> Kembali ke Dashboard
               </button>
-              <h1 className="font-serif text-3xl font-bold">Workspace Proyek</h1>
+              <h1 className="font-serif text-2xl md:text-3xl font-bold">Workspace Proyek</h1>
               <p className="text-muted-foreground text-sm mt-1">
                 <Building2 className="inline h-3.5 w-3.5 mr-1" />
                 {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
               </p>
             </div>
-            <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-6">
+            <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-6 w-full sm:w-auto">
               Simpan & Kembali
             </Button>
           </div>
           {/* KPI bar */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <KpiCard title="Total Anggaran (RAB)" value="Rp 0" icon={<Calculator className="h-5 w-5 text-blue-600" />} />
             <KpiCard title="Realisasi Biaya" value="Rp 0" icon={<ReceiptIcon className="h-5 w-5 text-orange-600" />} />
             <KpiCard title="Deviasi Progress" value="0%" icon={<LineChart className="h-5 w-5 text-emerald-600" />} />
@@ -488,27 +488,27 @@ export default function CostDashboard() {
           <WorkspaceSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 
           {/* Main Content */}
-          <main className="flex-1 min-w-0 px-4 md:px-8 py-6 pb-20 md:pb-6">
+          <main className="flex-1 min-w-0 px-3 md:px-8 py-4 md:py-6 pb-24 md:pb-6">
             {/* Workspace Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
+              <div className="pl-10 md:pl-0">
                 <button onClick={() => clearProject()}
                   className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-1">
                   <ArrowLeft className="h-4 w-4" /> Kembali ke Dashboard
                 </button>
-                <h1 className="font-serif text-2xl font-bold">Workspace Proyek</h1>
+                <h1 className="font-serif text-xl md:text-2xl font-bold">Workspace Proyek</h1>
                 <p className="text-muted-foreground text-xs mt-0.5">
                   <Building2 className="inline h-3 w-3 mr-1" />
                   {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
                 </p>
               </div>
-              <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-6 shadow-md">
+              <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-5 shadow-md w-full sm:w-auto">
                 Simpan & Kembali
               </Button>
             </div>
 
             {/* ── KPI Cards (real-time) ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mb-5">
               <KpiCard
                 title="Total Anggaran (RAB)"
                 value={`Rp ${totalRAB.toLocaleString('id-ID')}`}
@@ -553,12 +553,12 @@ export default function CostDashboard() {
             </div>
 
             {/* ── Tab Content ── */}
-            <div className="bg-white border border-border rounded-3xl shadow-sm overflow-hidden">
-              <div className="p-6 md:p-8">
+            <div className="bg-white border border-border rounded-2xl md:rounded-3xl shadow-sm overflow-hidden">
+              <div className="p-4 md:p-6 lg:p-8">
                 {/* Overview Tab */}
                 {activeTab === 'overview' && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-serif font-bold text-navy">Dashboard Proyek</h2>
+                  <div className="space-y-5">
+                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Dashboard Proyek</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div className="bg-muted/30 rounded-2xl p-5 space-y-2">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Info Proyek</p>
@@ -611,7 +611,7 @@ export default function CostDashboard() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
                         <Target className="w-3.5 h-3.5" /> Key Performance Indicators (EVM)
                       </p>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {[
                           { label: 'SPI', val: evmMetrics.SPI !== null ? evmMetrics.SPI.toFixed(2) : '—', sub: evmMetrics.spiStatus === 'ahead' ? '✅ Ahead' : evmMetrics.spiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.spiStatus === 'behind' ? '🔴 Behind' : 'Input progress dulu', good: evmMetrics.SPI === null ? null : evmMetrics.SPI >= 1 },
                           { label: 'CPI', val: evmMetrics.CPI !== null ? evmMetrics.CPI.toFixed(2) : '—', sub: evmMetrics.cpiStatus === 'under' ? '✅ Under Budget' : evmMetrics.cpiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.cpiStatus === 'over' ? '🔴 Over Budget' : 'Input realisasi dulu', good: evmMetrics.CPI === null ? null : evmMetrics.CPI >= 1 },
@@ -637,20 +637,20 @@ export default function CostDashboard() {
 
                 {/* RAB Tab */}
                 {activeTab === 'rab' && isFeatureEnabled('cost_rab') && (
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-2xl font-serif font-bold text-navy">Data RAB Proyek</h2>
+                        <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Data RAB Proyek</h2>
                         <p className="text-muted-foreground text-sm mt-1">
-                          {activePlan.components.length} item pekerjaan · Klik ✏️ untuk edit nilai secara manual.
+                          {activePlan.components.length} item pekerjaan · Klik ✏️ untuk edit.
                         </p>
                       </div>
-                      <div className="flex gap-3">
-                        <Button variant="outline" onClick={() => clearActivePlan()} className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50">
-                          <RefreshCw className="w-4 h-4" /> Upload Ulang
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <Button variant="outline" onClick={() => clearActivePlan()} className="gap-1.5 text-orange-600 border-orange-200 hover:bg-orange-50 flex-1 sm:flex-none text-sm">
+                          <RefreshCw className="w-3.5 h-3.5" /> Upload Ulang
                         </Button>
-                        <Button variant="outline" onClick={exportRAB} className="gap-2">
-                          <Download className="w-4 h-4" /> Export Excel
+                        <Button variant="outline" onClick={exportRAB} className="gap-1.5 flex-1 sm:flex-none text-sm">
+                          <Download className="w-3.5 h-3.5" /> Export Excel
                         </Button>
                       </div>
                     </div>
@@ -664,9 +664,9 @@ export default function CostDashboard() {
 
                 {/* Laporan & Export */}
                 {activeTab === 'laporan' && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-serif font-bold text-navy">Laporan & Export</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-5">
+                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Laporan & Export</h2>
+                    <div className="grid grid-cols-1 gap-3">
                       {[
                         { label: 'Export RAB ke Excel', desc: `RAB_${projName}_${dateStr()}.xlsx · Grouping per kategori + Summary`, icon: <FileSpreadsheet className="w-6 h-6" />, action: exportRAB, color: 'bg-blue-50 border-blue-200 hover:bg-blue-100' },
                         { label: 'Export Realisasi Biaya', desc: `Realisasi_${projName}_${dateStr()}.xlsx · Material + Upah + Deviasi`, icon: <ReceiptIcon className="w-6 h-6" />, action: exportRealisasi, color: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
@@ -689,7 +689,7 @@ export default function CostDashboard() {
                     {/* EVM Analytics Section */}
                     <div className="border border-border rounded-2xl p-5 bg-white">
                       <h3 className="font-bold text-navy mb-4 flex items-center gap-2"><Target className="w-4 h-4" /> Key Performance Indicators (EVM)</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 gap-3">
                         <div className="bg-muted/30 rounded-xl p-4">
                           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">SPI</p>
                           <p className={`text-xl font-bold ${evmMetrics.SPI === null ? 'text-muted-foreground' : evmMetrics.SPI >= 1 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -729,8 +729,8 @@ export default function CostDashboard() {
 
                 {/* Pengaturan */}
                 {activeTab === 'settings' && (
-                  <div className="space-y-6">
-                    <h2 className="text-2xl font-serif font-bold text-navy">Pengaturan Proyek</h2>
+                  <div className="space-y-5">
+                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Pengaturan Proyek</h2>
                     <div className="bg-muted/30 rounded-2xl p-5 space-y-2 max-w-md">
                       <p className="text-sm font-semibold mb-3">Info Proyek</p>
                       {[
