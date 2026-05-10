@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2 } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3 } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
@@ -34,6 +34,10 @@ export default function AdminSettings() {
   const [bankForm, setBankForm] = useState<BankDetails>(DEFAULT_BANK_DETAILS)
   const [savingBank, setSavingBank] = useState(false)
 
+  // GA State
+  const [gaId, setGaId] = useState('')
+  const [savingGa, setSavingGa] = useState(false)
+
   useEffect(() => {
     if (bankDetails) setBankForm(bankDetails)
   }, [bankDetails])
@@ -54,6 +58,16 @@ export default function AdminSettings() {
         const rate = data?.value ?? 0.11
         setPpnPct(Math.round(Number(rate) * 100))
         setPpnInput(String(Math.round(Number(rate) * 100)))
+
+        const { data: gaData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'google_analytics_id')
+          .maybeSingle()
+        if (gaData?.value) {
+          // It might be stored as a string with quotes from SQL, strip them
+          setGaId(typeof gaData.value === 'string' ? gaData.value.replace(/"/g, '') : '')
+        }
       } catch { /* use default */ } finally { setLoadingPPN(false) }
     }
     loadPPN()
@@ -124,6 +138,29 @@ export default function AdminSettings() {
       toast({ title: 'Gagal menyimpan Detail Bank', description: err.message, variant: 'destructive' })
     } finally {
       setSavingBank(false)
+    }
+  }
+
+  async function saveGaSettings() {
+    setSavingGa(true)
+    try {
+      const { data: existing } = await supabase.from('app_settings').select('key').eq('key', 'google_analytics_id').maybeSingle()
+      let error
+      
+      if (existing) {
+        const res = await supabase.from('app_settings').update({ value: gaId }).eq('key', 'google_analytics_id')
+        error = res.error
+      } else {
+        const res = await supabase.from('app_settings').insert({ key: 'google_analytics_id', value: gaId })
+        error = res.error
+      }
+      
+      if (error) throw error
+      toast({ title: 'Google Analytics ID Berhasil Disimpan' })
+    } catch (err: any) {
+      toast({ title: 'Gagal menyimpan GA ID', description: err.message, variant: 'destructive' })
+    } finally {
+      setSavingGa(false)
     }
   }
 
@@ -266,6 +303,48 @@ export default function AdminSettings() {
              {savingBank ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
              Simpan Detail Rekening
            </Button>
+        </div>
+      </div>
+
+      {/* ── Google Analytics ── */}
+      <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-10 shadow-sm space-y-6">
+        <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+          <div className="w-12 h-12 bg-orange-50 text-orange-500 rounded-2xl flex items-center justify-center">
+            <BarChart3 className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-navy">Google Analytics</h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+              Tracking Pengunjung Website
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">
+            GA4 Measurement ID
+          </Label>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <input
+              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-mono font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all"
+              placeholder="G-XXXXXXXXXX"
+              value={gaId}
+              onChange={e => setGaId(e.target.value)}
+            />
+            <Button onClick={saveGaSettings} disabled={savingGa} className="h-14 px-8 bg-navy text-white hover:bg-navy/90 rounded-2xl gap-2 font-bold shrink-0">
+              {savingGa ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Simpan ID
+            </Button>
+          </div>
+          <p className="text-xs text-slate-400 ml-1 mt-2">
+            Dapatkan Measurement ID dari Google Analytics 4 → Admin → Data Streams → Web Stream
+          </p>
+        </div>
+
+        <div className="bg-blue-50 rounded-2xl p-4">
+          <p className="text-xs text-blue-700 font-medium leading-relaxed">
+            ⚠️ Setelah mengubah GA ID, Anda perlu update Environment Variable <code className="bg-blue-100 px-1 rounded">VITE_GA_ID</code> di Vercel dan redeploy agar perubahan aktif.
+          </p>
         </div>
       </div>
 

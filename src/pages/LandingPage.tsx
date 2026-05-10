@@ -17,7 +17,8 @@ import {
   MapPin,
   Loader2,
   Send,
-  CheckCircle
+  CheckCircle,
+  ChevronDown
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
@@ -523,6 +524,43 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── FAQ Section ── */}
+        {(landingContent.faq?.items?.length ?? 0) > 0 && (
+          <section className="py-24 bg-cream/30">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+
+              {/* Header */}
+              <div className="text-center mb-14">
+                <h2 className="font-serif text-3xl sm:text-4xl font-bold text-navy mb-4">
+                  {landingContent.faq?.title || 'Pertanyaan yang Sering Ditanyakan'}
+                </h2>
+                <p className="text-slate-500 text-base">
+                  {landingContent.faq?.subtitle || ''}
+                </p>
+              </div>
+
+              {/* FAQ Accordion Items */}
+              <div className="space-y-3">
+                {landingContent.faq!.items.map((item, idx) => (
+                  <FAQItem key={item.id} item={item} idx={idx} />
+                ))}
+              </div>
+
+              {/* CTA bawah FAQ */}
+              <div className="text-center mt-12">
+                <p className="text-slate-500 text-sm mb-4">
+                  Masih ada pertanyaan lain?
+                </p>
+                <a
+                  href={`mailto:${landingContent.footer?.email || 'support@propfs.id'}`}
+                  className="inline-flex items-center gap-2 text-gold font-semibold hover:underline text-sm"
+                >
+                  Hubungi tim kami →
+                </a>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section id="contact" className="py-24 bg-background">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-3 gap-16">
@@ -654,6 +692,37 @@ export default function LandingPage() {
         isOpen={legalModal !== null}
         onClose={() => setLegalModal(null)}
       />
+    </div>
+  )
+}
+
+function FAQItem({ item, idx }: { item: { question: string; answer: string }; idx: number }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className={`bg-white rounded-2xl border transition-all duration-200 overflow-hidden ${
+      open ? 'border-gold/30 shadow-md' : 'border-slate-100 hover:border-slate-200'
+    }`}>
+      <button
+        className="w-full flex items-center justify-between px-6 py-5 text-left gap-4"
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex items-center gap-4">
+          <span className="w-7 h-7 rounded-full bg-gold/10 text-gold text-xs font-black flex items-center justify-center flex-shrink-0">
+            {idx + 1}
+          </span>
+          <span className="font-semibold text-navy text-sm sm:text-base leading-snug">
+            {item.question}
+          </span>
+        </div>
+        <ChevronDown className={`h-5 w-5 text-gold flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="px-6 pb-5 pl-[4.25rem]">
+          <p className="text-slate-600 text-sm leading-relaxed">{item.answer}</p>
+        </div>
+      )}
     </div>
   )
 }

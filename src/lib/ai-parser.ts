@@ -369,8 +369,8 @@ export async function parseRABwithGemini(
     throw new Error("File Excel kosong atau konten tidak bisa dibaca. Pastikan file berisi tabel RAB.");
   }
 
-  // Gemini bisa memproses teks lebih banyak sehingga jumlah request lebih sedikit (aman dari limit 15 RPM)
-  const chunkSize = provider === 'gemini' ? 8000 : 4000;
+  // Gemini 2.0 Flash punya context window besar, chunk lebih besar = lebih sedikit request = lebih akurat
+  const chunkSize = provider === 'gemini' ? 12000 : 5000;
   const chunks = chunkText(extractedText, chunkSize);
   const totalChunks = chunks.length;
   console.log(`[RAB Parser] Total: ${extractedText.length} chars → ${totalChunks} chunks`);
@@ -400,14 +400,15 @@ export async function parseRABwithGemini(
   }
 
   let components = allItems.map(mapToComponent).filter(c => {
-    if (c.name === 'Item Pekerjaan' && c.totalPlannedCost === 0) return false;
-    if (c.plannedVolume === 0 && c.unitPrice === 0) return false;
+    // Hanya buang jika nama benar-benar kosong/default DAN tidak ada harga sama sekali
+    if (c.name === 'Item Pekerjaan' && c.totalPlannedCost === 0 && c.unitPrice === 0) return false;
     if (c.name.trim() === '') return false;
+    // Izinkan item yang punya nama meski harga 0 (mungkin item persiapan/ls)
     return true;
   });
 
-  // Tahap Validasi Otomatis AI (Self-Correction)
-  components = await validateRABWithAI(components, provider, activeKey);
+  // Lewati validasi AI agar tidak ada item yang hilang — validasi manual dilakukan user di UI
+  // components = await validateRABWithAI(components, provider, activeKey);
   onProgress?.(totalChunks + 1, totalChunks + 1);
 
   console.log(`[RAB Parser] ✅ Total item bersih final: ${components.length}`);

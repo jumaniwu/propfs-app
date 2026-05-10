@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette, RefreshCw } from 'lucide-react'
+import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette, RefreshCw, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useAuthStore, DEFAULT_LANDING_CONTENT } from '@/store/authStore'
@@ -292,6 +292,119 @@ export default function AdminLandingCMS() {
         </section>
 
       </div>
+
+      {/* ── FAQ Section Editor ── */}
+      <section className="bg-white border border-slate-100 rounded-[32px] sm:rounded-[40px] p-6 sm:p-10 shadow-sm space-y-8 max-w-5xl mt-10">
+        <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+          <div className="w-12 h-12 bg-gold/10 text-gold rounded-2xl flex items-center justify-center">
+            <HelpCircle className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-navy">FAQ (Pertanyaan Umum)</h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+              Tampil di Landing Page · Max 10 Item
+            </p>
+          </div>
+        </div>
+
+        {/* Judul & Subtitle Section */}
+        <div className="grid sm:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Judul Section</Label>
+            <input
+              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all"
+              value={cmsData.faq?.title || ''}
+              onChange={e => setCmsData({
+                ...cmsData,
+                faq: { ...(cmsData.faq || DEFAULT_LANDING_CONTENT.faq!), title: e.target.value }
+              })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Subtitle Section</Label>
+            <input
+              className="w-full h-14 bg-slate-50 border-none rounded-2xl px-5 font-bold text-navy focus:ring-4 focus:ring-gold/10 transition-all"
+              value={cmsData.faq?.subtitle || ''}
+              onChange={e => setCmsData({
+                ...cmsData,
+                faq: { ...(cmsData.faq || DEFAULT_LANDING_CONTENT.faq!), subtitle: e.target.value }
+              })}
+            />
+          </div>
+        </div>
+
+        {/* List FAQ Items */}
+        <div className="space-y-4">
+          {(cmsData.faq?.items || []).map((item, idx) => (
+            <div key={item.id} className="bg-slate-50 rounded-2xl p-5 relative group">
+              <button
+                className="absolute top-4 right-4 text-red-300 hover:text-red-500 transition-colors"
+                onClick={() => setCmsData({
+                  ...cmsData,
+                  faq: {
+                    ...cmsData.faq!,
+                    items: cmsData.faq!.items.filter((_, i) => i !== idx)
+                  }
+                })}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+
+              <div className="space-y-3 pr-8">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="w-6 h-6 rounded-full bg-gold/20 text-gold text-xs font-black flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  <Label className="text-[10px] font-black uppercase text-slate-400">Pertanyaan</Label>
+                </div>
+                <input
+                  className="w-full h-12 bg-white border-none rounded-xl px-4 font-semibold text-navy text-sm focus:ring-2 focus:ring-gold/20 transition-all"
+                  placeholder="Tulis pertanyaan di sini..."
+                  value={item.question}
+                  onChange={e => {
+                    const items = [...cmsData.faq!.items]
+                    items[idx].question = e.target.value
+                    setCmsData({ ...cmsData, faq: { ...cmsData.faq!, items } })
+                  }}
+                />
+
+                <Label className="text-[10px] font-black uppercase text-slate-400">Jawaban</Label>
+                <textarea
+                  className="w-full bg-white border-none rounded-xl px-4 py-3 font-medium text-navy text-sm focus:ring-2 focus:ring-gold/20 transition-all resize-none min-h-[80px]"
+                  placeholder="Tulis jawaban di sini..."
+                  value={item.answer}
+                  onChange={e => {
+                    const items = [...cmsData.faq!.items]
+                    items[idx].answer = e.target.value
+                    setCmsData({ ...cmsData, faq: { ...cmsData.faq!, items } })
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Tombol Tambah FAQ */}
+        {(cmsData.faq?.items?.length || 0) < 10 && (
+          <button
+            className="w-full h-12 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:border-gold hover:text-gold transition-all font-bold text-sm flex items-center justify-center gap-2"
+            onClick={() => setCmsData({
+              ...cmsData,
+              faq: {
+                ...cmsData.faq!,
+                title: cmsData.faq?.title || DEFAULT_LANDING_CONTENT.faq?.title || '',
+                subtitle: cmsData.faq?.subtitle || DEFAULT_LANDING_CONTENT.faq?.subtitle || '',
+                items: [
+                  ...(cmsData.faq?.items || []),
+                  { id: Date.now().toString(), question: '', answer: '' }
+                ]
+              }
+            })}
+          >
+            <Plus className="h-4 w-4" /> Tambah Pertanyaan FAQ
+          </button>
+        )}
+      </section>
 
       {/* Footer Settings */}
       <section className="bg-white border border-slate-100 rounded-[32px] sm:rounded-[40px] p-6 sm:p-10 shadow-sm space-y-8 max-w-5xl mt-10">

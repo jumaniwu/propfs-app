@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, CreditCard, TrendingUp, RefreshCw, Zap } from 'lucide-react'
+import { Users, CreditCard, TrendingUp, RefreshCw, Zap, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 
@@ -78,6 +78,25 @@ export default function AdminDashboard() {
         <StatCard label="Total Revenue"    value={`Rp ${stats.revenue.toLocaleString('id-ID')}`} icon={<TrendingUp className="h-5 w-5 text-green-600" />} color="bg-green-50" />
         <StatCard label="Total Proyek Dibuat" value={stats.totalProjects}  icon={<LayoutDashboard className="h-5 w-5 text-purple-600" />} color="bg-purple-50" />
         <StatCard label="Total AI Cost" value={`$${stats.aiCostUSD.toFixed(3)}`} icon={<Zap className="h-5 w-5 text-amber-600" />} color="bg-amber-50" />
+      </div>
+
+      {/* ── Widget Analytics ── */}
+      <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-100 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-sm">
+        <div className="flex items-center gap-5">
+           <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-sm text-orange-500 shrink-0">
+             <BarChart3 className="h-7 w-7" />
+           </div>
+           <div>
+             <h3 className="text-xl font-black text-navy">Google Analytics 4</h3>
+             <p className="text-sm text-slate-500 mt-1">Pantau jumlah pengunjung, durasi sesi, dan sumber trafik website Anda.</p>
+           </div>
+        </div>
+        <Button 
+          className="w-full sm:w-auto h-12 px-8 bg-white text-orange-600 border border-orange-200 hover:bg-orange-50 font-bold shadow-sm"
+          onClick={() => window.open('https://analytics.google.com/', '_blank')}
+        >
+          Buka Dashboard GA4 →
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

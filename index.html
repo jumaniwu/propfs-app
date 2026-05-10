@@ -9,6 +9,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    
+    <!-- Google Analytics 4 — PropFS -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-EZHT5J2HDH"></script>
+    <script type="module">
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      // ID dikonfigurasi via VITE_GA_ID environment variable, dengan fallback default
+      const gaId = import.meta.env?.VITE_GA_ID || 'G-EZHT5J2HDH'
+      if (gaId) {
+        gtag('config', gaId);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -63,6 +63,15 @@ export interface LandingPageContent {
     address: string
     whatsappUrl: string
   }
+  faq?: {
+    title: string
+    subtitle: string
+    items: Array<{
+      id: string
+      question: string
+      answer: string
+    }>
+  }
 }
 
 export interface AppSetting {

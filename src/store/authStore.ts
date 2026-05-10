@@ -107,6 +107,37 @@ export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
       phone: '+62 811 0000 000',
       address: 'Batam Centre, Kepulauan Riau',
       whatsappUrl: 'https://wa.me/628110000000'
+    },
+    faq: {
+      title: 'Pertanyaan yang Sering Ditanyakan',
+      subtitle: 'Semua yang perlu Anda ketahui tentang PropFS',
+      items: [
+        {
+          id: '1',
+          question: 'Apa itu PropFS dan untuk siapa platform ini?',
+          answer: 'PropFS adalah platform SaaS berbasis AI untuk membuat Feasibility Study (FS) properti secara digital. Dirancang untuk developer properti, investor, konsultan, dan pemilik lahan yang ingin menganalisis kelayakan proyek dengan cepat dan akurat.'
+        },
+        {
+          id: '2',
+          question: 'Apakah data proyek saya aman di PropFS?',
+          answer: 'Ya, seluruh data dienkripsi dan disimpan di database Supabase yang aman dengan standar keamanan perbankan. Data Anda tidak digunakan untuk melatih model AI manapun dan tidak dibagikan ke pihak ketiga.'
+        },
+        {
+          id: '3',
+          question: 'Berapa lama waktu yang dibutuhkan untuk membuat laporan FS?',
+          answer: 'Dengan PropFS, laporan Feasibility Study lengkap bisa selesai dalam 15-30 menit, dibandingkan cara manual di Excel yang bisa memakan waktu berhari-hari. AI Parser kami otomatis membedah RAB dan mengkalkulasi semua komponen finansial.'
+        },
+        {
+          id: '4',
+          question: 'Apakah laporan yang dihasilkan bisa diajukan ke bank?',
+          answer: 'Ya, laporan PDF PropFS dirancang mengikuti format standar perbankan Indonesia, mencakup analisa NPV, IRR, cashflow, dan sensitivitas yang umumnya dibutuhkan untuk pengajuan kredit konstruksi.'
+        },
+        {
+          id: '5',
+          question: 'Bagaimana cara mulai menggunakan PropFS?',
+          answer: 'Daftar gratis dan langsung buat proyek pertama Anda. Paket Free Trial memungkinkan Anda mencoba fitur dasar untuk 2 proyek tanpa biaya. Upgrade ke Pro kapan saja untuk akses fitur lengkap.'
+        },
+      ]
     }
 }
 
