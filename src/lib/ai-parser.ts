@@ -112,7 +112,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { 
@@ -155,11 +155,13 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
 
       if (!res.ok) {
         if (res.status === 404) {
-          console.warn(`[AI Chunk] Model 404 - trying fallback model gemini-1.5-pro...`)
-          const fallbackUrl = url.replace('gemini-2.0-flash', 'gemini-1.5-pro')
+          const errText = await res.text()
+          console.warn(`[AI Chunk] Model 404 - response: ${errText.substring(0, 200)}. Trying fallback model gemini-2.0-flash...`)
+          const fallbackUrl = url.replace('gemini-2.5-flash', 'gemini-2.0-flash')
           const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
           if (!fallbackRes.ok) {
-            throw new Error(`Gagal memproses bagian RAB API Error ${fallbackRes.status}`)
+            const fb404 = await fallbackRes.text()
+            throw new Error(`Gagal memproses RAB: Model utama dan fallback gagal (${fallbackRes.status}). Detail: ${fb404.substring(0, 100)}`)
           }
           const fallbackData = await fallbackRes.json()
           const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -256,7 +258,7 @@ ${JSON.stringify(components)}
   let body: any = {};
 
   if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
     body = {
       contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
       generationConfig: { temperature: 0.05, responseMimeType: 'application/json' }
@@ -279,8 +281,8 @@ ${JSON.stringify(components)}
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
     if (!res.ok) {
       if (res.status === 404) {
-        console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-1.5-pro...`)
-        const fallbackUrl = url.replace('gemini-2.0-flash', 'gemini-1.5-pro')
+        console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-2.0-flash...`)
+        const fallbackUrl = url.replace('gemini-2.5-flash', 'gemini-2.0-flash')
         const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
         if (!fallbackRes.ok) return components;
         const fallbackData = await fallbackRes.json()
