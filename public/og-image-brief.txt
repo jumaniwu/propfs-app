@@ -1,0 +1,4 @@
+TODO: Buat gambar 1200x630px — background navy #0D1B2A, 
+logo PropFS di tengah warna gold #C9A84C, tagline: 
+'Buat Laporan FS Properti dalam 15 Menit' — 
+simpan sebagai /public/og-image.jpg
