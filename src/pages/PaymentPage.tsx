@@ -265,31 +265,49 @@ export default function PaymentPage() {
                     </div>
                   </div>
 
-                  {paymentMethod === 'manual' && (
-                    <div className="mt-6 p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2">
-                       <p className="text-sm font-bold text-navy">Instruksi Transfer Manual:</p>
-                       <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
-                          <p className="text-xs text-slate-500 uppercase tracking-widest font-black">Transfer Ke Rekening:</p>
-                          <div className="flex justify-between items-center">
-                             <span className="font-bold">{bankDetails?.bankName || 'BANK BCA'}</span>
-                             <span className="font-mono font-black text-lg">{bankDetails?.accountNumber || '8210 555 XXX'}</span>
-                          </div>
-                          <p className="text-sm font-medium">A/N {bankDetails?.accountName || 'PT. PropFS Digital Indonesia'}</p>
-                       </div>
-                       <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4">
-                          <li>Transfer tepat sesuai nominal: <strong>Rp {invoice.total_idr.toLocaleString('id-ID')}</strong></li>
-                          <li>Kirim bukti transfer ke WhatsApp: <strong>{bankDetails?.whatsapp || '08110000000'}</strong></li>
-                          <li>Lampirkan nomor invoice: <strong>{invoice.invoice_number}</strong></li>
-                          <li>Admin akan memverifikasi dalam 1-2 jam kerja.</li>
-                       </ul>
-                    </div>
-                  )}
+                  {paymentMethod === 'manual' && (() => {
+                    const isBankDetailsIncomplete =
+                      !bankDetails?.bankName ||
+                      !bankDetails?.accountNumber ||
+                      !bankDetails?.whatsapp
+                    if (isBankDetailsIncomplete) {
+                      return (
+                        <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm font-medium">
+                          ⚠️ Informasi pembayaran sedang dalam konfigurasi.
+                          Hubungi tim kami via WhatsApp untuk panduan pembayaran.
+                        </div>
+                      )
+                    }
+                    return (
+                      <div className="mt-6 p-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                         <p className="text-sm font-bold text-navy">Instruksi Transfer Manual:</p>
+                         <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                            <p className="text-xs text-slate-500 uppercase tracking-widest font-black">Transfer Ke Rekening:</p>
+                            <div className="flex justify-between items-center">
+                               <span className="font-bold">{bankDetails.bankName}</span>
+                               <span className="font-mono font-black text-lg">{bankDetails.accountNumber}</span>
+                            </div>
+                            <p className="text-sm font-medium">A/N {bankDetails.accountName}</p>
+                         </div>
+                         <ul className="text-xs text-slate-600 space-y-2 list-disc pl-4">
+                            <li>Transfer tepat sesuai nominal: <strong>Rp {invoice.total_idr.toLocaleString('id-ID')}</strong></li>
+                            <li>Kirim bukti transfer ke WhatsApp: <strong>{bankDetails.whatsapp}</strong></li>
+                            <li>Lampirkan nomor invoice: <strong>{invoice.invoice_number}</strong></li>
+                            <li>Admin akan memverifikasi dalam 1-2 jam kerja.</li>
+                         </ul>
+                      </div>
+                    )
+                  })()}
 
                   <Button 
                     className="w-full mt-6 h-14 text-lg font-black bg-navy hover:bg-navy/90 text-gold"
                     onClick={() => {
                       if (paymentMethod === 'manual') {
-                         const rawWa = bankDetails?.whatsapp || '628110000000'
+                         const rawWa = bankDetails?.whatsapp
+                         if (!rawWa) {
+                           alert('Nomor WhatsApp admin belum dikonfigurasi. Hubungi tim kami secara langsung.')
+                           return
+                         }
                          const cleanWa = String(rawWa).replace(/\D/g, '')
                          const waNumber = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa
                          window.open(`https://wa.me/${waNumber}?text=Halo%20Admin%2C%20saya%20sudah%20transfer%20untuk%20invoice%20${invoice.invoice_number}.%20Mohon%20verifikasinya.`, '_blank')

@@ -32,11 +32,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const payload = {
-      // Using resend.dev as from address because domain propfs.id is not verified yet
-      // Once domain is verified at resend.com/domains, change to: noreply@propfs.id
-      from: 'PropFS Contact Form <onboarding@resend.dev>',
-      // Email goes to the Resend account owner's email until domain is verified
-      to: ['propfs.id@gmail.com'],
+      // REQUIRES: domain propfs.id verified at resend.com/domains
+      // If not yet verified, temporarily use: onboarding@resend.dev
+      from: 'PropFS Contact Form <hello@propfs.id>',
+      to: ['hello@propfs.id'],
       reply_to: email,
       subject: `[PropFS] Pesan Baru dari ${name}`,
       html: `

@@ -22,11 +22,12 @@ import SubscriptionCard from '@/components/subscription/SubscriptionCard'
 import { supabase } from '@/lib/supabase'
 import { useState, useEffect } from 'react'
 import { toast } from '@/hooks/use-toast'
+import WelcomeModal from '@/components/onboarding/WelcomeModal'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { profile, isFeatureEnabled, landingContent, signOut } = useAuthStore()
+  const { profile, user, isFeatureEnabled, landingContent, signOut } = useAuthStore()
   const projects = useFSStore(s => s.projects) || []
   const fetchProjects = useFSStore(s => s.fetchProjects)
   
@@ -36,6 +37,22 @@ export default function HomePage() {
 
   const [invoices, setInvoices] = useState<any[]>([])
   const { getCurrentPlan } = useAuthStore()
+
+  // Welcome modal for new users
+  const [showWelcome, setShowWelcome] = useState(() => {
+    if (!user) return false
+    const key = `propfs_welcome_shown_${user.id}`
+    const alreadySeen = localStorage.getItem(key)
+    const isNewUser = (profile?.total_projects_created ?? 0) === 0
+    return !alreadySeen && isNewUser
+  })
+
+  function handleCloseWelcome() {
+    if (user) {
+      localStorage.setItem(`propfs_welcome_shown_${user.id}`, 'true')
+    }
+    setShowWelcome(false)
+  }
 
   const totalRAB = costProjects.reduce((acc, p) => acc + (p?.plan?.totalBaselineBudget || 0), 0)
   const sangatLayakCount = projects.filter(p => p?.results?.statusKelayakan === 'sangat_layak').length
@@ -194,6 +211,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-gold/30 relative overflow-hidden">
+      {/* Welcome Onboarding Modal */}
+      {showWelcome && profile && (
+        <WelcomeModal
+          userName={profile.full_name || ''}
+          onClose={handleCloseWelcome}
+        />
+      )}
       {/* Background Decorative Blobs */}
       <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-gold/10 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none" />
       <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-blue-100/50 rounded-full blur-[100px] translate-x-1/4 translate-y-1/4 pointer-events-none" />

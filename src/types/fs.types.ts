@@ -1,6 +1,6 @@
 // ============================================================
 // PropFS — TypeScript Types & Interfaces
-// PT. Mettaland Batam Sukses
+// PropFS
 // ============================================================
 
 export type JenisProyek = 'perumahan' | 'ruko' | 'mixed'

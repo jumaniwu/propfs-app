@@ -74,7 +74,7 @@ serve(async (req) => {
             </a>
             
             <div style="margin-top: 40px; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 20px; text-align: center;">
-              &copy; ${new Date().getFullYear()} PT. Mettaland Batam Sukses<br/>
+              &copy; ${new Date().getFullYear()} PropFS<br/>
               Pesan ini dibuat secara otomatis, mohon tidak dibalas.
             </div>
           </div>

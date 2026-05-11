@@ -1,6 +1,6 @@
 // ============================================================
 // PropFS — Core Feasibility Study Calculation Engine
-// PT. Mettaland Batam Sukses
+// PropFS
 // ============================================================
 
 import type {

@@ -34,7 +34,7 @@ export default async function handler(req: Request) {
             </div>
             <p style="color: #94a3b8; font-size: 14px;">Kode ini hanya berlaku selama 10 menit.</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="color: #94a3b8; font-size: 12px;">© ${new Date().getFullYear()} PropFS by PT. Mettaland Batam Sukses</p>
+            <p style="color: #94a3b8; font-size: 12px;">© ${new Date().getFullYear()} PropFS</p>
           </div>
         `,
       }),

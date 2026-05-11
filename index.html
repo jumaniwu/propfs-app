@@ -4,23 +4,71 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="PropFS — Aplikasi Feasibility Study Properti Profesional oleh PT. Mettaland Batam Sukses" />
-    <title>PropFS — Feasibility Study Properti</title>
+
+    <!-- Primary SEO -->
+    <title>PropFS — Feasibility Study Properti Berbasis AI | Laporan FS dalam 15 Menit</title>
+    <meta name="description" content="Platform AI untuk developer properti Indonesia. Hitung cashflow, IRR, NPV, RAB, dan buat laporan Feasibility Study profesional siap bank dalam 15 menit. Coba gratis sekarang." />
+    <meta name="keywords" content="feasibility study properti, studi kelayakan properti, software developer properti, kalkulator NPV IRR properti, laporan FS properti, PropFS" />
+    <meta name="author" content="PropFS" />
+    <link rel="canonical" href="https://propfs.id/" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://propfs.id/" />
+    <meta property="og:title" content="PropFS — Buat Laporan Feasibility Study Properti dalam 15 Menit" />
+    <meta property="og:description" content="Platform AI untuk developer properti Indonesia. Hitung cashflow, IRR, NPV, dan buat laporan FS profesional siap bank. Coba gratis, tanpa kartu kredit." />
+    <meta property="og:image" content="https://propfs.id/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PropFS — Platform Feasibility Study Properti" />
+    <meta property="og:site_name" content="PropFS" />
+    <meta property="og:locale" content="id_ID" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://propfs.id/" />
+    <meta name="twitter:title" content="PropFS — Feasibility Study Properti Berbasis AI" />
+    <meta name="twitter:description" content="Hitung cashflow, IRR, NPV properti dan buat laporan FS profesional dalam 15 menit. Platform AI untuk developer properti Indonesia." />
+    <meta name="twitter:image" content="https://propfs.id/og-image.jpg" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "PropFS",
+      "description": "Platform SaaS Feasibility Study Properti berbasis AI untuk developer Indonesia",
+      "url": "https://propfs.id",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "IDR",
+        "description": "Free Trial tersedia"
+      },
+      "provider": {
+        "@type": "Organization",
+        "name": "PropFS",
+        "url": "https://propfs.id"
+      }
+    }
+    </script>
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-    
+
     <!-- Google Analytics 4 — PropFS -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-EZHT5J2HDH"></script>
     <script type="module">
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-      // ID dikonfigurasi via VITE_GA_ID environment variable, dengan fallback default
       const gaId = import.meta.env?.VITE_GA_ID || 'G-EZHT5J2HDH'
-      if (gaId) {
-        gtag('config', gaId);
-      }
+      if (gaId) { gtag('config', gaId); }
     </script>
   </head>
   <body>

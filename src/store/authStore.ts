@@ -35,10 +35,10 @@ export interface BankDetails {
 }
 
 export const DEFAULT_BANK_DETAILS: BankDetails = {
-  bankName: 'BANK BCA',
-  accountNumber: '8210 555 XXX',
-  accountName: 'PT. PropFS Digital Indonesia',
-  whatsapp: '08110000000',
+  bankName: '',
+  accountNumber: '',
+  accountName: '',
+  whatsapp: '',
 }
 
 // ── Store Interface ─────────────────────────────────────────

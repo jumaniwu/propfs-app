@@ -2,7 +2,7 @@
   "name": "propfs",
   "private": true,
   "version": "1.0.0",
-  "description": "PropFS — Feasibility Study Properti by PT. Mettaland Batam Sukses",
+  "description": "PropFS — Platform Feasibility Study Properti Berbasis AI",
   "type": "module",
   "scripts": {
     "dev": "vite",
