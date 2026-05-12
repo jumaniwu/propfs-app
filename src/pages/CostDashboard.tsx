@@ -11,6 +11,7 @@ import { saveAs } from 'file-saver'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
+import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
 import EditableRABTable from '@/components/cost/EditableRABTable'
 import TabMaterialSchedule from '@/components/cost/TabMaterialSchedule'
 import TabRealisasiBiaya from '@/components/cost/TabRealisasiBiaya'
@@ -477,7 +478,9 @@ export default function CostDashboard() {
             <KpiCard title="Realisasi Biaya" value="Rp 0" icon={<ReceiptIcon className="h-5 w-5 text-orange-600" />} />
             <KpiCard title="Deviasi Progress" value="0%" icon={<LineChart className="h-5 w-5 text-emerald-600" />} />
           </div>
-          <RABUploader />
+          <TrialExpiredGate feature="AI RAB Parser">
+            <RABUploader />
+          </TrialExpiredGate>
         </main>
       )}
 

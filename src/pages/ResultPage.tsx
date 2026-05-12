@@ -13,6 +13,7 @@ import TabCashFlow from '@/components/outputs/TabCashFlow'
 import TabBagiHasil from '@/components/outputs/TabBagiHasil'
 import TabSensitivitas from '@/components/outputs/TabSensitivitas'
 import SubscriptionGate from '@/components/subscription/SubscriptionGate'
+import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
 import { useFSStore } from '@/store/fsStore'
 import { exportToJSON } from '@/utils/export'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -230,9 +231,11 @@ function ResultPageContent() {
                 {/* CASHFLOW — gated to Pro */}
                 <TabsContent value="cashflow" forceMount className="mt-0" hidden={tabValue !== 'cashflow'}>
                   {tabValue === 'cashflow' && (
-                    <SubscriptionGate requiredPlan="pro" feature="Analisa Cash Flow" overlay>
-                      <TabCashFlow results={r} />
-                    </SubscriptionGate>
+                    <TrialExpiredGate feature="Cashflow Projection">
+                      <SubscriptionGate requiredPlan="pro" feature="Analisa Cash Flow" overlay>
+                        <TabCashFlow results={r} />
+                      </SubscriptionGate>
+                    </TrialExpiredGate>
                   )}
                 </TabsContent>
 

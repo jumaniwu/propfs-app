@@ -9,7 +9,10 @@ import {
   type Subscription,
   type PlanId,
   type AppFeature,
-  type LandingPageContent
+  type LandingPageContent,
+  type TrialInfo,
+  type TrialFeatures,
+  type TrialStatus
 } from '../lib/supabase'
 import type { User, Session } from '@supabase/supabase-js'
 
@@ -54,6 +57,8 @@ interface AuthStore {
   isLoading: boolean
   authError: string | null
   landingContent: LandingPageContent
+  trialInfo: TrialInfo | null
+  trialFeatures: TrialFeatures | null
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
@@ -69,6 +74,51 @@ interface AuthStore {
   getCurrentPlan: () => PlanId
   canCreateProject: (activeProjectCount: number) => boolean
   isFeatureEnabled: (feature: AppFeature) => boolean
+
+  getTrialInfo: () => TrialInfo
+  isTrialActive: () => boolean
+  isTrialExpired: () => boolean
+  canAccessFeatureDuringTrial: (feature: string) => boolean
+}
+
+function computeTrialInfo(profile: Profile | null): TrialInfo {
+  if (!profile) return {
+    status: 'trial_active',
+    startedAt: null,
+    expiresAt: null,
+    daysRemaining: 30,
+    isExpired: false,
+    isExtended: false,
+  }
+
+  // Jika sudah subscribe berbayar, trial tidak relevan
+  const status = (profile.trial_status as TrialStatus) || 'trial_active'
+  const expiresAt = profile.trial_expires_at 
+    ? new Date(profile.trial_expires_at) 
+    : null
+  const startedAt = profile.trial_started_at
+    ? new Date(profile.trial_started_at)
+    : null
+
+  const now = new Date()
+  const isExpired = expiresAt ? expiresAt < now : false
+  
+  const daysRemaining = expiresAt && status !== 'free_forever'
+    ? Math.max(0, Math.ceil(
+        (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      ))
+    : -1
+
+  return {
+    status: isExpired && status === 'trial_active' 
+      ? 'trial_expired' 
+      : status,
+    startedAt,
+    expiresAt,
+    daysRemaining,
+    isExpired,
+    isExtended: profile.is_trial_extended || false,
+  }
 }
 
 export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
@@ -155,6 +205,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isLoading: true,
   authError: null,
   landingContent: DEFAULT_LANDING_CONTENT,
+  trialInfo: null,
+  trialFeatures: null,
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
     set({ isLoading: true })
@@ -302,6 +354,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
         await supabase.from('profiles').insert(newProfile)
         set({ profile: newProfile as Profile })
+        const trialInfo = computeTrialInfo(newProfile as Profile)
+        set({ trialInfo })
+      } else {
+        const trialInfo = computeTrialInfo(data as Profile)
+        set({ trialInfo })
+        
+        // Jika trial sudah expired, update ke DB
+        if (trialInfo.isExpired && data.trial_status === 'trial_active') {
+          await supabase
+            .from('profiles')
+            .update({ trial_status: 'trial_expired' })
+            .eq('id', user.id)
+        }
       }
     } catch { /* ignore */ }
   },
@@ -329,17 +394,33 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
       const bankDetails = data?.find(i => i.key === 'bank_details')?.value
+      const trialFeaturesData = data?.find(i => i.key === 'trial_features')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
         bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails
       })
+
+      if (trialFeaturesData && typeof trialFeaturesData === 'object') {
+        const tf = trialFeaturesData as any
+        set({
+          trialFeatures: {
+            maxProjects: tf.max_projects || 3,
+            canExportPDF: tf.can_export_pdf || false,
+            canAccessCashflow: tf.can_access_cashflow || false,
+            canUseAiParser: tf.can_use_ai_parser || false,
+            aiParserLimit: tf.ai_parser_limit || 0,
+            canExportExcel: tf.can_export_excel || false,
+            description: tf.description || '',
+          }
+        })
+      }
     } catch {
       // DB not available — keep defaults
       set({ isSubscriptionEnabled: false })
@@ -476,5 +557,45 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
     // 3. Fallback to global system-wide setting
     return globalFeatures[feature] ?? false
+  },
+
+  // ── Trial Methods ─────────────────────────────────────────
+  getTrialInfo: () => {
+    const { profile, subscription } = get()
+    if (subscription?.status === 'active') {
+      return {
+        status: 'free_forever' as TrialStatus,
+        startedAt: null,
+        expiresAt: null,
+        daysRemaining: -1,
+        isExpired: false,
+        isExtended: false,
+      }
+    }
+    return computeTrialInfo(profile)
+  },
+
+  isTrialActive: () => {
+    const { subscription } = get()
+    if (subscription?.status === 'active') return true
+    const trial = get().getTrialInfo()
+    return trial.status === 'trial_active' && !trial.isExpired
+  },
+
+  isTrialExpired: () => {
+    const { subscription } = get()
+    if (subscription?.status === 'active') return false
+    const trial = get().getTrialInfo()
+    return trial.isExpired || trial.status === 'trial_expired'
+  },
+
+  canAccessFeatureDuringTrial: (feature: string) => {
+    const { trialFeatures, subscription } = get()
+    if (subscription?.status === 'active') return true
+    if (!trialFeatures) return false
+    const trial = get().getTrialInfo()
+    if (trial.status === 'free_forever') return false
+    if (trial.isExpired) return false
+    return !!(trialFeatures as any)[feature]
   },
 }))

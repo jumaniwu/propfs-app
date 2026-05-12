@@ -141,6 +141,50 @@ export default function AdminUsers() {
     }
   }
 
+  async function extendUserTrial(userId: string, additionalDays: number) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('trial_expires_at')
+      .eq('id', userId)
+      .single()
+
+    const currentExpiry = profile?.trial_expires_at 
+      ? new Date(profile.trial_expires_at)
+      : new Date()
+    
+    const newExpiry = new Date(currentExpiry)
+    newExpiry.setDate(newExpiry.getDate() + additionalDays)
+
+    await supabase
+      .from('profiles')
+      .update({
+        trial_expires_at: newExpiry.toISOString(),
+        trial_status: 'trial_active',
+        is_trial_extended: true,
+      })
+      .eq('id', userId)
+
+    toast({ 
+      title: `✅ Trial diperpanjang ${additionalDays} hari`,
+      description: `Berlaku hingga ${newExpiry.toLocaleDateString('id-ID')}`
+    })
+    
+    await loadUsers()
+  }
+
+  async function setFreeForever(userId: string) {
+    await supabase
+      .from('profiles')
+      .update({
+        trial_status: 'free_forever',
+        trial_expires_at: null,
+      })
+      .eq('id', userId)
+    
+    toast({ title: '✅ User diset Free Forever' })
+    await loadUsers()
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
@@ -164,6 +208,7 @@ export default function AdminUsers() {
               <tr className="bg-muted/50 text-left border-b border-border">
                 <th className="px-4 py-3 font-medium">Perusahaan & Pendaftar</th>
                 <th className="px-4 py-3 font-medium">Kontak</th>
+                <th className="px-4 py-3 font-medium">Status Trial</th>
                 <th className="px-4 py-3 font-medium">Status Langganan</th>
                 <th className="px-4 py-3 font-medium text-center">Role</th>
                 <th className="px-4 py-3 font-medium text-right">Aksi</th>
@@ -182,6 +227,22 @@ export default function AdminUsers() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="font-medium text-xs">{u.phone || '-'}</div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {u.trial_status === 'free_forever' ? (
+                        <div className="font-bold text-blue-600 text-[10px] uppercase tracking-wider">Free Forever</div>
+                      ) : u.trial_status === 'trial_expired' ? (
+                        <div className="font-bold text-red-600 text-[10px] uppercase tracking-wider">Expired</div>
+                      ) : (
+                        <div>
+                          <div className="font-bold text-amber-600 text-[10px] uppercase tracking-wider">Active Trial</div>
+                          {u.trial_expires_at && <div className="text-xs text-muted-foreground mt-0.5">Exp: {new Date(u.trial_expires_at).toLocaleDateString('id-ID')}</div>}
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-2">
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={() => extendUserTrial(u.id, 7)}>+7 Hari</Button>
+                        <Button variant="outline" size="sm" className="h-6 text-[10px] px-2" onClick={() => setFreeForever(u.id)}>Bebaskan</Button>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       {active ? (
@@ -207,11 +268,11 @@ export default function AdminUsers() {
               })}
               {loading ? (
                 <tr>
-                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
+                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground italic">Tidak ada data pelanggan, atau akses dibatasi RLS.</td>
+                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground italic">Tidak ada data pelanggan, atau akses dibatasi RLS.</td>
                 </tr>
               ) : null}
             </tbody>

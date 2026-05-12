@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3 } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
@@ -39,6 +39,18 @@ export default function AdminSettings() {
   const [gaId, setGaId] = useState('')
   const [savingGa, setSavingGa] = useState(false)
 
+  // Trial Config State
+  const [trialDays, setTrialDays] = useState(30)
+  const [trialFeatures, setTrialFeatures] = useState({
+    max_projects: 3,
+    can_export_pdf: true,
+    can_access_cashflow: true,
+    can_use_ai_parser: true,
+    ai_parser_limit: 3,
+    can_export_excel: false,
+  })
+  const [savingTrial, setSavingTrial] = useState(false)
+
   useEffect(() => {
     if (bankDetails) setBankForm(bankDetails)
   }, [bankDetails])
@@ -72,6 +84,22 @@ export default function AdminSettings() {
       } catch { /* use default */ } finally { setLoadingPPN(false) }
     }
     loadPPN()
+
+    async function loadTrialSettings() {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('key, value')
+        .in('key', ['trial_duration_days', 'trial_features'])
+      
+      const days = data?.find(i => i.key === 'trial_duration_days')?.value
+      const features = data?.find(i => i.key === 'trial_features')?.value
+      
+      if (days) setTrialDays(Number(days))
+      if (features && typeof features === 'object') {
+        setTrialFeatures(features as any)
+      }
+    }
+    loadTrialSettings()
   }, [])
 
   async function updateGlobalFlag(key: AppFeature, val: boolean) {
@@ -162,6 +190,33 @@ export default function AdminSettings() {
       toast({ title: 'Gagal menyimpan GA ID', description: err.message, variant: 'destructive' })
     } finally {
       setSavingGa(false)
+    }
+  }
+
+  async function saveTrialSettings() {
+    setSavingTrial(true)
+    try {
+      const updates = [
+        { key: 'trial_duration_days', value: trialDays },
+        { key: 'trial_features', value: trialFeatures },
+      ]
+      for (const update of updates) {
+        const { data: existing } = await supabase.from('app_settings').select('key').eq('key', update.key).maybeSingle()
+        if (existing) {
+          await supabase.from('app_settings').update({ value: update.value }).eq('key', update.key)
+        } else {
+          await supabase.from('app_settings').insert({ key: update.key, value: update.value })
+        }
+      }
+      toast({ title: '✅ Pengaturan Trial Tersimpan' })
+    } catch (err: any) {
+      toast({ 
+        title: 'Gagal Menyimpan', 
+        description: err.message, 
+        variant: 'destructive' 
+      })
+    } finally {
+      setSavingTrial(false)
     }
   }
 
@@ -267,6 +322,119 @@ export default function AdminSettings() {
             </button>
          </div>
       </div>
+
+      {/* ── Trial Configuration Section ── */}
+      <section className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-8 space-y-6">
+        <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+            <Clock className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-navy">
+              Konfigurasi Free Trial
+            </h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+              Atur durasi & akses selama masa trial
+            </p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-6">
+          {/* Durasi Trial */}
+          <div className="space-y-3 p-6 bg-slate-50 rounded-2xl">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Durasi Trial (Hari)
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={trialDays}
+                onChange={e => setTrialDays(Number(e.target.value))}
+                className="w-28 h-14 text-2xl font-black text-navy text-center bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-gold/10 focus:border-gold"
+              />
+              <div>
+                <p className="font-black text-navy">Hari</p>
+                <p className="text-xs text-slate-400">
+                  Berlaku untuk user baru
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap mt-2">
+              {[7, 14, 30, 60, 90].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setTrialDays(d)}
+                  className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${trialDays === d ? 'bg-navy text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-navy'}`}
+                >
+                  {d} hari
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fitur yang Aktif Selama Trial */}
+          <div className="space-y-3 p-6 bg-slate-50 rounded-2xl">
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Fitur Aktif Selama Trial
+            </label>
+            <div className="space-y-3">
+              {[
+                { key: 'can_export_pdf',      label: 'Ekspor PDF' },
+                { key: 'can_access_cashflow', label: 'Cashflow & Sensitivitas' },
+                { key: 'can_use_ai_parser',   label: 'AI RAB Parser' },
+                { key: 'can_export_excel',    label: 'Ekspor Excel' },
+              ].map(f => (
+                <label key={f.key} className="flex items-center justify-between cursor-pointer">
+                  <span className="text-sm font-bold text-navy">{f.label}</span>
+                  <div
+                    onClick={() => setTrialFeatures(prev => ({
+                      ...prev,
+                      [f.key]: !(prev as any)[f.key]
+                    }))}
+                    className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${(trialFeatures as any)[f.key] ? 'bg-navy' : 'bg-slate-300'}`}
+                  >
+                    <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${(trialFeatures as any)[f.key] ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'}`} />
+                  </div>
+                </label>
+              ))}
+
+              {/* Limit proyek */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                <span className="text-sm font-bold text-navy">
+                  Max Proyek Trial
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={trialFeatures.max_projects}
+                  onChange={e => setTrialFeatures(prev => ({
+                    ...prev, 
+                    max_projects: Number(e.target.value)
+                  }))}
+                  className="w-16 h-9 text-center font-black text-navy bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Save Button */}
+        <div className="flex justify-end pt-4 border-t border-slate-100">
+          <Button
+            className="bg-navy hover:bg-navy/90 text-white h-12 px-8 rounded-2xl font-black gap-2 w-full sm:w-auto"
+            onClick={saveTrialSettings}
+            disabled={savingTrial}
+          >
+            {savingTrial 
+              ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+              : <><Save className="h-4 w-4" /> Simpan Pengaturan Trial</>
+            }
+          </Button>
+        </div>
+      </section>
 
       {/* ── Bank & Manual Payment Management ── */}
       <div className="bg-card border border-border shadow-sm rounded-2xl p-6 lg:p-8 space-y-6">

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useFSStore } from '@/store/fsStore'
 import { useAuthStore } from '@/store/authStore'
 import PlanBadge from '@/components/subscription/PlanBadge'
+import TrialBanner from '@/components/trial/TrialBanner'
 
 interface HeaderProps {
   breadcrumbs?: Array<{ label: string; href?: string }>
@@ -48,8 +49,9 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
   const isSuperAdmin = profile?.role === 'superadmin'
 
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-full items-center justify-between px-4 lg:px-6">
+    <>
+      <header className="sticky top-0 z-40 h-14 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex h-full items-center justify-between px-4 lg:px-6">
         {/* Left: Logo + Breadcrumbs */}
         <div className="flex items-center gap-2 min-w-0">
           <button
@@ -145,6 +147,8 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
         </div>
       </div>
     </header>
+    <TrialBanner />
+    </>
   )
 }
 

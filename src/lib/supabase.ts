@@ -80,6 +80,30 @@ export interface AppSetting {
   updated_at: string
 }
 
+export type TrialStatus = 
+  'trial_active' | 
+  'trial_expired' | 
+  'free_forever'
+
+export interface TrialInfo {
+  status: TrialStatus
+  startedAt: Date | null
+  expiresAt: Date | null
+  daysRemaining: number
+  isExpired: boolean
+  isExtended: boolean
+}
+
+export interface TrialFeatures {
+  maxProjects: number
+  canExportPDF: boolean
+  canAccessCashflow: boolean
+  canUseAiParser: boolean
+  aiParserLimit: number
+  canExportExcel: boolean
+  description: string
+}
+
 export interface Profile {
   id:                     string
   email?:                 string | null
@@ -89,6 +113,10 @@ export interface Profile {
   role:                   'user' | 'admin' | 'superadmin'
   total_projects_created: number
   custom_features?:       Record<AppFeature, boolean>
+  trial_started_at?:      string | null
+  trial_expires_at?:      string | null
+  trial_status?:          TrialStatus
+  is_trial_extended?:     boolean
   created_at:             string
 }
 
