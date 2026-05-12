@@ -92,17 +92,26 @@ export default function AuthPage() {
     }
   }
 
+  function handleStep1Next() {
+    if (!regName.trim()) {
+      setRegError('Nama Lengkap wajib diisi.')
+      return
+    }
+    setRegError('')
+    setRegStep(2)
+  }
+
   async function handleRegisterSubmit() {
-    if (regPass !== regPass2) {
-      setRegError('Password konfirmasi tidak cocok.')
+    if (!regEmail) {
+      setRegError('Email wajib diisi.')
       return
     }
     if (regPass.length < 8) {
       setRegError('Password minimal 8 karakter.')
       return
     }
-    if (!regEmail) {
-      setRegError('Email wajib diisi.')
+    if (regPass !== regPass2) {
+      setRegError('Password konfirmasi tidak cocok.')
       return
     }
     if (parseInt(captchaAnswer) !== captchaNum1 + captchaNum2) {
@@ -118,21 +127,24 @@ export default function AuthPage() {
     setRegError('')
     try {
       await signUp(regEmail, regPass, regName, regCompany, regPhone)
-      // Try to auto-login directly
-      await signIn(regEmail, regPass)
-      // After successful registration & login, always go to Pricing page
-      // so user can choose their plan — don't auto-assign free
-      navigate('/pricing')
+      // signUp will throw 'Pendaftaran berhasil...' when email confirmation is needed
+      // so we only reach here if there's no email confirmation required
+      try {
+        await signIn(regEmail, regPass)
+        navigate('/pricing')
+      } catch {
+        // Login failed (e.g. still needs email confirm) — show success anyway
+        setRegSuccess(true)
+      }
     } catch (err: any) {
       const msg: string = err.message || ''
       if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('sudah terdaftar')) {
-        setRegError('Email tersebut sudah terdaftar di sistem kami! Silakan gunakan email lain untuk mendaftar, atau klik tombol LOG IN di atas untuk masuk menggunakan email tersebut.')
+        setRegError('Email tersebut sudah terdaftar. Silakan gunakan email lain atau klik LOG IN untuk masuk.')
       } else if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email') || msg.includes('Pendaftaran berhasil')) {
-        // Show clear success message — DO NOT switch to login tab silently
         setRegSuccess(true)
         setRegError('')
       } else {
-        setRegError(err.message)
+        setRegError(msg || 'Gagal mendaftar. Coba lagi.')
       }
     }
   }
@@ -303,7 +315,7 @@ export default function AuthPage() {
                       <Input className="pl-14 h-16 rounded-2xl bg-white" type="tel" placeholder="0812-xxxx-xxxx" value={regPhone} onChange={e => setRegPhone(e.target.value)} />
                     </div>
                   </div>
-                  <Button className="w-full h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20" onClick={() => setRegStep(2)}>
+                  <Button className="w-full h-16 bg-gold text-navy rounded-2xl font-black text-lg shadow-2xl shadow-gold/20" onClick={handleStep1Next}>
                     LANJUTKAN <ArrowRight className="h-5 w-5 ml-2 inline" />
                   </Button>
                 </div>
@@ -365,26 +377,7 @@ export default function AuthPage() {
                     )}
                   </div>
                   
-                  {/* Terms text */}
-                  <div className="text-xs text-slate-400 text-center leading-relaxed px-2">
-                    Dengan mendaftar, Anda menyetujui{' '}
-                    <button
-                      type="button"
-                      onClick={() => setLegalModal('terms')}
-                      className="text-gold underline hover:text-gold/80 font-medium"
-                    >
-                      Syarat & Ketentuan
-                    </button>
-                    {' '}dan{' '}
-                    <button
-                      type="button"
-                      onClick={() => setLegalModal('privacy')}
-                      className="text-gold underline hover:text-gold/80 font-medium"
-                    >
-                      Kebijakan Privasi
-                    </button>
-                    {' '}PropFS.
-                  </div>
+
 
                   {/* Math CAPTCHA */}
                   <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
@@ -422,7 +415,11 @@ export default function AuthPage() {
                       {agreedToTerms && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                     </div>
                     <p className="text-sm text-slate-600 leading-snug">
-                      Saya telah membaca dan menyetujui Syarat & Ketentuan dan Kebijakan Privasi di atas.
+                      Saya telah membaca dan menyetujui{' '}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setLegalModal('terms') }} className="text-gold underline font-semibold hover:text-gold/80">Syarat & Ketentuan</button>
+                      {' '}dan{' '}
+                      <button type="button" onClick={(e) => { e.stopPropagation(); setLegalModal('privacy') }} className="text-gold underline font-semibold hover:text-gold/80">Kebijakan Privasi</button>
+                      {' '}PropFS.
                     </p>
                   </div>
 
