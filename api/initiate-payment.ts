@@ -35,7 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Authorization header Base64(SERVER_KEY + ":")
   const authString = Buffer.from(`${serverKey}:`).toString('base64');
-  const orderId = `PROPFS-${plan_id.toUpperCase()}-${invoice_id || Date.now()}`;
+  // orderId must be <= 50 chars for Midtrans. UUID(36) + '_' + timestamp(13) = 50 chars exactly.
+  const orderId = invoice_id ? `${invoice_id}_${Date.now()}` : `MANUAL_${Date.now()}`;
 
   // Calculate price: from request body if available, otherwise compute
   let basePrice = PLAN_PRICES[plan_id] ?? 149000;

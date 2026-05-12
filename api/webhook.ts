@@ -34,8 +34,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 2. Handle status updates
-  // Format order_id is assumed to be "INV-{invoice_id}-{timestamp}"
-  const invoiceId = order_id.split('-')[1];
+  // Format order_id is assumed to be "{invoice_id}_{timestamp}"
+  const invoiceId = order_id.split('_')[0];
 
   if (transaction_status === 'settlement' || transaction_status === 'capture') {
     // A. Update Invoice Status
