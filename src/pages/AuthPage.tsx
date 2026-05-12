@@ -110,8 +110,13 @@ export default function AuthPage() {
   }
 
   async function handleRegisterSubmit() {
-    if (!regEmail) {
+    if (!regEmail.trim()) {
       setRegError('Email wajib diisi.')
+      return
+    }
+    // Basic email format check
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail)) {
+      setRegError('Format email tidak valid. Gunakan email yang benar, contoh: nama@gmail.com')
       return
     }
     if (regPass.length < 8) {
@@ -133,26 +138,50 @@ export default function AuthPage() {
     }
 
     setRegError('')
+
+    // Check for duplicate phone number
+    try {
+      const { supabase: sb } = await import('@/lib/supabase')
+      const { data: existingPhone } = await sb
+        .from('profiles')
+        .select('id')
+        .eq('phone', regPhone.trim())
+        .maybeSingle()
+      if (existingPhone) {
+        setRegError('Nomor WhatsApp tersebut sudah terdaftar. Gunakan nomor lain atau login dengan akun yang sudah ada.')
+        return
+      }
+    } catch {
+      // If check fails (e.g. network), proceed anyway
+    }
+
     try {
       await signUp(regEmail, regPass, regName, regCompany, regPhone)
-      // signUp will throw 'Pendaftaran berhasil...' when email confirmation is needed
-      // so we only reach here if there's no email confirmation required
+      // If we reach here: signUp succeeded AND no email confirmation required
       try {
         await signIn(regEmail, regPass)
         navigate('/pricing')
       } catch {
-        // Login failed (e.g. still needs email confirm) — show success anyway
         setRegSuccess(true)
       }
     } catch (err: any) {
       const msg: string = err.message || ''
-      if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('sudah terdaftar')) {
-        setRegError('Email tersebut sudah terdaftar. Silakan gunakan email lain atau klik LOG IN untuk masuk.')
-      } else if (msg.toLowerCase().includes('confirm') || msg.toLowerCase().includes('email') || msg.includes('Pendaftaran berhasil')) {
+      const lower = msg.toLowerCase()
+      
+      if (lower.includes('already registered') || lower.includes('user already registered') || lower.includes('email already') || lower.includes('sudah terdaftar')) {
+        setRegError('Email tersebut sudah terdaftar. Klik LOG IN di atas untuk masuk dengan email tersebut.')
+      } else if (lower.includes('email not confirmed') || lower.includes('not confirmed')) {
+        // Account exists but not confirmed
+        setRegError('Akun dengan email ini sudah ada tapi belum dikonfirmasi. Silakan cek email Anda dan klik link konfirmasi.')
+      } else if (msg.includes('Pendaftaran berhasil')) {
+        // Our own success message thrown from authStore signUp
         setRegSuccess(true)
         setRegError('')
+      } else if (lower.includes('invalid email') || lower.includes('email format')) {
+        setRegError('Format email tidak valid. Gunakan email yang aktif dan benar.')
       } else {
-        setRegError(msg || 'Gagal mendaftar. Coba lagi.')
+        // Show actual error message from Supabase so user knows what's wrong
+        setRegError(`Pendaftaran gagal: ${msg || 'Terjadi kesalahan, coba beberapa saat lagi.'}`)
       }
     }
   }
