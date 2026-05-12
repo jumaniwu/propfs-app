@@ -340,6 +340,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (data) {
         set({ profile: data as Profile })
+        const trialInfo = computeTrialInfo(data as Profile)
+        set({ trialInfo })
+        
+        // Jika trial sudah expired, update ke DB
+        if (trialInfo.isExpired && data.trial_status === 'trial_active') {
+          await supabase
+            .from('profiles')
+            .update({ trial_status: 'trial_expired' })
+            .eq('id', user.id)
+        }
       } else {
         // Fallback: If DB trigger failed, self-heal by creating the profile now.
         const meta = user.user_metadata || {}
@@ -356,17 +366,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ profile: newProfile as Profile })
         const trialInfo = computeTrialInfo(newProfile as Profile)
         set({ trialInfo })
-      } else {
-        const trialInfo = computeTrialInfo(data as Profile)
-        set({ trialInfo })
-        
-        // Jika trial sudah expired, update ke DB
-        if (trialInfo.isExpired && data.trial_status === 'trial_active') {
-          await supabase
-            .from('profiles')
-            .update({ trial_status: 'trial_expired' })
-            .eq('id', user.id)
-        }
       }
     } catch { /* ignore */ }
   },
