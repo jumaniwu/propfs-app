@@ -11,12 +11,22 @@ import Header from '@/components/layout/Header'
 export default function PaymentPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { user, bankDetails } = useAuthStore()
+  const { user, bankDetails, paymentSettings } = useAuthStore()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'gopay' | 'manual'>('bank_transfer')
+
+  useEffect(() => {
+    if (paymentSettings) {
+      if (!paymentSettings.enableMidtrans && paymentMethod !== 'manual') {
+        setPaymentMethod('manual')
+      } else if (!paymentSettings.enableManual && paymentMethod === 'manual') {
+        setPaymentMethod('bank_transfer')
+      }
+    }
+  }, [paymentSettings])
 
   useEffect(() => {
     if (id) fetchInvoice()
@@ -216,53 +226,59 @@ export default function PaymentPage() {
                   </div>
 
                   <div className="space-y-3 pt-2">
-                    <div 
-                      onClick={() => setPaymentMethod('bank_transfer')}
-                      className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'bank_transfer' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'bank_transfer' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                    {paymentSettings?.enableMidtrans && (
+                      <>
+                        <div 
+                          onClick={() => setPaymentMethod('bank_transfer')}
+                          className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'bank_transfer' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'bank_transfer' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-sm">Bank Transfer / Virtual Account</span>
+                              <span className="text-xs text-muted-foreground">Proses pengecekan otomatis via Midtrans</span>
+                            </div>
+                          </div>
+                          <CreditCard className="w-6 h-6 text-slate-400" />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">Bank Transfer / Virtual Account</span>
-                          <span className="text-xs text-muted-foreground">Proses pengecekan otomatis via Midtrans</span>
-                        </div>
-                      </div>
-                      <CreditCard className="w-6 h-6 text-slate-400" />
-                    </div>
 
-                    <div 
-                      onClick={() => setPaymentMethod('gopay')}
-                      className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'gopay' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'gopay' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        <div 
+                          onClick={() => setPaymentMethod('gopay')}
+                          className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'gopay' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'gopay' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-sm">GoPay / QRIS</span>
+                              <span className="text-xs text-muted-foreground">Proses pengecekan otomatis via Midtrans</span>
+                            </div>
+                          </div>
+                          <ShieldCheck className="w-6 h-6 text-slate-400" />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">GoPay / QRIS</span>
-                          <span className="text-xs text-muted-foreground">Proses pengecekan otomatis via Midtrans</span>
-                        </div>
-                      </div>
-                      <ShieldCheck className="w-6 h-6 text-slate-400" />
-                    </div>
+                      </>
+                    )}
 
-                    <div 
-                      onClick={() => setPaymentMethod('manual')}
-                      className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'manual' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'manual' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                    {paymentSettings?.enableManual && (
+                      <div 
+                        onClick={() => setPaymentMethod('manual')}
+                        className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-all ${paymentMethod === 'manual' ? 'border-navy bg-slate-50' : 'border-border hover:border-navy/30'}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${paymentMethod === 'manual' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-transparent'}`}>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">Transfer Bank Manual (Verifikasi Admin)</span>
+                            <span className="text-xs text-muted-foreground">Gunakan ini jika pembayaran otomatis bermasalah</span>
+                          </div>
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-sm">Transfer Bank Manual (Verifikasi Admin)</span>
-                          <span className="text-xs text-muted-foreground">Gunakan ini jika pembayaran otomatis bermasalah</span>
-                        </div>
+                        <Receipt className="w-6 h-6 text-slate-400" />
                       </div>
-                      <Receipt className="w-6 h-6 text-slate-400" />
-                    </div>
+                    )}
                   </div>
 
                   {paymentMethod === 'manual' && (() => {

@@ -23,7 +23,11 @@ const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
 export default function AdminSettings() {
   const [globalFlags, setGlobalFlags] = useState<Record<string, boolean>>({})
   const [toggling, setToggling] = useState(false)
-  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures, bankDetails } = useAuthStore()
+  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures, bankDetails, paymentSettings: storePaymentSettings } = useAuthStore()
+
+  // Payment Settings State
+  const [paymentSettings, setPaymentSettings] = useState(storePaymentSettings || { enableMidtrans: true, enableManual: true })
+  const [savingPayment, setSavingPayment] = useState(false)
 
   // PPN State
   const [ppnPct, setPpnPct]       = useState(11)
@@ -54,6 +58,10 @@ export default function AdminSettings() {
   useEffect(() => {
     if (bankDetails) setBankForm(bankDetails)
   }, [bankDetails])
+
+  useEffect(() => {
+    if (storePaymentSettings) setPaymentSettings(storePaymentSettings)
+  }, [storePaymentSettings])
 
   useEffect(() => {
     setGlobalFlags(globalFeatures)
@@ -167,6 +175,24 @@ export default function AdminSettings() {
       toast({ title: 'Gagal menyimpan Detail Bank', description: err.message, variant: 'destructive' })
     } finally {
       setSavingBank(false)
+    }
+  }
+
+  async function savePaymentSettingsFunc() {
+    setSavingPayment(true)
+    try {
+      const { data: existing } = await supabase.from('app_settings').select('key').eq('key', 'payment_settings').maybeSingle()
+      if (existing) {
+        await supabase.from('app_settings').update({ value: paymentSettings }).eq('key', 'payment_settings')
+      } else {
+        await supabase.from('app_settings').insert({ key: 'payment_settings', value: paymentSettings })
+      }
+      await loadFeatureFlags()
+      toast({ title: 'Pengaturan Pembayaran Tersimpan' })
+    } catch (err: any) {
+      toast({ title: 'Gagal menyimpan', description: err.message, variant: 'destructive' })
+    } finally {
+      setSavingPayment(false)
     }
   }
 
@@ -431,6 +457,59 @@ export default function AdminSettings() {
             {savingTrial 
               ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
               : <><Save className="h-4 w-4" /> Simpan Pengaturan Trial</>
+            }
+          </Button>
+        </div>
+      </section>
+
+      {/* ── Pengaturan Metode Pembayaran ── */}
+      <section className="bg-card border border-border shadow-sm rounded-3xl p-6 lg:p-8 space-y-8">
+        <div className="flex items-center gap-3 border-b border-border pb-4">
+          <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl">
+            <Percent className="h-6 w-6" />
+          </div>
+          <div>
+            <h2 className="font-serif text-xl font-bold text-navy">Metode Pembayaran</h2>
+            <p className="text-sm text-muted-foreground">Aktifkan atau nonaktifkan Midtrans dan Transfer Manual.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <label className="flex items-center justify-between p-4 border border-border rounded-2xl cursor-pointer hover:border-navy transition-colors">
+            <div>
+              <p className="font-bold text-navy">Payment Gateway (Midtrans)</p>
+              <p className="text-xs text-muted-foreground">QRIS, Virtual Account, Kartu Kredit</p>
+            </div>
+            <div
+              onClick={() => setPaymentSettings(prev => ({ ...prev, enableMidtrans: !prev.enableMidtrans }))}
+              className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${paymentSettings.enableMidtrans ? 'bg-navy' : 'bg-slate-300'}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${paymentSettings.enableMidtrans ? 'translate-x-6 ml-0.5' : 'translate-x-0.5'}`} />
+            </div>
+          </label>
+
+          <label className="flex items-center justify-between p-4 border border-border rounded-2xl cursor-pointer hover:border-navy transition-colors">
+            <div>
+              <p className="font-bold text-navy">Transfer Manual</p>
+              <p className="text-xs text-muted-foreground">Transfer Bank Manual + Verifikasi Admin</p>
+            </div>
+            <div
+              onClick={() => setPaymentSettings(prev => ({ ...prev, enableManual: !prev.enableManual }))}
+              className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${paymentSettings.enableManual ? 'bg-navy' : 'bg-slate-300'}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${paymentSettings.enableManual ? 'translate-x-6 ml-0.5' : 'translate-x-0.5'}`} />
+            </div>
+          </label>
+        </div>
+        <div className="flex justify-end pt-4 border-t border-slate-100">
+          <Button
+            className="bg-navy hover:bg-navy/90 text-white h-12 px-8 rounded-2xl font-black gap-2 w-full sm:w-auto"
+            onClick={savePaymentSettingsFunc}
+            disabled={savingPayment}
+          >
+            {savingPayment 
+              ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+              : <><Save className="h-4 w-4" /> Simpan Metode Pembayaran</>
             }
           </Button>
         </div>

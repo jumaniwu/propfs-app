@@ -44,6 +44,11 @@ export const DEFAULT_BANK_DETAILS: BankDetails = {
   whatsapp: '',
 }
 
+export interface PaymentSettings {
+  enableMidtrans: boolean
+  enableManual: boolean
+}
+
 // ── Store Interface ─────────────────────────────────────────
 interface AuthStore {
   user: User | null
@@ -53,6 +58,7 @@ interface AuthStore {
   isSubscriptionEnabled: boolean
   globalFeatures: Record<AppFeature, boolean>
   bankDetails: BankDetails
+  paymentSettings: PaymentSettings
   isPasswordRecovery: boolean
   isLoading: boolean
   authError: string | null
@@ -201,6 +207,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isSubscriptionEnabled: false,
   globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
   bankDetails: DEFAULT_BANK_DETAILS,
+  paymentSettings: { enableMidtrans: true, enableManual: true },
   isPasswordRecovery: false,
   isLoading: true,
   authError: null,
@@ -393,17 +400,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
       const bankDetails = data?.find(i => i.key === 'bank_details')?.value
       const trialFeaturesData = data?.find(i => i.key === 'trial_features')?.value
+      const paymentSettingsData = data?.find(i => i.key === 'payment_settings')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
-        bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails
+        bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails,
+        paymentSettings: typeof paymentSettingsData === 'object' && paymentSettingsData !== null ? { ...get().paymentSettings, ...(paymentSettingsData as object) } : get().paymentSettings
       })
 
       if (trialFeaturesData && typeof trialFeaturesData === 'object') {
