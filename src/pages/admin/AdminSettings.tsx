@@ -197,7 +197,7 @@ export default function AdminSettings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
            <h1 className="text-2xl font-serif font-bold text-navy">Sistem & Fitur (Settings)</h1>
            <p className="text-sm text-muted-foreground mt-1">Nyalakan atau matikan fitur platform secara global untuk seluruh pengguna baru.</p>
@@ -351,7 +351,7 @@ export default function AdminSettings() {
 
       {/* ── Global Feature Management ── */}
       <div className="bg-card border border-border shadow-sm rounded-2xl p-6 lg:p-8 space-y-6">
-         <div className="flex items-center justify-between">
+         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <h2 className="font-serif text-xl font-bold flex items-center gap-2"><Settings className="h-5 w-5 text-gold" /> Konfigurasi Modul Utama</h2>
             <div className="px-2.5 py-1 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold uppercase tracking-widest">Global Effect</div>
          </div>

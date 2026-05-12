@@ -143,7 +143,7 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
            <h1 className="text-2xl font-serif font-bold text-navy">Manajemen Perusahaan & Pengguna</h1>
            <p className="text-sm text-muted-foreground mt-1">Daftar pengguna dan atur durasi langganan (expired contract).</p>
@@ -314,11 +314,11 @@ export default function AdminUsers() {
 
             </div>
             
-            <div className="p-6 border-t border-border bg-slate-50 flex gap-3 justify-end mt-auto">
-               <Button variant="outline" className="h-12 font-bold px-8 hover:bg-slate-200" onClick={() => setSelectedUser(null)}>
+            <div className="p-6 border-t border-border bg-slate-50 flex flex-col sm:flex-row gap-3 sm:justify-end mt-auto">
+               <Button variant="outline" className="h-12 font-bold sm:px-8 hover:bg-slate-200 order-2 sm:order-1" onClick={() => setSelectedUser(null)}>
                  Batal
                </Button>
-               <Button variant="gold" className="h-12 font-bold px-8" onClick={handleSaveAll} disabled={isUpdatingSub}>
+               <Button variant="gold" className="h-12 font-bold sm:px-8 order-1 sm:order-2" onClick={handleSaveAll} disabled={isUpdatingSub}>
                  {isUpdatingSub ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
                  Simpan Perubahan
                </Button>

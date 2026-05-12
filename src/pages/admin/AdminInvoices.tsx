@@ -127,14 +127,14 @@ export default function AdminInvoices() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
            <h1 className="text-2xl font-serif font-bold text-navy flex items-center gap-2">
               <Receipt className="h-6 w-6 text-gold" /> Data Invoice
            </h1>
            <p className="text-sm text-muted-foreground mt-1">Kelola dan pantau semua tagihan pelanggan SaaS.</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={loadInvoices} disabled={loading}>
+        <Button variant="outline" size="sm" className="gap-2 self-start sm:self-auto" onClick={loadInvoices} disabled={loading}>
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </Button>
       </div>
@@ -170,7 +170,7 @@ export default function AdminInvoices() {
            </div>
            
            {/* Status filter tabs */}
-           <div className="flex gap-1 bg-muted rounded-xl p-1">
+           <div className="flex flex-wrap gap-1 bg-muted rounded-xl p-1">
              {(['all', 'pending', 'paid', 'failed'] as const).map(s => (
                <button 
                  key={s}

@@ -61,12 +61,12 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
            <h1 className="text-2xl font-serif font-bold text-navy">Statistik Utama</h1>
            <p className="text-sm text-muted-foreground mt-1">Ringkasan performa platform PropFS secara keseluruhan.</p>
         </div>
-        <Button size="sm" variant="outline" onClick={loadStats} className="gap-2 shrink-0">
+        <Button size="sm" variant="outline" onClick={loadStats} className="gap-2 shrink-0 self-start sm:self-auto">
            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
            Segarkan Data
         </Button>
