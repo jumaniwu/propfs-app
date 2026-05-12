@@ -236,12 +236,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'PASSWORD_RECOVERY') {
           set({ isPasswordRecovery: true })
+          return
         }
-        set({ user: session?.user ?? null, session })
-        if (session?.user) {
+        // Don't update user state if there's no session
+        // (e.g. signUp with email confirmation pending fires SIGNED_IN but session is null)
+        if (!session) {
+          set({ user: null, session: null, profile: null, subscription: null })
+          return
+        }
+        set({ user: session.user, session })
+        if (session.user) {
           await Promise.all([get().refreshProfile(), get().refreshSubscription()])
-        } else {
-          set({ profile: null, subscription: null })
         }
       })
     } catch {

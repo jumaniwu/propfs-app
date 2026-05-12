@@ -97,6 +97,14 @@ export default function AuthPage() {
       setRegError('Nama Lengkap wajib diisi.')
       return
     }
+    if (!regCompany.trim()) {
+      setRegError('Nama Perusahaan wajib diisi.')
+      return
+    }
+    if (!regPhone.trim()) {
+      setRegError('Nomor WhatsApp wajib diisi.')
+      return
+    }
     setRegError('')
     setRegStep(2)
   }
