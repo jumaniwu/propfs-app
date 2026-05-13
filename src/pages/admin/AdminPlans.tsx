@@ -29,23 +29,24 @@ interface SaaSPlan {
   maxProjects: number
   features: Record<string, boolean | number>  // key -> enabled/count
   recommended?: boolean
+  isVisible?: boolean
 }
 
 const DEFAULT_PLANS: SaaSPlan[] = [
   {
-    id: 'free', name: 'Free Trial', priceIdr: 0, promoPriceIdr: null, maxProjects: 2,
+    id: 'free', name: 'Free Trial', priceIdr: 0, promoPriceIdr: null, maxProjects: 2, isVisible: true,
     features: { fs_projects: 2, cost_control: false, upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false, export_excel: false, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
   },
   {
-    id: 'starter', name: 'Starter', priceIdr: 149000, promoPriceIdr: null, maxProjects: 5,
+    id: 'starter', name: 'Starter', priceIdr: 149000, promoPriceIdr: null, maxProjects: 5, isVisible: true,
     features: { fs_projects: 5, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
   },
   {
-    id: 'pro', name: 'Pro', priceIdr: 399000, promoPriceIdr: null, maxProjects: 50, recommended: true,
+    id: 'pro', name: 'Pro', priceIdr: 399000, promoPriceIdr: null, maxProjects: 50, recommended: true, isVisible: true,
     features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 3, api_access: false, whitelabel: false, priority_support: true, onboarding: false }
   },
   {
-    id: 'enterprise', name: 'Enterprise', priceIdr: 999000, promoPriceIdr: null, maxProjects: 999,
+    id: 'enterprise', name: 'Enterprise', priceIdr: 999000, promoPriceIdr: null, maxProjects: 999, isVisible: true,
     features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 999, api_access: true, whitelabel: true, priority_support: true, onboarding: true }
   }
 ]
@@ -92,6 +93,10 @@ export default function AdminPlans() {
         }
       }
     }))
+  }
+
+  function toggleVisibility(planId: string) {
+    setPlans(plans.map(p => p.id === planId ? { ...p, isVisible: p.isVisible === false ? true : false } : p))
   }
 
   function setFeatureNumber(planId: string, featureKey: string, value: number) {
@@ -188,7 +193,10 @@ export default function AdminPlans() {
           const hasPromo = plan.promoPriceIdr !== null && plan.promoPriceIdr > 0 && plan.promoPriceIdr < plan.priceIdr
 
           return (
-            <div key={plan.id} className={`group relative p-6 sm:p-8 rounded-[32px] border-2 transition-all duration-500 overflow-hidden ${isPro ? 'bg-navy text-white border-gold shadow-2xl' : 'bg-white border-slate-100 hover:border-gold/30 shadow-sm'}`}>
+            <div key={plan.id} className={`group relative p-6 sm:p-8 rounded-[32px] border-2 transition-all duration-500 overflow-hidden flex flex-col h-full
+              ${isPro ? 'bg-navy text-white border-gold shadow-2xl' : 'bg-white border-slate-100 hover:border-gold/30 shadow-sm'}
+              ${plan.isVisible === false ? 'opacity-50 grayscale' : ''}
+            `}>
               
               {isPro && (
                 <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
@@ -196,14 +204,30 @@ export default function AdminPlans() {
                 </div>
               )}
 
-              {/* Plan Header */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${PLAN_COLORS[plan.id] || 'bg-slate-100 text-slate-500'}`}>
-                  <PlanIcon className="h-7 w-7" />
+              {/* HEADER: Icon & Visibility Toggle */}
+              <div className="flex items-start justify-between mb-8 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${PLAN_COLORS[plan.id] || PLAN_COLORS.free}`}>
+                    <PlanIcon className="h-7 w-7" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h3 className={`text-2xl font-black ${isPro ? 'text-gold' : 'text-navy'}`}>{plan.name}</h3>
+                    <p className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-white/40' : 'text-slate-400'}`}>ID: {plan.id}</p>
+                  </div>
                 </div>
-                <div className="space-y-0.5 flex-1">
-                  <h3 className={`text-2xl font-black ${isPro ? 'text-gold' : 'text-navy'}`}>{plan.name}</h3>
-                  <p className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-white/40' : 'text-slate-400'}`}>ID: {plan.id}</p>
+                
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {isPro && (
+                    <span className="bg-gold text-navy text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
+                      Rekomendasi
+                    </span>
+                  )}
+                  <button 
+                    onClick={() => toggleVisibility(plan.id)}
+                    className={`text-xs px-3 py-1 rounded-full font-bold border transition-colors cursor-pointer ${plan.isVisible !== false ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-slate-200 text-slate-500 border-slate-300'}`}
+                  >
+                    {plan.isVisible !== false ? '✅ Tampil' : '👁️ Sembunyi'}
+                  </button>
                 </div>
               </div>
 

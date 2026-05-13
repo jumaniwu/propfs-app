@@ -117,6 +117,7 @@ export interface Profile {
   trial_expires_at?:      string | null
   trial_status?:          TrialStatus
   is_trial_extended?:     boolean
+  is_active?:             boolean
   created_at:             string
 }
 

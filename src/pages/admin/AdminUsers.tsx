@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus, Key } from 'lucide-react'
+import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus, Key, UserX, UserCheck, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +27,8 @@ export default function AdminUsers() {
   const [localFeatures, setLocalFeatures] = useState<Record<string, boolean>>({})
   const [isUpdatingSub, setIsUpdatingSub] = useState(false)
   const [isSendingReset, setIsSendingReset] = useState(false)
+  const [isSuspending, setIsSuspending] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
   useEffect(() => {
     loadUsers()
@@ -185,6 +187,47 @@ export default function AdminUsers() {
     await loadUsers()
   }
 
+  async function handleSuspendUser(u: any) {
+    const isActive = u.is_active !== false
+    const action = isActive ? 'nonaktifkan' : 'aktifkan'
+    if (!window.confirm(`Apakah Anda yakin ingin ${action} user "${u.full_name || u.email}"?`)) return
+    setIsSuspending(u.id)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_active: !isActive })
+        .eq('id', u.id)
+      if (error) throw error
+      toast({ title: isActive ? '🔒 User dinonaktifkan' : '✅ User diaktifkan', description: u.full_name || u.email })
+      await loadUsers()
+    } catch (err: any) {
+      toast({ title: 'Gagal', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsSuspending(null)
+    }
+  }
+
+  async function handleDeleteUser(u: any) {
+    if (!window.confirm(`⚠️ PERHATIAN: Hapus user "${u.full_name || u.email}" secara PERMANEN? Semua data proyek dan profil akan hilang. Tindakan ini TIDAK dapat dibatalkan.`)) return
+    setIsDeleting(u.id)
+    try {
+      // Delete subscriptions first
+      await supabase.from('subscriptions').delete().eq('user_id', u.id)
+      // Delete projects
+      await supabase.from('projects').delete().eq('user_id', u.id)
+      // Delete profile
+      const { error } = await supabase.from('profiles').delete().eq('id', u.id)
+      if (error) throw error
+      toast({ title: '🗑️ User dihapus', description: 'Semua data profil dan proyek telah dihapus.' })
+      setSelectedUser(null)
+      await loadUsers()
+    } catch (err: any) {
+      toast({ title: 'Gagal Menghapus', description: err.message, variant: 'destructive' })
+    } finally {
+      setIsDeleting(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
@@ -211,6 +254,7 @@ export default function AdminUsers() {
                 <th className="px-4 py-3 font-medium">Status Trial</th>
                 <th className="px-4 py-3 font-medium">Status Langganan</th>
                 <th className="px-4 py-3 font-medium text-center">Role</th>
+                <th className="px-4 py-3 font-medium text-center">Aktif</th>
                 <th className="px-4 py-3 font-medium text-right">Aksi</th>
               </tr>
             </thead>
@@ -219,8 +263,9 @@ export default function AdminUsers() {
                 const subs = u.subscriptions || []
                 const active = subs.find((s:any) => s.status === 'active')
                 
+                const isActive = u.is_active !== false
                 return (
-                  <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                  <tr key={u.id} className={`hover:bg-muted/20 transition-colors ${!isActive ? 'opacity-50 bg-red-50/30' : ''}`}>
                     <td className="px-4 py-4">
                       <div className="font-bold text-navy">{u.company || '-'}</div>
                       <div className="text-xs text-muted-foreground mt-0.5">{u.full_name || 'Tanpa Nama'} • {u.email || 'Email tidak tersedia'}</div>
@@ -260,19 +305,45 @@ export default function AdminUsers() {
                         {u.role}
                       </span>
                     </td>
+                    <td className="px-4 py-4 text-center">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        {isActive ? '✅ Aktif' : '🔒 Suspend'}
+                      </span>
+                    </td>
                     <td className="px-4 py-4 text-right">
-                      <Button variant="outline" size="sm" onClick={() => handleOpenUser(u)} className="hover:bg-navy hover:text-white border-navy/20">Edit Akses & Paket</Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="outline" size="sm" onClick={() => handleOpenUser(u)} className="hover:bg-navy hover:text-white border-navy/20 h-8 text-xs">
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline" size="sm"
+                          disabled={isSuspending === u.id}
+                          onClick={() => handleSuspendUser(u)}
+                          className={`h-8 text-xs ${isActive ? 'border-orange-300 text-orange-600 hover:bg-orange-50' : 'border-emerald-300 text-emerald-600 hover:bg-emerald-50'}`}
+                        >
+                          {isSuspending === u.id ? <RefreshCw className="h-3 w-3 animate-spin" /> : isActive ? <UserX className="h-3 w-3" /> : <UserCheck className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="outline" size="sm"
+                          disabled={isDeleting === u.id || u.role === 'superadmin'}
+                          onClick={() => handleDeleteUser(u)}
+                          className="h-8 text-xs border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-30"
+                          title={u.role === 'superadmin' ? 'Tidak bisa hapus superadmin' : 'Hapus User'}
+                        >
+                          {isDeleting === u.id ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 )
               })}
               {loading ? (
                 <tr>
-                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
+                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground italic">Memuat pengguna dari database...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground italic">Tidak ada data pelanggan, atau akses dibatasi RLS.</td>
+                   <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground italic">Tidak ada data pelanggan, atau akses dibatasi RLS.</td>
                 </tr>
               ) : null}
             </tbody>

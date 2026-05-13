@@ -14,11 +14,40 @@ function Spinner() {
   )
 }
 
-/** Redirect to /auth if not logged in */
+/** Redirect to /auth if not logged in. Block if user is suspended. */
 export function PrivateRoute({ children }: Props) {
-  const { user, isLoading } = useAuthStore()
+  const { user, profile, isLoading, signOut } = useAuthStore()
   if (isLoading) return <Spinner />
   if (!user) return <Navigate to="/auth" replace />
+  
+  // Block suspended users
+  if (profile && profile.is_active === false) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center bg-white rounded-3xl shadow-2xl p-10 space-y-6 border border-red-100">
+          <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+            <span className="text-4xl">🔒</span>
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-navy mb-2">Akun Dinonaktifkan</h1>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              Akun Anda saat ini dinonaktifkan oleh administrator. Silakan hubungi tim kami untuk informasi lebih lanjut.
+            </p>
+          </div>
+          <a href="mailto:support@propfs.id" className="block text-sm text-gold font-semibold hover:underline">
+            support@propfs.id
+          </a>
+          <button
+            onClick={() => signOut()}
+            className="w-full py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy/90 transition-colors"
+          >
+            Keluar
+          </button>
+        </div>
+      </div>
+    )
+  }
+  
   return <>{children}</>
 }
 

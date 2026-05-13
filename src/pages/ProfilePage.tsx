@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Building2, Phone, Mail, LogOut } from 'lucide-react'
+import { ArrowLeft, User, Building2, Phone, Mail, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,13 @@ export default function ProfilePage() {
   const [company, setCompany]   = useState(profile?.company ?? '')
   const [phone, setPhone]       = useState(profile?.phone ?? '')
   const [saving, setSaving]     = useState(false)
+
+  // Password change state
+  const [newPassword, setNewPassword]         = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [savingPwd, setSavingPwd]             = useState(false)
+  const [showNewPwd, setShowNewPwd]           = useState(false)
+  const [showConfPwd, setShowConfPwd]         = useState(false)
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -47,6 +54,30 @@ export default function ProfilePage() {
   async function handleSignOut() {
     await signOut()
     navigate('/auth')
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPassword.length < 8) {
+      toast({ title: 'Password terlalu pendek', description: 'Minimal 8 karakter.', variant: 'destructive' })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: 'Password tidak cocok', description: 'Konfirmasi password harus sama.', variant: 'destructive' })
+      return
+    }
+    setSavingPwd(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      toast({ title: '✅ Password berhasil diubah', description: 'Password baru Anda sudah aktif.' })
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err: any) {
+      toast({ title: 'Gagal mengubah password', description: err.message, variant: 'destructive' })
+    } finally {
+      setSavingPwd(false)
+    }
   }
 
   return (
@@ -123,6 +154,67 @@ export default function ProfilePage() {
 
         {/* Subscription + Invoice */}
         <SubscriptionCard variant="full" />
+
+        {/* Change Password */}
+        <form onSubmit={handleChangePassword} className="bg-card border border-border rounded-2xl p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Lock className="h-4 w-4 text-navy" />
+            <h2 className="font-semibold text-base">Ganti Password</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">Masukkan password baru untuk akun Anda. Minimal 8 karakter.</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password">Password Baru</Label>
+              <div className="relative">
+                <Input
+                  id="new-password"
+                  type={showNewPwd ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 karakter"
+                  className="focus-visible:ring-gold pr-10"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPwd(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showNewPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-password">Konfirmasi Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-password"
+                  type={showConfPwd ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Ulangi password baru"
+                  className={`focus-visible:ring-gold pr-10 ${confirmPassword && confirmPassword !== newPassword ? 'border-red-400' : ''}`}
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfPwd(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showConfPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {confirmPassword && confirmPassword !== newPassword && (
+                <p className="text-xs text-red-500">Password tidak cocok</p>
+              )}
+            </div>
+          </div>
+
+          <Button type="submit" variant="gold" disabled={savingPwd || !newPassword}>
+            {savingPwd ? 'Menyimpan...' : 'Ubah Password'}
+          </Button>
+        </form>
 
         {/* Sign out */}
         <div className="border border-destructive/30 rounded-2xl p-4 flex items-center justify-between">

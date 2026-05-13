@@ -35,6 +35,22 @@ const ICON_MAP: Record<string, any> = {
   Building2
 }
 
+const MASTER_FEATURES = [
+  { key: 'fs_projects', label: 'Feasibility Study', suffix: 'proyek' },
+  { key: 'cost_control', label: 'Cost Control & RAB' },
+  { key: 'upload_rab', label: 'Upload & Parsing RAB Excel (AI)' },
+  { key: 'material_schedule', label: 'Material Schedule Otomatis' },
+  { key: 'kurva_s', label: 'Kurva S Progres Proyek' },
+  { key: 'ai_chat', label: 'AI Chat Realisasi Biaya' },
+  { key: 'export_excel', label: 'Ekspor Laporan Excel' },
+  { key: 'export_pdf', label: 'Ekspor PDF Branded' },
+  { key: 'multi_user', label: 'Multi-user / Tim', suffix: 'user' },
+  { key: 'api_access', label: 'Akses API (Integrasi ERP)' },
+  { key: 'whitelabel', label: 'White-label Reports' },
+  { key: 'priority_support', label: 'Prioritas Support (WA/24jam)' },
+  { key: 'onboarding', label: 'Onboarding & Training Tim' },
+]
+
 export default function LandingPage() {
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
@@ -78,7 +94,7 @@ export default function LandingPage() {
   }
 
   // Load promo prices from DB
-  const [promoPrices, setPromoPrices] = useState<Record<string, number | null>>({})
+  const [catalogPlans, setCatalogPlans] = useState<any[]>([])
   useEffect(() => {
     async function loadCatalog() {
       try {
@@ -87,14 +103,16 @@ export default function LandingPage() {
           .select('value')
           .eq('key', 'plan_catalog')
           .maybeSingle()
-        if (data?.value && Array.isArray(data.value)) {
-          const promos: Record<string, number | null> = {}
-          for (const p of data.value) {
-            if (p.promoPriceIdr && p.promoPriceIdr > 0) {
-              promos[p.id] = p.promoPriceIdr
-            }
-          }
-          setPromoPrices(promos)
+        if (data?.value && Array.isArray(data.value) && data.value.length > 0) {
+          setCatalogPlans(data.value)
+        } else {
+          // Fallback to default
+          setCatalogPlans([
+            { id: 'free', name: 'Free Trial', priceIdr: 0, promoPriceIdr: null, maxProjects: 2, isVisible: true, features: { fs_projects: 2, cost_control: false, upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false, export_excel: false, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false } },
+            { id: 'starter', name: 'Starter', priceIdr: 149000, promoPriceIdr: null, maxProjects: 5, isVisible: true, features: { fs_projects: 5, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false } },
+            { id: 'pro', name: 'Pro', priceIdr: 399000, promoPriceIdr: null, maxProjects: 50, recommended: true, isVisible: true, features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 3, api_access: false, whitelabel: false, priority_support: true, onboarding: false } },
+            { id: 'enterprise', name: 'Enterprise', priceIdr: 999000, promoPriceIdr: null, maxProjects: 999, isVisible: true, features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 999, api_access: true, whitelabel: true, priority_support: true, onboarding: true } }
+          ])
         }
       } catch { /* ignore */ }
     }
@@ -319,192 +337,99 @@ export default function LandingPage() {
 
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
 
-              {/* ── FREE ── */}
-              <div className="bg-white/5 border border-white/10 rounded-[28px] p-8 flex flex-col">
-                <div className="mb-8">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">GRATIS</p>
-                  <h3 className="text-2xl font-black mb-1">Free Trial</h3>
-                  <div className="flex items-end gap-1 mt-4">
-                    <span className="text-4xl font-black text-gold">Rp 0</span>
-                    <span className="text-white/40 text-sm pb-1">/bulan</span>
-                  </div>
-                  <p className="text-white/40 text-xs mt-2">Untuk coba platform tanpa kartu kredit</p>
-                </div>
+              {catalogPlans.filter(p => p.isVisible !== false).map(plan => {
+                const isPro = plan.recommended
+                const hasPromo = plan.promoPriceIdr !== null && plan.promoPriceIdr > 0 && plan.promoPriceIdr < plan.priceIdr
+                const currentPrice = hasPromo ? plan.promoPriceIdr! : plan.priceIdr
 
-                {/* Fitur tersedia */}
-                <ul className="space-y-3 mb-6 flex-1">
-                  {[
-                    '✅ 2 proyek Feasibility Study',
-                    '✅ Kalkulator NPV, IRR, ROI dasar',
-                    '✅ Ekspor ringkasan (teks)',
-                    '✅ 1 user saja',
-                  ].map(f => <li key={f} className="text-sm text-white/70 flex gap-2">{f}</li>)}
-                </ul>
+                // Calculate which features to show
+                const availableFeatures = MASTER_FEATURES.filter(f => plan.features[f.key])
+                const unavailableFeatures = MASTER_FEATURES.filter(f => !plan.features[f.key])
 
-                {/* Fitur TIDAK tersedia */}
-                <ul className="space-y-2 mb-8 border-t border-white/10 pt-4">
-                  {[
-                    '🚫 Cost Control & RAB',
-                    '🚫 AI Chat Realisasi Biaya',
-                    '🚫 Material Schedule AI',
-                    '🚫 Kurva S Otomatis',
-                    '🚫 Upload & parsing RAB Excel',
-                    '🚫 Ekspor laporan Excel/PDF',
-                    '🚫 Multi-user / tim',
-                  ].map(f => <li key={f} className="text-xs text-white/30 flex gap-2">{f}</li>)}
-                </ul>
-
-                <Button className="w-full bg-white/10 text-white border border-white/30 hover:bg-white hover:text-navy font-bold mt-auto" onClick={() => navigate('/auth')}>
-                  Daftar Gratis
-                </Button>
-              </div>
-
-              {/* ── STARTER ── */}
-              <div className="bg-white/5 border border-white/20 rounded-[28px] p-8 flex flex-col relative">
-                {promoPrices['starter'] && promoPrices['starter'] < 149000 && (
-                  <div className="absolute -top-3 right-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
-                    🔥 HEMAT {Math.round((1 - promoPrices['starter'] / 149000) * 100)}%
-                  </div>
-                )}
-                <div className="mb-8">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-2">PEMULA</p>
-                  <h3 className="text-2xl font-black mb-1">Starter</h3>
-                  <div className="flex flex-col gap-1 mt-4">
-                    {promoPrices['starter'] && promoPrices['starter'] < 149000 && (
-                      <span className="text-sm line-through text-white/40">Rp 149.000</span>
+                return (
+                  <div key={plan.id} className={`group relative p-8 rounded-[28px] border transition-all duration-500 flex flex-col h-full
+                    ${isPro ? 'bg-gold text-navy border-gold shadow-2xl' : 'bg-white/5 text-white border-white/20 hover:border-gold/30 shadow-sm'}
+                  `}>
+                    
+                    {hasPromo && (
+                      <div className="absolute -top-3 right-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg z-20">
+                        🔥 HEMAT {Math.round((1 - plan.promoPriceIdr! / plan.priceIdr) * 100)}%
+                      </div>
                     )}
-                    <div className="flex items-end gap-1">
-                      <span className="text-4xl font-black text-gold">Rp {(promoPrices['starter'] ? promoPrices['starter'] : 149000).toLocaleString('id-ID')}</span>
-                      <span className="text-white/40 text-sm pb-1">/bulan</span>
-                    </div>
-                  </div>
-                  <p className="text-white/40 text-xs mt-2">Cocok untuk kontraktor kecil & mandiri</p>
-                </div>
 
-                <ul className="space-y-3 mb-6 flex-1">
-                  {[
-                    '✅ 5 proyek Feasibility Study',
-                    '✅ Cost Control & RAB (1 proyek)',
-                    '✅ Upload RAB Excel (AI parsing)',
-                    '✅ Material Schedule otomatis',
-                    '✅ Kurva S progress proyek',
-                    '✅ Ekspor laporan Excel',
-                    '✅ AI Chat Realisasi (50 pesan/bln)',
-                    '✅ 1 user',
-                  ].map(f => <li key={f} className="text-sm text-white/70 flex gap-2">{f}</li>)}
-                </ul>
-
-                <ul className="space-y-2 mb-8 border-t border-white/10 pt-4">
-                  {[
-                    '🚫 Multi-user / tim',
-                    '🚫 Ekspor PDF branded',
-                    '🚫 Prioritas support',
-                  ].map(f => <li key={f} className="text-xs text-white/30 flex gap-2">{f}</li>)}
-                </ul>
-
-                <Button className="w-full bg-white/10 text-white border border-white/30 hover:bg-white hover:text-navy font-bold mt-auto" onClick={() => navigate('/auth?plan=starter')}>
-                  Pilih Starter
-                </Button>
-              </div>
-
-              {/* ── PRO (Recommended) ── */}
-              <div className="bg-gold rounded-[28px] p-8 flex flex-col text-navy relative overflow-hidden group">
-                {promoPrices['pro'] && promoPrices['pro'] < 399000 && (
-                  <div className="absolute -top-3 left-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg z-10">
-                    🔥 HEMAT {Math.round((1 - promoPrices['pro'] / 399000) * 100)}%
-                  </div>
-                )}
-                <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-150 transition-transform duration-700 pointer-events-none">
-                  <Sparkles className="h-28 w-28" />
-                </div>
-                <div className="mb-8 relative z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-navy/50">POPULER</p>
-                    <span className="bg-navy text-gold text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">Rekomendasi</span>
-                  </div>
-                  <h3 className="text-2xl font-black mb-1">Pro</h3>
-                  <div className="flex flex-col gap-1 mt-4">
-                    {promoPrices['pro'] && promoPrices['pro'] < 399000 && (
-                      <span className="text-sm line-through text-navy/50">Rp 399.000</span>
+                    {isPro && (
+                      <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-150 transition-transform duration-700 pointer-events-none">
+                        <Sparkles className="h-28 w-28" />
+                      </div>
                     )}
-                    <div className="flex items-end gap-1">
-                      <span className="text-4xl font-black text-navy">Rp {(promoPrices['pro'] ? promoPrices['pro'] : 399000).toLocaleString('id-ID')}</span>
-                      <span className="text-navy/50 text-sm pb-1">/bulan</span>
+
+                    <div className="mb-8 relative z-10">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${isPro ? 'text-navy/50' : 'text-white/40'}`}>
+                          {plan.id}
+                        </p>
+                        {isPro && (
+                          <span className="bg-navy text-gold text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">
+                            Rekomendasi
+                          </span>
+                        )}
+                      </div>
+                      
+                      <h3 className="text-2xl font-black mb-1">{plan.name}</h3>
+                      
+                      <div className="flex flex-col gap-1 mt-4">
+                        {hasPromo && (
+                          <span className={`text-sm line-through ${isPro ? 'text-navy/50' : 'text-white/40'}`}>
+                            Rp {plan.priceIdr.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                        <div className="flex items-end gap-1">
+                          <span className={`text-4xl font-black ${isPro ? 'text-navy' : 'text-gold'}`}>
+                            Rp {currentPrice.toLocaleString('id-ID')}
+                          </span>
+                          <span className={`text-sm pb-1 ${isPro ? 'text-navy/50' : 'text-white/40'}`}>/bulan</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-navy/60 text-xs mt-2">Untuk kontraktor & developer aktif</p>
-                </div>
 
-                <ul className="space-y-3 mb-6 flex-1">
-                  {[
-                    '✅ Proyek Feasibility Study tak terbatas',
-                    '✅ Cost Control & RAB tak terbatas',
-                    '✅ AI Chat Realisasi tanpa batas',
-                    '✅ Upload RAB + validasi AI otomatis',
-                    '✅ Material Schedule + Kurva S',
-                    '✅ Laporan Excel & PDF branded',
-                    '✅ Realisasi Biaya (Material + Upah)',
-                    '✅ Up to 3 user / tim',
-                    '✅ Prioritas support via WA',
-                  ].map(f => <li key={f} className="text-sm text-navy/80 flex gap-2 font-medium">{f}</li>)}
-                </ul>
+                    {/* Features List */}
+                    <ul className="space-y-3 mb-6 flex-1 relative z-10">
+                      {availableFeatures.map(f => {
+                        const val = plan.features[f.key]
+                        let text = f.label
+                        if (typeof val === 'number') {
+                          text = `${val === 999 ? 'Tak terbatas' : val} ${f.label}`
+                        }
+                        return (
+                          <li key={f.key} className={`text-sm flex gap-2 font-medium ${isPro ? 'text-navy/80' : 'text-white/70'}`}>
+                            ✅ {text}
+                          </li>
+                        )
+                      })}
+                    </ul>
 
-                <ul className="space-y-2 mb-8 border-t border-navy/10 pt-4">
-                  {[
-                    '🚫 White-label / custom branding',
-                    '🚫 API akses langsung',
-                  ].map(f => <li key={f} className="text-xs text-navy/40 flex gap-2">{f}</li>)}
-                </ul>
-
-                <Button className="w-full bg-navy text-gold hover:bg-navy/90 h-12 text-base font-black mt-auto" onClick={() => navigate('/auth?plan=pro')}>
-                  Berlangganan Sekarang
-                </Button>
-              </div>
-
-              {/* ── ENTERPRISE ── */}
-              <div className="bg-white/5 border border-gold/20 rounded-[28px] p-8 flex flex-col relative">
-                {promoPrices['enterprise'] && promoPrices['enterprise'] < 999000 && (
-                  <div className="absolute -top-3 right-6 bg-red-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
-                    🔥 HEMAT {Math.round((1 - promoPrices['enterprise'] / 999000) * 100)}%
-                  </div>
-                )}
-                <div className="mb-8">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gold/60 mb-2">KORPORAT</p>
-                  <h3 className="text-2xl font-black mb-1">Enterprise</h3>
-                  <div className="flex flex-col gap-1 mt-4">
-                    {promoPrices['enterprise'] && promoPrices['enterprise'] < 999000 && (
-                      <span className="text-sm line-through text-white/40">Rp 999.000</span>
+                    {/* Unavailable Features */}
+                    {unavailableFeatures.length > 0 && (
+                      <ul className={`space-y-2 mb-8 border-t pt-4 relative z-10 ${isPro ? 'border-navy/10' : 'border-white/10'}`}>
+                        {unavailableFeatures.map(f => (
+                          <li key={f.key} className={`text-xs flex gap-2 ${isPro ? 'text-navy/40' : 'text-white/30'}`}>
+                            🚫 {f.label}
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                    <div className="flex items-end gap-1">
-                      <span className="text-4xl font-black text-gold">Rp {(promoPrices['enterprise'] ? promoPrices['enterprise'] : 999000).toLocaleString('id-ID')}</span>
-                      <span className="text-white/40 text-sm pb-1">/bulan</span>
-                    </div>
+
+                    <Button 
+                      className={`w-full h-12 text-base font-black mt-auto relative z-10 transition-colors
+                        ${isPro ? 'bg-navy text-gold hover:bg-navy/90' : 'bg-white/10 text-white border border-white/30 hover:bg-white hover:text-navy'}
+                      `}
+                      onClick={() => navigate(plan.priceIdr === 0 ? '/auth' : `/auth?plan=${plan.id}`)}
+                    >
+                      {plan.priceIdr === 0 ? 'Daftar Gratis' : 'Pilih ' + plan.name}
+                    </Button>
                   </div>
-                  <p className="text-white/40 text-xs mt-2">Untuk developer besar & management proyek</p>
-                </div>
-
-                <ul className="space-y-3 mb-6 flex-1">
-                  {[
-                    '✅ Semua fitur Pro',
-                    '✅ AI penggunaan prioritas (no limit)',
-                    '✅ User tak terbatas',
-                    '✅ White-label PDF branded perusahaan',
-                    '✅ Akses API langsung (integrasi ERP)',
-                    '✅ Dashboard admin & log audit',
-                    '✅ Onboarding & training tim',
-                    '✅ Dedicated support 24 jam',
-                    '✅ SLA uptime 99.9%',
-                  ].map(f => <li key={f} className="text-sm text-white/70 flex gap-2">{f}</li>)}
-                </ul>
-
-                <div className="mb-8 border-t border-white/10 pt-4">
-                  <p className="text-xs text-white/40">Harga dapat disesuaikan dengan kebutuhan organisasi</p>
-                </div>
-
-                <Button className="w-full bg-gold text-navy hover:bg-gold/90 h-12 text-base font-black mt-auto" onClick={() => window.location.href = 'mailto:hello@propfs.id'}>
-                  Hubungi Sales
-                </Button>
-              </div>
+                )
+              })}
 
             </div>
 
