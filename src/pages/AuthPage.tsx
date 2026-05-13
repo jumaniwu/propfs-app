@@ -317,12 +317,15 @@ export default function AuthPage() {
                   <div className="flex gap-3 items-start">
                     <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600 mt-0.5" />
                     <div>
-                      <p className="font-black text-emerald-800 text-sm mb-1">Pendaftaran Berhasil! 🎉</p>
-                      <p className="text-xs text-emerald-700 leading-relaxed">Kami telah mengirim email konfirmasi ke <strong>{regEmail}</strong>. Silakan cek inbox (atau folder spam) Anda dan klik link konfirmasi, lalu login kembali untuk memilih paket.</p>
+                      <p className="font-black text-emerald-800 text-sm mb-1">Registrasi Sukses!</p>
+                      <p className="text-xs text-emerald-700 leading-relaxed">
+                        Kami telah mengirim email konfirmasi ke <strong>{regEmail}</strong>.<br/><br/>
+                        Silakan login dengan email terdaftar setelah melakukan konfirmasi.
+                      </p>
                     </div>
                   </div>
                   <Button variant="outline" className="w-full h-12 rounded-xl border-emerald-300 font-bold text-emerald-700 hover:bg-emerald-100" onClick={() => { setRegSuccess(false); setTab('login') }}>
-                    Sudah Konfirmasi? Login Sekarang →
+                    Ke Menu Login Sekarang →
                   </Button>
                 </div>
               )}
@@ -335,7 +338,7 @@ export default function AuthPage() {
               )}
 
               {/* Step 1 */}
-              {regStep === 1 && (
+              {regStep === 1 && !regSuccess && (
                 <div className="space-y-5">
                   <div className="space-y-2.5">
                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Nama Lengkap</Label>
@@ -365,7 +368,7 @@ export default function AuthPage() {
               )}
 
               {/* Step 2 */}
-              {regStep === 2 && (
+              {regStep === 2 && !regSuccess && (
                 <div className="space-y-5">
                   <div className="space-y-2.5">
                     <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Aktif</Label>
