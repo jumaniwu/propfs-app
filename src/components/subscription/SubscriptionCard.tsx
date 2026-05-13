@@ -94,9 +94,12 @@ export default function SubscriptionCard({ variant = 'compact' }: Props) {
   async function loadInvoices() {
     setLoading(true)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
       const { data } = await supabase
         .from('invoices')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(10)
       if (data) setInvoices(data as Invoice[])

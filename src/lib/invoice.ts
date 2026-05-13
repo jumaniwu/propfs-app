@@ -47,9 +47,13 @@ export async function calculateInvoice(planId: string, months: number = 1) {
 
 // ── Get user invoices ─────────────────────────────────────────
 export async function getUserInvoices(): Promise<Invoice[]> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
   const { data, error } = await supabase
     .from('invoices')
     .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(20)
 
