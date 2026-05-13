@@ -2,12 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 
-// Initialize Supabase (Admin role to bypass RLS)
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Needs service_role for DB updates
-);
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
@@ -29,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // For Midtrans "Test notification URL", they might not send a valid signature.
     // If order_id is empty or it's a test payload, we might just return 200 OK to satisfy their ping.
-    if (!order_id) {
+    if (!order_id || String(order_id).startsWith('payment_notif_test')) {
        return res.status(200).json({ status: 'OK', message: 'Test ping received' });
     }
 
@@ -41,6 +35,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (hashed !== signature_key) {
       return res.status(403).json({ message: 'Invalid signature' });
     }
+
+    // Initialize Supabase lazily
+    if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[Webhook] Missing Supabase environment variables');
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+    const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
     // 2. Handle status updates
     let invoiceId: string = '';
