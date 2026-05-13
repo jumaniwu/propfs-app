@@ -502,45 +502,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   updateLandingContent: async (content: LandingPageContent) => {
-    // Save directly to DB without complex local merging
-    // This ensures what the user sees in the CMS is what gets saved
-    const { data: existing } = await supabase
+    console.log('[authStore] updateLandingContent start')
+    const { error, data } = await supabase
       .from('app_settings')
-      .select('key')
-      .eq('key', 'landing_page_cms')
-      .maybeSingle()
-
-    let error
-    let affectedRows = 0
-
-    if (existing) {
-      const { data, error: updateErr } = await supabase
-        .from('app_settings')
-        .update({ value: content })
-        .eq('key', 'landing_page_cms')
-        .select()
-      error = updateErr
-      affectedRows = data ? data.length : 0
-    } else {
-      const { data, error: insertErr } = await supabase
-        .from('app_settings')
-        .insert({ key: 'landing_page_cms', value: content })
-        .select()
-      error = insertErr
-      affectedRows = data ? data.length : 0
-    }
+      .upsert(
+        { key: 'landing_page_cms', value: content },
+        { onConflict: 'key' }
+      )
+      .select()
 
     if (error) {
       console.error('[authStore] updateLandingContent error:', error)
-      throw error
+      throw new Error(`Gagal menyimpan: ${error.message}`)
     }
 
-    if (affectedRows === 0) {
-      console.error('[authStore] updateLandingContent silent failure: 0 rows affected. Check RLS or Schema Cache.')
-      throw new Error('Gagal menyimpan ke database. Sinkronisasi terblokir oleh sistem keamanan (RLS) atau Schema Cache belum di-reload.')
-    }
+    console.log('[authStore] updateLandingContent success, rows:', data?.length)
     
-    // Update local state and reload from DB to confirm
+    // Update local state immediately (optimistic), then confirm from DB
     set({ landingContent: content })
     await get().loadLandingContent()
   },

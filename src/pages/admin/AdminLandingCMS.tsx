@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Smartphone, Monitor, Palette, RefreshCw, HelpCircle } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Palette, RefreshCw, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useAuthStore, DEFAULT_LANDING_CONTENT } from '@/store/authStore'
@@ -7,9 +7,9 @@ import type { LandingPageContent } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 
-export default function AdminLandingCMS() {
-  const { landingContent, updateLandingContent } = useAuthStore()
-  const mergeFaq = (base: LandingPageContent): LandingPageContent => ({
+// Helper outside component to avoid stale closure issues
+function ensureFaq(base: LandingPageContent): LandingPageContent {
+  return {
     ...base,
     faq: {
       title: base.faq?.title || DEFAULT_LANDING_CONTENT.faq!.title,
@@ -18,9 +18,14 @@ export default function AdminLandingCMS() {
         ? base.faq.items
         : DEFAULT_LANDING_CONTENT.faq!.items
     }
-  })
-  const [cmsData, setCmsData] = useState<LandingPageContent>(() => mergeFaq(landingContent))
+  }
+}
+
+export default function AdminLandingCMS() {
+  const { landingContent, updateLandingContent } = useAuthStore()
+  const [cmsData, setCmsData] = useState<LandingPageContent>(() => ensureFaq(landingContent))
   const [uploading, setUploading] = useState<'logo' | 'favicon' | 'hero' | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   
   // Create refs outside of array
   const logoRef = useRef<HTMLInputElement>(null)
@@ -28,15 +33,21 @@ export default function AdminLandingCMS() {
   const heroRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setCmsData(mergeFaq(landingContent))
+    setCmsData(ensureFaq(landingContent))
   }, [landingContent])
 
   async function handleSave() {
+     if (isSaving) return
+     setIsSaving(true)
      try {
+       console.log('[CMS] Saving...', cmsData)
        await updateLandingContent(cmsData)
-       toast({ title: 'Konten Website Berhasil Disimpan', description: 'Perubahan akan langsung tampil di halaman depan.' })
+       toast({ title: '✅ Konten Website Berhasil Disimpan', description: 'Perubahan akan langsung tampil di halaman depan.' })
      } catch (err: any) {
-       toast({ title: 'Gagal Menyimpan', description: err.message, variant: 'destructive' })
+       console.error('[CMS] Save error:', err)
+       toast({ title: 'Gagal Menyimpan', description: err.message || 'Periksa koneksi dan coba lagi.', variant: 'destructive' })
+     } finally {
+       setIsSaving(false)
      }
   }
 
@@ -152,8 +163,8 @@ export default function AdminLandingCMS() {
           <Button variant="outline" className="gap-2 h-14 px-6 text-sm font-bold border-red-200 text-red-600 hover:bg-red-50" onClick={() => setCmsData(DEFAULT_LANDING_CONTENT)}>
             <RefreshCw className="h-4 w-4" /> RESET KE DEFAULT
           </Button>
-          <Button variant="gold" className="w-full sm:w-auto gap-3 h-14 px-8 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave}>
-            <Save className="h-5 w-5" /> SIMPAN PERUBAHAN
+          <Button variant="gold" className="w-full sm:w-auto gap-3 h-14 px-8 text-lg font-black shadow-2xl shadow-gold/20 active:scale-95 transition-all" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? <><Loader2 className="h-5 w-5 animate-spin" /> MENYIMPAN...</> : <><Save className="h-5 w-5" /> SIMPAN PERUBAHAN</>}
           </Button>
         </div>
       </div>
