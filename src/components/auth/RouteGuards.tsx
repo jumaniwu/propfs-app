@@ -58,8 +58,9 @@ export function AuthRoute({ children }: Props) {
   const planParam = urlParams.get('plan')
   const redirectTo = planParam && planParam !== 'free' ? `/home?create_invoice=${planParam}` : '/home'
 
-  if (isLoading) return null
-  if (user) return <Navigate to={redirectTo} replace />
+  // Do not return null on isLoading here, because it will UNMOUNT AuthPage and destroy its local state
+  // AuthPage itself already handles its loading state via the useAuthStore's isLoading flag.
+  if (user && !isLoading) return <Navigate to={redirectTo} replace />
   return <>{children}</>
 }
 

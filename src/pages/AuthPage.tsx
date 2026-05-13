@@ -139,16 +139,29 @@ export default function AuthPage() {
 
     setRegError('')
 
-    // Check for duplicate phone number
+    // Check for duplicate email and phone number directly to prevent fake success response
     try {
       const { supabase: sb } = await import('@/lib/supabase')
+      
+      const { data: existingEmail } = await sb
+        .from('profiles')
+        .select('id')
+        .eq('email', regEmail.trim())
+        .maybeSingle()
+        
+      if (existingEmail) {
+        setRegError('Email tersebut sudah terdaftar. Silakan login atau gunakan email lain.')
+        return
+      }
+
       const { data: existingPhone } = await sb
         .from('profiles')
         .select('id')
         .eq('phone', regPhone.trim())
         .maybeSingle()
+        
       if (existingPhone) {
-        setRegError('Nomor WhatsApp tersebut sudah terdaftar. Gunakan nomor lain atau login dengan akun yang sudah ada.')
+        setRegError('Nomor WhatsApp tersebut sudah terdaftar. Gunakan nomor lain.')
         return
       }
     } catch {
