@@ -156,13 +156,25 @@ export default function AuthPage() {
     }
 
     try {
-      await signUp(regEmail, regPass, regName, regCompany, regPhone)
-      // If we reach here: signUp succeeded AND no email confirmation required
-      try {
-        await signIn(regEmail, regPass)
-        navigate('/pricing')
-      } catch {
+      const result = await signUp(regEmail, regPass, regName, regCompany, regPhone)
+      
+      if (result.needsConfirmation) {
+        // Email confirmation required — show success screen
         setRegSuccess(true)
+        setRegError('')
+      } else {
+        // No email confirmation required — auto login
+        try {
+          await signIn(regEmail, regPass)
+          if (selectedPlan && selectedPlan !== 'free') {
+            navigate(`/home?create_invoice=${selectedPlan}`)
+          } else {
+            navigate('/home')
+          }
+        } catch {
+          // Auto-login failed but account was created — show success
+          setRegSuccess(true)
+        }
       }
     } catch (err: any) {
       const msg: string = err.message || ''
@@ -171,16 +183,10 @@ export default function AuthPage() {
       if (lower.includes('already registered') || lower.includes('user already registered') || lower.includes('email already') || lower.includes('sudah terdaftar')) {
         setRegError('Email tersebut sudah terdaftar. Klik LOG IN di atas untuk masuk dengan email tersebut.')
       } else if (lower.includes('email not confirmed') || lower.includes('not confirmed')) {
-        // Account exists but not confirmed
         setRegError('Akun dengan email ini sudah ada tapi belum dikonfirmasi. Silakan cek email Anda dan klik link konfirmasi.')
-      } else if (msg.includes('Pendaftaran berhasil')) {
-        // Our own success message thrown from authStore signUp
-        setRegSuccess(true)
-        setRegError('')
       } else if (lower.includes('invalid email') || lower.includes('email format')) {
         setRegError('Format email tidak valid. Gunakan email yang aktif dan benar.')
       } else {
-        // Show actual error message from Supabase so user knows what's wrong
         setRegError(`Pendaftaran gagal: ${msg || 'Terjadi kesalahan, coba beberapa saat lagi.'}`)
       }
     }

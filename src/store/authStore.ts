@@ -68,7 +68,7 @@ interface AuthStore {
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, fullName: string, company: string, phone: string) => Promise<void>
+  signUp: (email: string, password: string, fullName: string, company: string, phone: string) => Promise<{ needsConfirmation: boolean }>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -329,9 +329,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
       // Check if email confirmation is required
       // When confirmation is required, data.session will be null
-      if (data.user && !data.session) {
-        throw new Error('Pendaftaran berhasil! Silakan cek email Anda untuk konfirmasi, lalu login kembali.')
-      }
+      const needsConfirmation = !!(data.user && !data.session)
+      return { needsConfirmation }
     } catch (err: any) {
       set({ authError: err.message || 'Gagal mendaftar. Coba lagi.' })
       throw err
