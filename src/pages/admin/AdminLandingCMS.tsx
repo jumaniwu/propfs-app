@@ -8,7 +8,17 @@ import { supabase } from '@/lib/supabase'
 
 export default function AdminLandingCMS() {
   const { landingContent, updateLandingContent } = useAuthStore()
-  const [cmsData, setCmsData] = useState(landingContent)
+  const [cmsData, setCmsData] = useState(() => ({
+    ...DEFAULT_LANDING_CONTENT,
+    ...landingContent,
+    faq: {
+      ...DEFAULT_LANDING_CONTENT.faq!,
+      ...(landingContent.faq || {}),
+      items: (landingContent.faq?.items && landingContent.faq.items.length > 0)
+        ? landingContent.faq.items
+        : DEFAULT_LANDING_CONTENT.faq!.items
+    }
+  }))
   const [uploading, setUploading] = useState<'logo' | 'favicon' | 'hero' | null>(null)
   
   // Create refs outside of array
@@ -17,7 +27,17 @@ export default function AdminLandingCMS() {
   const heroRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setCmsData(landingContent)
+    setCmsData({
+      ...DEFAULT_LANDING_CONTENT,
+      ...landingContent,
+      faq: {
+        ...DEFAULT_LANDING_CONTENT.faq!,
+        ...(landingContent.faq || {}),
+        items: (landingContent.faq?.items && landingContent.faq.items.length > 0)
+          ? landingContent.faq.items
+          : DEFAULT_LANDING_CONTENT.faq!.items
+      }
+    })
   }, [landingContent])
 
   async function handleSave() {

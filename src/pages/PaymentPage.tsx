@@ -69,7 +69,12 @@ export default function PaymentPage() {
     setIsProcessing(true)
 
     try {
-      const months = 1 
+      const startDate = new Date(invoice.period_start)
+      const endDate = new Date(invoice.period_end)
+      const diffTime = Math.abs(endDate.getTime() - startDate.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      const months = Math.round(diffDays / 30) || 1
+      
       const paymentRes = await initiatePayment(invoice.plan_id, months, invoice.id, invoice.total_idr)
       
       if (!paymentRes) throw new Error('Gagal memproses ke Midtrans.')

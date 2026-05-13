@@ -167,7 +167,7 @@ export default function AuthPage() {
         try {
           await signIn(regEmail, regPass)
           if (selectedPlan && selectedPlan !== 'free') {
-            navigate(`/home?create_invoice=${selectedPlan}`)
+            navigate(`/home?create_invoice=${selectedPlan}&months=${selectedMonths}`)
           } else {
             navigate('/home')
           }

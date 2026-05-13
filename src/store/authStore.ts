@@ -483,9 +483,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               marketingHighlight: { ...content.marketingHighlight, ...(v.marketingHighlight || {}) },
               footer: { ...content.footer, ...(v.footer || {}) },
               faq: {
-                ...content.faq,
-                ...(v.faq || {}),
-                items: Array.isArray(v.faqItems) ? v.faqItems : (v.faq?.items || content.faq.items)
+                title: v.faq?.title || content.faq?.title || 'Pertanyaan yang Sering Ditanyakan',
+                subtitle: v.faq?.subtitle || content.faq?.subtitle || '',
+                // Priority: 1) faq.items from DB (saved by CMS), 2) faqItems from DB (SQL migration), 3) default
+                items: (
+                  Array.isArray(v.faq?.items) && v.faq.items.length > 0 ? v.faq.items :
+                  Array.isArray(v.faqItems) && v.faqItems.length > 0 ? v.faqItems :
+                  content.faq?.items || []
+                )
               }
             }
           };

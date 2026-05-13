@@ -82,16 +82,34 @@ export default function HomePage() {
 
       const query = new URLSearchParams(location.search)
       const createInvoicePlan = query.get('create_invoice')
+      const monthsParam = parseInt(query.get('months') || '1')
+      const months = isNaN(monthsParam) ? 1 : monthsParam
 
       if (createInvoicePlan) {
-         // Create real invoice in Supabase
-         const subtotal = createInvoicePlan === 'pro' ? 399000 : 149000
+         // Fetch dynamic price from plan_catalog
+         let basePrice = createInvoicePlan === 'pro' ? 399000 : 149000
+         try {
+           const { data: planData } = await supabase.from('app_settings').select('value').eq('key', 'plan_catalog').maybeSingle()
+           if (planData && Array.isArray(planData.value)) {
+             const selectedPlanData = planData.value.find((p: any) => p.id === createInvoicePlan)
+             if (selectedPlanData && selectedPlanData.priceIdr) {
+               basePrice = Number(selectedPlanData.priceIdr)
+             }
+           }
+         } catch (e) {
+           console.error('Gagal mengambil harga paket', e)
+         }
+
+         let subtotal = basePrice * months;
+         if (months === 3) subtotal = Math.round(subtotal * 0.90) // 10% discount
+         if (months === 12) subtotal = Math.round(subtotal * 0.80) // 20% discount
+
          const ppn = Math.round(subtotal * 0.11)
          const grandTotal = subtotal + ppn
          
          const invoiceNumber = `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`
          const periodStart = new Date().toISOString()
-         const periodEnd = new Date(Date.now() + 30 * 86400000).toISOString()
+         const periodEnd = new Date(Date.now() + months * 30 * 86400000).toISOString()
          
          const invoicePayload = {
             user_id: profile.id,
