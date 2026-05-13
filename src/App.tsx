@@ -69,13 +69,14 @@ export default function App() {
     if (siteName) document.title = siteName
 
     if (!faviconUrl) return
-    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      document.head.appendChild(link)
-    }
+    const existingLinks = document.querySelectorAll("link[rel~='icon']")
+    existingLinks.forEach(l => l.remove())
+
+    const link = document.createElement('link')
+    link.rel = 'icon'
+    link.type = faviconUrl.includes('image/png') || faviconUrl.endsWith('.png') ? 'image/png' : 'image/x-icon'
     link.href = faviconUrl
+    document.head.appendChild(link)
   }, [faviconUrl, siteName])
 
   // Initialize auth (check session, load profile, load feature flags)
