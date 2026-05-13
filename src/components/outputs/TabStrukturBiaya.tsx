@@ -147,13 +147,13 @@ export default function TabStrukturBiaya({ results: r, inputs }: Props) {
                       {formatRupiah(row.value, true)}
                     </td>
                     <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">
-                      {formatPct(row.value / r.totalInvestment * 100)}
+                      {formatPct(row.value / costBreakdown.reduce((s, d) => s + d.value, 0) * 100)}
                     </td>
                   </tr>
                 ))}
                 <tr className="bg-navy/5 font-bold">
-                  <td className="px-4 py-2.5">Total Investment</td>
-                  <td className="px-4 py-2.5 text-right font-mono">{formatRupiah(r.totalInvestment, true)}</td>
+                  <td className="px-4 py-2.5">Total Pengeluaran</td>
+                  <td className="px-4 py-2.5 text-right font-mono">{formatRupiah(costBreakdown.reduce((s, d) => s + d.value, 0), true)}</td>
                   <td className="px-4 py-2.5 text-right font-mono">100%</td>
                 </tr>
               </tbody>
