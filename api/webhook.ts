@@ -34,17 +34,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 2. Handle status updates
-  // Format order_id is assumed to be "{invoice_id}_{timestamp}"
-  const invoiceId = order_id.split('_')[0];
+  // Format order_id: "pck_inv_{invoiceId}_{timestamp}"
+  // Contoh: "pck_inv_h2z04c3ru_1778664851544"
+  // Kita perlu ambil bagian tengah setelah "pck_inv_" dan sebelum timestamp terakhir
+  let invoiceId: string
+  const orderParts = order_id.split('_')
+  if (orderParts.length >= 4 && orderParts[0] === 'pck' && orderParts[1] === 'inv') {
+    // Format: pck_inv_{id}_{timestamp} → ambil bagian ke-3
+    invoiceId = orderParts[2]
+  } else {
+    // Fallback: ambil bagian pertama saja
+    invoiceId = orderParts[0]
+  }
+  
+  console.log(`[Webhook] Processing order_id=${order_id}, resolved invoiceId=${invoiceId}, status=${transaction_status}`)
 
   if (transaction_status === 'settlement' || transaction_status === 'capture') {
-    // A. Update Invoice Status
+    // A. Update Invoice Status — coba match via midtrans_order_id dulu (lebih reliable)
     const { data: invoice, error: invError } = await supabase
       .from('invoices')
-      .update({ status: 'paid', paid_at: new Date().toISOString() })
-      .eq('id', invoiceId)
+      .update({ status: 'paid', paid_at: new Date().toISOString(), payment_method: 'bank_transfer' })
+      .or(`midtrans_order_id.eq.${order_id},id.eq.${invoiceId}`)
       .select()
-      .single();
+      .single()
 
     if (invError) {
       console.error('Invoice update error:', invError);
