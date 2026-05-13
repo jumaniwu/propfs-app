@@ -3,22 +3,23 @@ import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, 
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useAuthStore, DEFAULT_LANDING_CONTENT } from '@/store/authStore'
+import type { LandingPageContent } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminLandingCMS() {
   const { landingContent, updateLandingContent } = useAuthStore()
-  const [cmsData, setCmsData] = useState(() => ({
-    ...DEFAULT_LANDING_CONTENT,
-    ...landingContent,
+  const mergeFaq = (base: LandingPageContent): LandingPageContent => ({
+    ...base,
     faq: {
-      ...DEFAULT_LANDING_CONTENT.faq!,
-      ...(landingContent.faq || {}),
-      items: (landingContent.faq?.items && landingContent.faq.items.length > 0)
-        ? landingContent.faq.items
+      title: base.faq?.title || DEFAULT_LANDING_CONTENT.faq!.title,
+      subtitle: base.faq?.subtitle || DEFAULT_LANDING_CONTENT.faq!.subtitle,
+      items: (base.faq?.items && base.faq.items.length > 0)
+        ? base.faq.items
         : DEFAULT_LANDING_CONTENT.faq!.items
     }
-  }))
+  })
+  const [cmsData, setCmsData] = useState<LandingPageContent>(() => mergeFaq(landingContent))
   const [uploading, setUploading] = useState<'logo' | 'favicon' | 'hero' | null>(null)
   
   // Create refs outside of array
@@ -27,17 +28,7 @@ export default function AdminLandingCMS() {
   const heroRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setCmsData({
-      ...DEFAULT_LANDING_CONTENT,
-      ...landingContent,
-      faq: {
-        ...DEFAULT_LANDING_CONTENT.faq!,
-        ...(landingContent.faq || {}),
-        items: (landingContent.faq?.items && landingContent.faq.items.length > 0)
-          ? landingContent.faq.items
-          : DEFAULT_LANDING_CONTENT.faq!.items
-      }
-    })
+    setCmsData(mergeFaq(landingContent))
   }, [landingContent])
 
   async function handleSave() {
