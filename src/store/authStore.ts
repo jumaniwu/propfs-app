@@ -482,6 +482,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
               auxiliaryProducts: Array.isArray(v.auxiliaryProducts) && v.auxiliaryProducts.length > 0 ? v.auxiliaryProducts : content.auxiliaryProducts,
               marketingHighlight: { ...content.marketingHighlight, ...(v.marketingHighlight || {}) },
               footer: { ...content.footer, ...(v.footer || {}) },
+              faq: {
+                ...content.faq,
+                ...(v.faq || {}),
+                items: Array.isArray(v.faqItems) ? v.faqItems : (v.faq?.items || content.faq.items)
+              }
             }
           };
         })
