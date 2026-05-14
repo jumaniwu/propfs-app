@@ -11,10 +11,11 @@ export function useSubscription() {
     profile,
     getCurrentPlan,
     canCreateProject,
+    getPlanLimits
   } = useAuthStore()
 
   const plan   = getCurrentPlan()
-  const limits = PLAN_LIMITS[plan]
+  const limits = getPlanLimits(plan)
 
   return {
     // Current state
@@ -34,7 +35,7 @@ export function useSubscription() {
 
     // For free plan: show how many slots remain
     freeProjectsUsed:       profile?.total_projects_created ?? 0,
-    freeProjectsRemaining:  Math.max(0, 2 - (profile?.total_projects_created ?? 0)),
+    freeProjectsRemaining:  Math.max(0, limits.maxProjects - (profile?.total_projects_created ?? 0)),
 
     // Upgrade needed checks
     needsUpgradeForCashflow: isSubscriptionEnabled && !limits.canAccessCashflow,

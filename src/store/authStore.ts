@@ -588,9 +588,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return true
     }
 
-    // Lock cost_control for free tier
-    if (feature === 'cost_control' && get().getCurrentPlan() === 'free') {
-      return false
+    // Lock cost_control dynamically based on plan limits (synced from DB)
+    if ((feature === 'cost_control' || feature === 'cost_rab' || feature === 'cost_realisasi') && get().isSubscriptionEnabled) {
+      const limits = get().getPlanLimits(get().getCurrentPlan())
+      if (!limits.canAccessCashflow) return false
     }
 
     // 3. Fallback to global system-wide setting

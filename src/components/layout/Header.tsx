@@ -101,9 +101,9 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
         <div className="flex items-center gap-2">
           {actions}
           {!isPortalHome && (
-            <Button variant="ghost" size="sm" onClick={() => navigate('/home')} className="hidden sm:flex gap-1.5">
-              <Home className="h-4 w-4" />
-              <span>Portal</span>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/home')} className="flex gap-1.5 px-2 sm:px-3">
+              <Home className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">Portal</span>
             </Button>
           )}
           <Button variant="ghost" size="icon" onClick={toggleDark} aria-label="Toggle dark mode">
