@@ -184,7 +184,7 @@ export default function PricingPage() {
             Pilih Paket PropFS
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Mulai gratis, upgrade kapan saja. Semua harga <strong>belum termasuk PPN{ppnLoading ? '' : ` ${ppnPct}%`}</strong>.
+            Mulai gratis, upgrade kapan saja.{!ppnLoading && ppnPct > 0 && <> Semua harga <strong>belum termasuk PPN {ppnPct}%</strong>.</>}
           </p>
         </div>
 
@@ -303,18 +303,27 @@ export default function PricingPage() {
                         untuk {dur.months} bulan{dur.discount > 0 ? ` (hemat ${dur.discount}%)` : ''}{hasPromo ? ' + promo' : ''}
                       </p>
                       <div className={`text-xs mt-2 pt-2 border-t ${plan.highlight ? 'border-white/10 text-white/50' : 'border-border text-muted-foreground'}`}>
-                        <div className="flex justify-between">
-                          <span>Subtotal</span>
-                          <span>{rp(totalPrice)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>PPN {ppnLoading ? '...' : `${ppnPct}%`}</span>
-                          <span>+ {rp(ppnAmount)}</span>
-                        </div>
-                        <div className={`flex justify-between font-bold pt-1 ${plan.highlight ? 'text-gold' : 'text-foreground'}`}>
-                          <span>Total Bayar</span>
-                          <span>{rp(grandTotal)}</span>
-                        </div>
+                        {ppnPct > 0 ? (
+                          <>
+                            <div className="flex justify-between">
+                              <span>Subtotal</span>
+                              <span>{rp(totalPrice)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>PPN {ppnLoading ? '...' : `${ppnPct}%`}</span>
+                              <span>+ {rp(ppnAmount)}</span>
+                            </div>
+                            <div className={`flex justify-between font-bold pt-1 ${plan.highlight ? 'text-gold' : 'text-foreground'}`}>
+                              <span>Total Bayar</span>
+                              <span>{rp(grandTotal)}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className={`flex justify-between font-bold ${plan.highlight ? 'text-gold' : 'text-foreground'}`}>
+                            <span>Total Bayar</span>
+                            <span>{rp(grandTotal)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -445,11 +454,11 @@ export default function PricingPage() {
 
         {/* PPN Note */}
         <div className="text-center text-sm text-muted-foreground space-y-1">
+          {!ppnLoading && ppnPct > 0 && (
+            <p>* Harga belum termasuk PPN {ppnPct}% sesuai peraturan perpajakan yang berlaku.</p>
+          )}
           <p>
-            * Harga belum termasuk PPN {ppnLoading ? '...' : `${ppnPct}%`} sesuai peraturan perpajakan yang berlaku.
-          </p>
-          <p>
-            Pembayaran via QRIS, Transfer Bank, GoPay, OVO, & Kartu Kredit.{' '}
+            Pembayaran via QRIS, Transfer Bank, GoPay, OVO, &amp; Kartu Kredit.{' '}
             Hubungi <span className="text-gold font-medium">hello@propfs.id</span> untuk langganan Enterprise.
           </p>
           <p className="text-xs">
