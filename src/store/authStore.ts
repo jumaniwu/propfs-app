@@ -345,10 +345,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   // ── signOut ───────────────────────────────────────────────
   signOut: async () => {
     try {
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
     } catch (e) {
       console.error("SignOut error:", e)
     } finally {
+      // Force clear any leftover supabase localStorage keys just in case
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') && key.endsWith('-auth-token')) {
+          localStorage.removeItem(key)
+        }
+      })
       set({ user: null, session: null, profile: null, subscription: null })
     }
   },

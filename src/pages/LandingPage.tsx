@@ -169,8 +169,9 @@ export default function LandingPage() {
                 <Button variant="ghost" onClick={() => navigate('/auth')} className="hidden sm:flex text-white hover:bg-white/10">
                   Masuk
                 </Button>
-                <Button variant="gold" onClick={() => navigate('/auth')} className="shadow-xl shadow-gold/20 font-bold px-8">
-                  Coba Gratis
+                <Button variant="gold" onClick={() => navigate('/auth')} className="shadow-xl shadow-gold/20 font-bold px-5 sm:px-8">
+                  <span className="sm:hidden">Masuk / Daftar</span>
+                  <span className="hidden sm:inline">Coba Gratis</span>
                 </Button>
               </>
             )}
