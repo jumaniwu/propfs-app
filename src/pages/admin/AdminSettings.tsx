@@ -400,49 +400,18 @@ export default function AdminSettings() {
             </div>
           </div>
 
-          {/* Fitur yang Aktif Selama Trial */}
-          <div className="space-y-3 p-6 bg-slate-50 rounded-2xl">
+          {/* Fitur yang Aktif Selama Trial (Dipindahkan ke Katalog & Harga) */}
+          <div className="space-y-3 p-6 bg-slate-50 rounded-2xl flex flex-col justify-center">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Fitur Aktif Selama Trial
+              Konfigurasi Fitur & Limit
             </label>
-            <div className="space-y-3">
-              {[
-                { key: 'can_export_pdf',      label: 'Ekspor PDF' },
-                { key: 'can_access_cashflow', label: 'Cashflow & Sensitivitas' },
-                { key: 'can_use_ai_parser',   label: 'AI RAB Parser' },
-                { key: 'can_export_excel',    label: 'Ekspor Excel' },
-              ].map(f => (
-                <label key={f.key} className="flex items-center justify-between cursor-pointer">
-                  <span className="text-sm font-bold text-navy">{f.label}</span>
-                  <div
-                    onClick={() => setTrialFeatures(prev => ({
-                      ...prev,
-                      [f.key]: !(prev as any)[f.key]
-                    }))}
-                    className={`w-11 h-6 rounded-full transition-colors cursor-pointer ${(trialFeatures as any)[f.key] ? 'bg-navy' : 'bg-slate-300'}`}
-                  >
-                    <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${(trialFeatures as any)[f.key] ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'}`} />
-                  </div>
-                </label>
-              ))}
-
-              {/* Limit proyek */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                <span className="text-sm font-bold text-navy">
-                  Max Proyek Trial
-                </span>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={trialFeatures.max_projects}
-                  onChange={e => setTrialFeatures(prev => ({
-                    ...prev, 
-                    max_projects: Number(e.target.value)
-                  }))}
-                  className="w-16 h-9 text-center font-black text-navy bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-gold/20"
-                />
-              </div>
+            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+              <p className="text-sm text-blue-800 font-medium leading-relaxed">
+                <Info className="h-4 w-4 inline-block mr-1.5 -mt-0.5" />
+                Pengaturan fitur aktif (seperti Cost Control, PDF, AI Parser) dan Maksimal Proyek untuk paket Free Trial kini dikelola secara terpusat.
+                <br /><br />
+                Silakan buka menu <strong>Katalog & Harga</strong> lalu edit spesifikasi pada paket <strong>Free Trial</strong>.
+              </p>
             </div>
           </div>
         </div>
