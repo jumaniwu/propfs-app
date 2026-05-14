@@ -642,7 +642,6 @@ export default function CostDashboard() {
                       </p>
                       <div className="grid grid-cols-2 gap-3">
                         {[
-                        {[
                           { label: 'Schedule Performance Index (SPI)', val: evmMetrics.SPI !== null ? evmMetrics.SPI.toFixed(2) : '—', sub: evmMetrics.spiStatus === 'ahead' ? '✅ Lebih Cepat' : evmMetrics.spiStatus === 'on_track' ? '🟡 Sesuai Jadwal' : evmMetrics.spiStatus === 'behind' ? '🔴 Terlambat' : 'Input progress dulu', good: evmMetrics.SPI === null ? null : evmMetrics.SPI >= 1 },
                           { label: 'Cost Performance Index (CPI)', val: evmMetrics.CPI !== null ? evmMetrics.CPI.toFixed(2) : '—', sub: evmMetrics.cpiStatus === 'under' ? '✅ Hemat Anggaran' : evmMetrics.cpiStatus === 'on_track' ? '🟡 Sesuai Anggaran' : evmMetrics.cpiStatus === 'over' ? '🔴 Over Budget' : 'Input realisasi dulu', good: evmMetrics.CPI === null ? null : evmMetrics.CPI >= 1 },
                           { label: 'Estimasi Biaya Akhir (EAC)', val: evmMetrics.EAC ? `Rp ${evmMetrics.EAC.toLocaleString('id-ID')}` : '—', sub: 'Estimasi total biaya akhir', good: evmMetrics.EAC !== null ? evmMetrics.EAC <= totalRAB : null },
