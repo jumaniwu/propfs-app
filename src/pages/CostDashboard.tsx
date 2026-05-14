@@ -494,8 +494,8 @@ export default function CostDashboard() {
                 {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
               </p>
             </div>
-            <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-6 w-full sm:w-auto">
-              Simpan & Kembali
+            <Button onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })} className="bg-navy text-white hover:bg-navy/90 font-bold px-6 w-full sm:w-auto">
+              Simpan Data
             </Button>
           </div>
           {/* KPI bar */}
@@ -531,8 +531,8 @@ export default function CostDashboard() {
                   {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
                 </p>
               </div>
-              <Button onClick={() => clearProject()} className="bg-navy text-white hover:bg-navy/90 font-bold px-5 shadow-md w-full sm:w-auto">
-                Simpan & Kembali
+              <Button onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })} className="bg-navy text-white hover:bg-navy/90 font-bold px-5 shadow-md w-full sm:w-auto">
+                Simpan Data
               </Button>
             </div>
 
@@ -642,10 +642,11 @@ export default function CostDashboard() {
                       </p>
                       <div className="grid grid-cols-2 gap-3">
                         {[
-                          { label: 'SPI', val: evmMetrics.SPI !== null ? evmMetrics.SPI.toFixed(2) : '—', sub: evmMetrics.spiStatus === 'ahead' ? '✅ Ahead' : evmMetrics.spiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.spiStatus === 'behind' ? '🔴 Behind' : 'Input progress dulu', good: evmMetrics.SPI === null ? null : evmMetrics.SPI >= 1 },
-                          { label: 'CPI', val: evmMetrics.CPI !== null ? evmMetrics.CPI.toFixed(2) : '—', sub: evmMetrics.cpiStatus === 'under' ? '✅ Under Budget' : evmMetrics.cpiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.cpiStatus === 'over' ? '🔴 Over Budget' : 'Input realisasi dulu', good: evmMetrics.CPI === null ? null : evmMetrics.CPI >= 1 },
-                          { label: 'EAC (Forecast)', val: evmMetrics.EAC ? `Rp ${(evmMetrics.EAC/1_000_000_000).toFixed(2)}M` : '—', sub: 'Estimasi total biaya akhir', good: evmMetrics.EAC !== null ? evmMetrics.EAC <= totalRAB : null },
-                          { label: 'Sisa Anggaran', val: `Rp ${(evmMetrics.sisaAnggaran/1_000_000_000).toFixed(2)}M`, sub: 'RAB − Realisasi', good: evmMetrics.sisaAnggaran >= 0 },
+                        {[
+                          { label: 'Schedule Performance Index (SPI)', val: evmMetrics.SPI !== null ? evmMetrics.SPI.toFixed(2) : '—', sub: evmMetrics.spiStatus === 'ahead' ? '✅ Lebih Cepat' : evmMetrics.spiStatus === 'on_track' ? '🟡 Sesuai Jadwal' : evmMetrics.spiStatus === 'behind' ? '🔴 Terlambat' : 'Input progress dulu', good: evmMetrics.SPI === null ? null : evmMetrics.SPI >= 1 },
+                          { label: 'Cost Performance Index (CPI)', val: evmMetrics.CPI !== null ? evmMetrics.CPI.toFixed(2) : '—', sub: evmMetrics.cpiStatus === 'under' ? '✅ Hemat Anggaran' : evmMetrics.cpiStatus === 'on_track' ? '🟡 Sesuai Anggaran' : evmMetrics.cpiStatus === 'over' ? '🔴 Over Budget' : 'Input realisasi dulu', good: evmMetrics.CPI === null ? null : evmMetrics.CPI >= 1 },
+                          { label: 'Estimasi Biaya Akhir (EAC)', val: evmMetrics.EAC ? `Rp ${evmMetrics.EAC.toLocaleString('id-ID')}` : '—', sub: 'Estimasi total biaya akhir', good: evmMetrics.EAC !== null ? evmMetrics.EAC <= totalRAB : null },
+                          { label: 'Sisa Anggaran', val: `Rp ${evmMetrics.sisaAnggaran.toLocaleString('id-ID')}`, sub: 'RAB − Realisasi', good: evmMetrics.sisaAnggaran >= 0 },
                         ].map(m => (
                           <div key={m.label} className={`rounded-xl p-3 border ${
                             m.good === null ? 'bg-muted/30 border-border' :
@@ -720,34 +721,34 @@ export default function CostDashboard() {
                       <h3 className="font-bold text-navy mb-4 flex items-center gap-2"><Target className="w-4 h-4" /> Key Performance Indicators (EVM)</h3>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-muted/30 rounded-xl p-4">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">SPI</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Schedule Performance Index (SPI)</p>
                           <p className={`text-xl font-bold ${evmMetrics.SPI === null ? 'text-muted-foreground' : evmMetrics.SPI >= 1 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {evmMetrics.SPI !== null ? evmMetrics.SPI.toFixed(2) : '—'}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-1">
-                            {evmMetrics.spiStatus === 'ahead' ? '✅ Ahead of Schedule' : evmMetrics.spiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.spiStatus === 'behind' ? '🔴 Behind Schedule' : 'Input progress dulu'}
+                            {evmMetrics.spiStatus === 'ahead' ? '✅ Lebih Cepat dari Jadwal' : evmMetrics.spiStatus === 'on_track' ? '🟡 Sesuai Jadwal' : evmMetrics.spiStatus === 'behind' ? '🔴 Terlambat dari Jadwal' : 'Input progress dulu'}
                           </p>
                         </div>
                         <div className="bg-muted/30 rounded-xl p-4">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">CPI</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Cost Performance Index (CPI)</p>
                           <p className={`text-xl font-bold ${evmMetrics.CPI === null ? 'text-muted-foreground' : evmMetrics.CPI >= 1 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {evmMetrics.CPI !== null ? evmMetrics.CPI.toFixed(2) : '—'}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-1">
-                            {evmMetrics.cpiStatus === 'under' ? '✅ Under Budget' : evmMetrics.cpiStatus === 'on_track' ? '🟡 On Track' : evmMetrics.cpiStatus === 'over' ? '🔴 Over Budget' : 'Input realisasi dulu'}
+                            {evmMetrics.cpiStatus === 'under' ? '✅ Hemat Anggaran' : evmMetrics.cpiStatus === 'on_track' ? '🟡 Sesuai Anggaran' : evmMetrics.cpiStatus === 'over' ? '🔴 Melebihi Anggaran' : 'Input realisasi dulu'}
                           </p>
                         </div>
                         <div className="bg-muted/30 rounded-xl p-4">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">EAC (Forecast)</p>
+                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Estimasi Biaya Akhir (EAC)</p>
                           <p className="text-xl font-bold text-navy">
-                            {evmMetrics.EAC ? `Rp ${(evmMetrics.EAC/1_000_000_000).toFixed(2)}M` : '—'}
+                            {evmMetrics.EAC ? `Rp ${evmMetrics.EAC.toLocaleString('id-ID')}` : '—'}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-1">Estimasi total biaya akhir</p>
                         </div>
                         <div className="bg-muted/30 rounded-xl p-4">
                           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Sisa Anggaran</p>
                           <p className={`text-xl font-bold ${evmMetrics.sisaAnggaran >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            Rp {(evmMetrics.sisaAnggaran/1_000_000_000).toFixed(2)}M
+                            Rp {evmMetrics.sisaAnggaran.toLocaleString('id-ID')}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-1">RAB − Realisasi</p>
                         </div>
