@@ -172,7 +172,10 @@ export default function AuthPage() {
       const result = await signUp(regEmail, regPass, regName, regCompany, regPhone)
       
       if (result.needsConfirmation) {
-        // Email confirmation required — show success screen
+        // Email confirmation required — store plan so it persists after login
+        if (selectedPlan && selectedPlan !== 'free') {
+          localStorage.setItem('propfs_pending_plan', JSON.stringify({ plan: selectedPlan, months: selectedMonths }))
+        }
         setRegSuccess(true)
         setRegError('')
       } else {
@@ -326,19 +329,28 @@ export default function AuthPage() {
               </div>
 
               {regSuccess && (
-                <div className="p-5 bg-emerald-50 border-2 border-emerald-200 rounded-[24px] space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="p-5 bg-emerald-50 border-2 border-emerald-200 rounded-[24px] space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="flex gap-3 items-start">
-                    <CheckCircle2 className="w-6 h-6 shrink-0 text-emerald-600 mt-0.5" />
+                    <CheckCircle2 className="w-7 h-7 shrink-0 text-emerald-600 mt-0.5" />
                     <div>
-                      <p className="font-black text-emerald-800 text-sm mb-1">Registrasi Sukses!</p>
-                      <p className="text-xs text-emerald-700 leading-relaxed">
-                        Kami telah mengirim email konfirmasi ke <strong>{regEmail}</strong>.<br/><br/>
-                        Silakan login dengan email terdaftar setelah melakukan konfirmasi.
-                      </p>
+                      <p className="font-black text-emerald-800 text-base mb-2">🎉 Registrasi Sukses!</p>
+                      {selectedPlan && selectedPlan !== 'free' ? (
+                        <p className="text-xs text-emerald-700 leading-relaxed">
+                          Akun Anda berhasil dibuat untuk paket <strong className="text-emerald-800">{displayedPlan}</strong>.<br/><br/>
+                          Kami mengirim email konfirmasi ke <strong>{regEmail}</strong>.<br/>
+                          Klik link konfirmasi, lalu login — Anda akan langsung diarahkan ke halaman <strong>pembayaran</strong>.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-emerald-700 leading-relaxed">
+                          Akun Anda berhasil dibuat.<br/><br/>
+                          Kami mengirim email konfirmasi ke <strong>{regEmail}</strong>.<br/>
+                          Silakan klik link konfirmasi lalu login untuk masuk ke dashboard.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <Button variant="outline" className="w-full h-12 rounded-xl border-emerald-300 font-bold text-emerald-700 hover:bg-emerald-100" onClick={() => { setRegSuccess(false); setTab('login') }}>
-                    Ke Menu Login Sekarang →
+                    Ke Menu Login →
                   </Button>
                 </div>
               )}

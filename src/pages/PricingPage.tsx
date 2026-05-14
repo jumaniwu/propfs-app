@@ -117,10 +117,12 @@ export default function PricingPage() {
 
   const [selectedMonths, setSelectedMonths] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [promoPrices, setPromoPrices] = useState<Record<string, number | null>>({})
+  const [catalogPrices, setCatalogPrices] = useState<Record<string, { price: number; promoPrice: number | null }>>({}
+  )
+  const [catalogLoading, setCatalogLoading] = useState(true)
   const dur = DURATIONS.find(d => d.months === selectedMonths)!
 
-  // Load promo prices from DB
+  // Load prices from DB (plan_catalog in app_settings)
   useEffect(() => {
     async function loadCatalog() {
       try {
@@ -130,15 +132,18 @@ export default function PricingPage() {
           .eq('key', 'plan_catalog')
           .maybeSingle()
         if (data?.value && Array.isArray(data.value)) {
-          const promos: Record<string, number | null> = {}
+          const prices: Record<string, { price: number; promoPrice: number | null }> = {}
           for (const p of data.value) {
-            if (p.promoPriceIdr && p.promoPriceIdr > 0) {
-              promos[p.id] = p.promoPriceIdr
+            prices[p.id] = {
+              price: Number(p.priceIdr) || 0,
+              promoPrice: p.promoPriceIdr ? Number(p.promoPriceIdr) : null,
             }
           }
-          setPromoPrices(promos)
+          setCatalogPrices(prices)
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        setCatalogLoading(false)
+      }
     }
     loadCatalog()
   }, [])
@@ -206,14 +211,16 @@ export default function PricingPage() {
           {PLANS.map(plan => {
             const PIcon = plan.icon
             const isCurrentPlan = plan.id === currentPlan
-            const promoPrice = promoPrices[plan.id]
-            const effectivePrice = promoPrice && promoPrice < plan.pricePerMonth ? promoPrice : plan.pricePerMonth
-            const hasPromo = promoPrice !== undefined && promoPrice !== null && promoPrice < plan.pricePerMonth
+            const catalog = catalogPrices[plan.id]
+            // Use DB price if available, fallback to hardcoded
+            const dbPrice = catalog?.price ?? plan.pricePerMonth
+            const dbPromoPrice = catalog?.promoPrice ?? null
+            const effectivePrice = dbPromoPrice && dbPromoPrice < dbPrice ? dbPromoPrice : dbPrice
+            const hasPromo = dbPromoPrice !== null && dbPromoPrice < dbPrice
             const totalPrice = calcPrice(effectivePrice, selectedMonths, dur.discount)
-            const normalTotal = calcPrice(plan.pricePerMonth, selectedMonths, dur.discount)
             const ppnAmount  = Math.round(totalPrice * (ppnPct / 100))
             const grandTotal = totalPrice + ppnAmount
-            const isFree     = plan.pricePerMonth === 0
+            const isFree     = dbPrice === 0
 
             return (
               <div
@@ -263,13 +270,13 @@ export default function PricingPage() {
                       {/* Show promo badge */}
                       {hasPromo && (
                         <span className="inline-flex items-center gap-1 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full mb-2">
-                          🔥 PROMO HEMAT {Math.round((1 - effectivePrice / plan.pricePerMonth) * 100)}%
+                          🔥 PROMO HEMAT {Math.round((1 - effectivePrice / dbPrice) * 100)}%
                         </span>
                       )}
                       {/* Strikethrough: show original price when there's a promo OR duration discount */}
                       {(hasPromo || dur.discount > 0) && (
                         <p className={`text-sm line-through ${plan.highlight ? 'text-white/40' : 'text-muted-foreground/60'}`}>
-                          {rp(plan.pricePerMonth * selectedMonths)}
+                          {rp(dbPrice * selectedMonths)}
                         </p>
                       )}
                       <p className={`font-serif text-3xl font-black ${plan.highlight ? 'text-white' : 'text-foreground'}`}>

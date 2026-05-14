@@ -81,9 +81,24 @@ export default function HomePage() {
       if (!profile?.id) return
 
       const query = new URLSearchParams(location.search)
-      const createInvoicePlan = query.get('create_invoice')
-      const monthsParam = parseInt(query.get('months') || '1')
-      const months = isNaN(monthsParam) ? 1 : monthsParam
+      let createInvoicePlan = query.get('create_invoice')
+      let months = parseInt(query.get('months') || '1')
+      if (isNaN(months)) months = 1
+
+      // Check localStorage for pending plan from registration (after email confirmation)
+      if (!createInvoicePlan) {
+        const pendingRaw = localStorage.getItem('propfs_pending_plan')
+        if (pendingRaw) {
+          try {
+            const pending = JSON.parse(pendingRaw)
+            if (pending.plan && pending.plan !== 'free') {
+              createInvoicePlan = pending.plan
+              months = pending.months || 1
+              localStorage.removeItem('propfs_pending_plan') // consume it
+            }
+          } catch { /* ignore */ }
+        }
+      }
 
       if (createInvoicePlan) {
          // Fetch dynamic price from plan_catalog
