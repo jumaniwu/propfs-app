@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock, Info } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
