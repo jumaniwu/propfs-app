@@ -65,6 +65,7 @@ interface AuthStore {
   landingContent: LandingPageContent
   trialInfo: TrialInfo | null
   trialFeatures: TrialFeatures | null
+  planCatalog: any[]
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
@@ -78,6 +79,7 @@ interface AuthStore {
   updateLandingContent: (content: LandingPageContent) => Promise<void>
   clearError: () => void
   getCurrentPlan: () => PlanId
+  getPlanLimits: (plan: PlanId) => typeof PLAN_LIMITS[PlanId]
   canCreateProject: (activeProjectCount: number) => boolean
   isFeatureEnabled: (feature: AppFeature) => boolean
 
@@ -229,6 +231,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   landingContent: DEFAULT_LANDING_CONTENT,
   trialInfo: null,
   trialFeatures: null,
+  planCatalog: [],
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
     set({ isLoading: true })
@@ -419,19 +422,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
       const bankDetails = data?.find(i => i.key === 'bank_details')?.value
       const trialFeaturesData = data?.find(i => i.key === 'trial_features')?.value
       const paymentSettingsData = data?.find(i => i.key === 'payment_settings')?.value
+      const planCatalogData = data?.find(i => i.key === 'plan_catalog')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
         bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails,
-        paymentSettings: typeof paymentSettingsData === 'object' && paymentSettingsData !== null ? { ...get().paymentSettings, ...(paymentSettingsData as object) } : get().paymentSettings
+        paymentSettings: typeof paymentSettingsData === 'object' && paymentSettingsData !== null ? { ...get().paymentSettings, ...(paymentSettingsData as object) } : get().paymentSettings,
+        planCatalog: Array.isArray(planCatalogData) ? planCatalogData : []
       })
 
       if (trialFeaturesData && typeof trialFeaturesData === 'object') {
@@ -534,12 +539,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     return (subscription.plan_id as PlanId) || 'free'
   },
 
+  // ── getPlanLimits ─────────────────────────────────────────
+  getPlanLimits: (plan: PlanId) => {
+    const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['free']
+    const catalog = get().planCatalog
+    const dbPlan = catalog?.find((p: any) => p.id === plan)
+    
+    if (dbPlan) {
+      return {
+        ...limits,
+        maxProjects: dbPlan.maxProjects ?? limits.maxProjects,
+        canExportPDF: dbPlan.features?.export_pdf ?? limits.canExportPDF,
+        canAccessCashflow: dbPlan.features?.cost_control ?? limits.canAccessCashflow,
+        canAccessARAP: dbPlan.features?.cost_control ?? limits.canAccessARAP,
+      }
+    }
+    return limits
+  },
+
   // ── canCreateProject ──────────────────────────────────────
   canCreateProject: (activeProjectCount: number): boolean => {
     const { profile, isSubscriptionEnabled } = get()
     
     const plan = get().getCurrentPlan()
-    const limits = PLAN_LIMITS[plan]
+    const limits = get().getPlanLimits(plan)
 
     // ALWAYS enforce free plan permanent slot limit (total_projects_created)
     // regardless of whether the subscription system is enabled globally.

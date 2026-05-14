@@ -22,6 +22,23 @@ const DURATIONS = [
   { months: 12, label: '12 Bulan',  icon: CalendarDays, discount: 20,  badge: 'HEMAT 20%' },
 ]
 
+// ── Master Features Map (Synced from Admin backend) ──────────
+const MASTER_FEATURES = [
+  { key: 'fs_projects', label: 'Feasibility Study (Proyek)', inputType: 'number' as const, suffix: 'proyek' },
+  { key: 'cost_control', label: 'Cost Control & RAB', inputType: 'toggle' as const },
+  { key: 'upload_rab', label: 'Upload & Parsing RAB Excel (AI)', inputType: 'toggle' as const },
+  { key: 'material_schedule', label: 'Material Schedule Otomatis', inputType: 'toggle' as const },
+  { key: 'kurva_s', label: 'Kurva S Progres Proyek', inputType: 'toggle' as const },
+  { key: 'ai_chat', label: 'AI Chat Realisasi Biaya', inputType: 'toggle' as const },
+  { key: 'export_excel', label: 'Ekspor Laporan Excel', inputType: 'toggle' as const },
+  { key: 'export_pdf', label: 'Ekspor PDF Branded', inputType: 'toggle' as const },
+  { key: 'multi_user', label: 'Multi-user / Tim', inputType: 'number' as const, suffix: 'user' },
+  { key: 'api_access', label: 'Akses API (Integrasi ERP)', inputType: 'toggle' as const },
+  { key: 'whitelabel', label: 'White-label Reports', inputType: 'toggle' as const },
+  { key: 'priority_support', label: 'Prioritas Support (WA/24jam)', inputType: 'toggle' as const },
+  { key: 'onboarding', label: 'Onboarding & Training Tim', inputType: 'toggle' as const },
+]
+
 // ── Plan Definitions ─────────────────────────────────────────
 interface Plan {
   id: string
@@ -117,8 +134,7 @@ export default function PricingPage() {
 
   const [selectedMonths, setSelectedMonths] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [catalogPrices, setCatalogPrices] = useState<Record<string, { price: number; promoPrice: number | null }>>({}
-  )
+  const [catalogPrices, setCatalogPrices] = useState<Record<string, { price: number; promoPrice: number | null; features: any }>>({})
   const [catalogLoading, setCatalogLoading] = useState(true)
   const dur = DURATIONS.find(d => d.months === selectedMonths)!
 
@@ -132,11 +148,12 @@ export default function PricingPage() {
           .eq('key', 'plan_catalog')
           .maybeSingle()
         if (data?.value && Array.isArray(data.value)) {
-          const prices: Record<string, { price: number; promoPrice: number | null }> = {}
+          const prices: Record<string, { price: number; promoPrice: number | null; features: any }> = {}
           for (const p of data.value) {
             prices[p.id] = {
               price: Number(p.priceIdr) || 0,
               promoPrice: p.promoPriceIdr ? Number(p.promoPriceIdr) : null,
+              features: p.features || {},
             }
           }
           setCatalogPrices(prices)
@@ -305,21 +322,51 @@ export default function PricingPage() {
 
                 {/* Features */}
                 <ul className="space-y-2.5 flex-1 mb-6">
-                  {plan.features.map(f => (
-                    <li key={f.label} className="flex items-start gap-2.5 text-sm">
-                      {f.included
-                        ? <CheckCircle2 className={`h-4 w-4 shrink-0 mt-0.5 ${plan.highlight ? 'text-gold' : 'text-emerald-600'}`} />
-                        : <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground/30" />
+                  {catalog ? (
+                    MASTER_FEATURES.map(f => {
+                      const val = catalog.features[f.key]
+                      let text = f.label
+                      let included = false
+                      if (typeof val === 'boolean') {
+                        included = val
+                      } else if (typeof val === 'number') {
+                        included = val > 0
+                        text = `${val === 999 ? 'Tak terbatas' : val} ${f.label}`
                       }
-                      <span className={
-                        f.included
-                          ? (plan.highlight ? 'text-white' : 'text-foreground')
-                          : 'text-muted-foreground/40 line-through'
-                      }>
-                        {f.label}
-                      </span>
-                    </li>
-                  ))}
+
+                      return (
+                        <li key={f.key} className="flex items-start gap-2.5 text-sm">
+                          {included
+                            ? <CheckCircle2 className={`h-4 w-4 shrink-0 mt-0.5 ${plan.highlight ? 'text-gold' : 'text-emerald-600'}`} />
+                            : <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground/30" />
+                          }
+                          <span className={
+                            included
+                              ? (plan.highlight ? 'text-white' : 'text-foreground')
+                              : 'text-muted-foreground/40 line-through'
+                          }>
+                            {text}
+                          </span>
+                        </li>
+                      )
+                    })
+                  ) : (
+                    plan.features.map(f => (
+                      <li key={f.label} className="flex items-start gap-2.5 text-sm">
+                        {f.included
+                          ? <CheckCircle2 className={`h-4 w-4 shrink-0 mt-0.5 ${plan.highlight ? 'text-gold' : 'text-emerald-600'}`} />
+                          : <XCircle className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground/30" />
+                        }
+                        <span className={
+                          f.included
+                            ? (plan.highlight ? 'text-white' : 'text-foreground')
+                            : 'text-muted-foreground/40 line-through'
+                        }>
+                          {f.label}
+                        </span>
+                      </li>
+                    ))
+                  )}
                 </ul>
 
                 {/* CTA */}
