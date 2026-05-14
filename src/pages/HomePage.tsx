@@ -54,9 +54,7 @@ export default function HomePage() {
     setShowWelcome(false)
   }
 
-  const totalRAB = costProjects.reduce((acc, p) => acc + (p?.plan?.totalBaselineBudget || 0), 0)
   const sangatLayakCount = projects.filter(p => p?.results?.statusKelayakan === 'sangat_layak').length
-  const totalRABFormatted = (projects.length > 0 && totalRAB > 0) ? `Rp ${(totalRAB / 1000000000).toFixed(1)}M` : '—'
 
   // Fetch projects on mount to ensure real-time data on dashboard
   useEffect(() => {
@@ -277,11 +275,6 @@ export default function HomePage() {
               <div className="flex flex-col">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sangat Layak</span>
                 <span className="text-base font-bold text-emerald-600">{sangatLayakCount} proyek</span>
-              </div>
-              <div className="w-px h-8 bg-border/60 mx-2" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Nilai RAB</span>
-                <span className="text-base font-bold text-navy">{totalRABFormatted}</span>
               </div>
               <div className="w-px h-8 bg-border/60 mx-2" />
               <div className="flex flex-col">

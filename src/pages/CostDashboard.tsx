@@ -21,6 +21,8 @@ import CostProjectCard from '@/components/cost/CostProjectCard'
 import WorkspaceSidebar, { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
+import { useSubscription } from '@/hooks/useSubscription'
+import { toast } from '@/hooks/use-toast'
 
 export default function CostDashboard() {
   const navigate = useNavigate()
@@ -33,6 +35,30 @@ export default function CostDashboard() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [search, setSearch] = useState('')
+
+  const { canCreateProject, isSubscriptionEnabled } = useSubscription()
+  const canAdd = canCreateProject(savedProjects.length)
+
+  const handleCreateNew = () => {
+    if (!canAdd) {
+      if (isSubscriptionEnabled) {
+        toast({
+          title: 'Batas proyek tercapai',
+          description: 'Anda sudah mencapai batas maksimal proyek untuk paket ini. Silakan upgrade paket Anda.',
+          variant: 'destructive',
+        })
+        navigate('/pricing')
+      } else {
+        toast({
+          title: 'Batas proyek tercapai',
+          description: 'Anda sudah mencapai batas proyek.',
+          variant: 'destructive',
+        })
+      }
+    } else {
+      setShowCreateModal(true)
+    }
+  }
 
   const filteredProjects = savedProjects.filter(p =>
     p.info.projectName.toLowerCase().includes(search.toLowerCase()) ||
@@ -420,7 +446,7 @@ export default function CostDashboard() {
               <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Cost Control</h1>
               <p className="text-muted-foreground mt-1 text-sm">{savedProjects.length} proyek tersimpan</p>
             </div>
-            <Button className="bg-navy text-white hover:bg-navy/90 font-bold gap-2 w-full sm:w-auto" onClick={() => setShowCreateModal(true)}>
+            <Button className="bg-navy text-white hover:bg-navy/90 font-bold gap-2 w-full sm:w-auto" onClick={handleCreateNew}>
               <FolderPlus className="h-4 w-4" /> Buat Proyek Baru
             </Button>
           </div>
@@ -435,7 +461,7 @@ export default function CostDashboard() {
                 Buat proyek konstruksi terlebih dahulu untuk mulai mengelola RAB, Material Schedule, Realisasi Biaya, dan Kurva S.
               </p>
               <Button className="bg-navy hover:bg-navy/90 text-white font-bold gap-2 px-8 py-6 text-base shadow-xl shadow-navy/20"
-                onClick={() => setShowCreateModal(true)}>
+                onClick={handleCreateNew}>
                 <FolderPlus className="h-5 w-5" /> Buat Proyek Baru
               </Button>
             </div>
