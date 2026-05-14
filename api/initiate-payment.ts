@@ -1,10 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createClient } from '@supabase/supabase-js';
 
 const PLAN_PRICES: Record<string, number> = {
   starter: 149000,
   pro: 399000,
   enterprise: 999000,
+  // Add-on prices fallback (will be overridden by DB value if available)
+  addon_fs: 75000,
+  addon_cost: 50000,
 };
+
+const ADDON_TYPES = ['addon_fs', 'addon_cost'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers for React frontend
@@ -38,13 +44,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // orderId must be <= 50 chars for Midtrans. UUID(36) + '_' + timestamp(13) = 50 chars exactly.
   const orderId = invoice_id ? `${invoice_id}_${Date.now()}` : `MANUAL_${Date.now()}`;
 
-  // Calculate price: from request body if available, otherwise compute
+  // For add-on types, read price from DB if available
   let basePrice = PLAN_PRICES[plan_id] ?? 149000;
-  let subtotal = basePrice * Number(months);
-  if (Number(months) === 3) subtotal = Math.round(subtotal * 0.90);
-  if (Number(months) === 12) subtotal = Math.round(subtotal * 0.80);
-  const ppn = Math.round(subtotal * 0.11);
-  const grossAmount = total_idr || gross_amount || (subtotal + ppn);
+
+  if (ADDON_TYPES.includes(plan_id) && process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+      const settingKey = plan_id === 'addon_fs' ? 'addon_fs_price' : 'addon_cost_price';
+      const { data } = await supabase.from('app_settings').select('value').eq('key', settingKey).maybeSingle();
+      if (data?.value && typeof data.value === 'number') basePrice = data.value;
+    } catch { /* use fallback */ }
+  }
+
+  // Add-on purchases are one-time (no months multiplier, no discount, no PPN)
+  let grossAmount: number;
+  if (ADDON_TYPES.includes(plan_id)) {
+    grossAmount = total_idr || gross_amount || basePrice;
+  } else {
+    let subtotal = basePrice * Number(months);
+    if (Number(months) === 3) subtotal = Math.round(subtotal * 0.90);
+    if (Number(months) === 12) subtotal = Math.round(subtotal * 0.80);
+    const ppn = Math.round(subtotal * 0.11);
+    grossAmount = total_idr || gross_amount || (subtotal + ppn);
+  }
 
   const payload = {
     transaction_details: {
@@ -56,7 +78,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: plan_id,
         price: grossAmount,
         quantity: 1,
-        name: `PropFS - Paket ${plan_id.charAt(0).toUpperCase() + plan_id.slice(1)} (${months} Bulan)`,
+        name: plan_id === 'addon_fs'
+          ? 'PropFS - Tambah 1 Slot Proyek Feasibility Study'
+          : plan_id === 'addon_cost'
+          ? 'PropFS - Tambah 1 Slot Proyek Cost Control'
+          : `PropFS - Paket ${plan_id.charAt(0).toUpperCase() + plan_id.slice(1)} (${months} Bulan)`,
       },
     ],
     usage_limit: 1,

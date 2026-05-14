@@ -36,6 +36,7 @@ export default function Dashboard() {
   const duplicateProject = useFSStore(s => s.duplicateProject)
 
   const { canCreateProject, isSubscriptionEnabled, currentPlan, maxProjects, freeProjectsUsed, projectSlotPermanent } = useSubscription()
+  const { addonFeaturesEnabled, addonFsPrice } = useAuthStore()
 
   const [search, setSearch]             = useState('')
   const [sortKey, setSortKey]           = useState<SortKey>('date')
@@ -342,7 +343,7 @@ export default function Dashboard() {
 
         {/* Subscription limit notice */}
         {isSubscriptionEnabled && !canAdd && (
-          <div className="rounded-2xl border-2 border-gold/30 bg-gold/5 p-5 flex items-center justify-between gap-4">
+          <div className="rounded-2xl border-2 border-gold/30 bg-gold/5 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <p className="font-semibold text-sm text-foreground">
                 {currentPlan === 'free' ? '🔒 Batas Free Plan Tercapai' : '🔒 Batas Proyek Tercapai'}
@@ -353,9 +354,21 @@ export default function Dashboard() {
                   : `Anda sudah mencapai batas ${maxProjects} proyek. Hapus proyek atau upgrade plan.`}
               </p>
             </div>
-            <Button variant="gold" size="sm" onClick={() => navigate('/pricing')} className="shrink-0">
-              Upgrade Plan
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              {addonFeaturesEnabled && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-navy text-navy hover:bg-navy hover:text-white shrink-0 gap-1.5"
+                  onClick={() => navigate(`/payment?plan_id=addon_fs&amount=${addonFsPrice}`)}
+                >
+                  ➕ Beli +1 Slot FS — Rp {addonFsPrice.toLocaleString('id-ID')}
+                </Button>
+              )}
+              <Button variant="gold" size="sm" onClick={() => navigate('/pricing')} className="shrink-0">
+                Upgrade Plan
+              </Button>
+            </div>
           </div>
         )}
       </main>

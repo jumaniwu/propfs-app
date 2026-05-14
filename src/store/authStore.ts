@@ -66,6 +66,10 @@ interface AuthStore {
   trialInfo: TrialInfo | null
   trialFeatures: TrialFeatures | null
   planCatalog: any[]
+  // Add-on feature flags
+  addonFeaturesEnabled: boolean
+  addonFsPrice: number
+  addonCostPrice: number
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
@@ -80,7 +84,7 @@ interface AuthStore {
   clearError: () => void
   getCurrentPlan: () => PlanId
   getPlanLimits: (plan: PlanId) => typeof PLAN_LIMITS[PlanId]
-  canCreateProject: (activeProjectCount: number) => boolean
+  canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost') => boolean
   isFeatureEnabled: (feature: AppFeature) => boolean
 
   getTrialInfo: () => TrialInfo
@@ -232,6 +236,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   trialInfo: null,
   trialFeatures: null,
   planCatalog: [],
+  addonFeaturesEnabled: false,
+  addonFsPrice: 75000,
+  addonCostPrice: 50000,
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
     set({ isLoading: true })
@@ -428,7 +435,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
@@ -436,13 +443,19 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const trialFeaturesData = data?.find(i => i.key === 'trial_features')?.value
       const paymentSettingsData = data?.find(i => i.key === 'payment_settings')?.value
       const planCatalogData = data?.find(i => i.key === 'plan_catalog')?.value
+      const addonEnabled = data?.find(i => i.key === 'addon_features_enabled')?.value
+      const addonFsPriceRaw = data?.find(i => i.key === 'addon_fs_price')?.value
+      const addonCostPriceRaw = data?.find(i => i.key === 'addon_cost_price')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
         bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails,
         paymentSettings: typeof paymentSettingsData === 'object' && paymentSettingsData !== null ? { ...get().paymentSettings, ...(paymentSettingsData as object) } : get().paymentSettings,
-        planCatalog: Array.isArray(planCatalogData) ? planCatalogData : []
+        planCatalog: Array.isArray(planCatalogData) ? planCatalogData : [],
+        addonFeaturesEnabled: addonEnabled === true || addonEnabled === 'true',
+        addonFsPrice: addonFsPriceRaw ? Number(addonFsPriceRaw) : 75000,
+        addonCostPrice: addonCostPriceRaw ? Number(addonCostPriceRaw) : 50000,
       })
 
       if (trialFeaturesData && typeof trialFeaturesData === 'object') {
@@ -564,22 +577,26 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   // ── canCreateProject ──────────────────────────────────────
-  canCreateProject: (activeProjectCount: number): boolean => {
+  canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost'): boolean => {
     const { profile, isSubscriptionEnabled } = get()
     
     const plan = get().getCurrentPlan()
     const limits = get().getPlanLimits(plan)
 
+    // Bonus slots from add-on purchases
+    const addonFsSlots = (profile as any)?.addon_fs_slots ?? 0
+    const addonCostSlots = (profile as any)?.addon_cost_slots ?? 0
+    const bonusSlots = addonType === 'fs' ? addonFsSlots : addonType === 'cost' ? addonCostSlots : Math.max(addonFsSlots, addonCostSlots)
+    const effectiveMax = limits.maxProjects + bonusSlots
+
     // ALWAYS enforce free plan permanent slot limit (total_projects_created)
-    // regardless of whether the subscription system is enabled globally.
-    // This prevents free users from creating unlimited projects.
     if (limits.projectSlotPermanent) {
-      return (profile?.total_projects_created ?? 0) < limits.maxProjects
+      return (profile?.total_projects_created ?? 0) < effectiveMax
     }
 
     // For paid plans: only enforce active project count limit when subscription is enabled
     if (!isSubscriptionEnabled) return true
-    return activeProjectCount < limits.maxProjects
+    return activeProjectCount < effectiveMax
   },
 
   // ── isFeatureEnabled ──────────────────────────────────────

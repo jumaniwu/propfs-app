@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Shield, Star, Crown, Layout, Info, Tag, CheckCircle2, Circle, RefreshCw, Sparkles } from 'lucide-react'
+import { Save, Shield, Star, Crown, Layout, Info, Tag, CheckCircle2, Circle, RefreshCw, Sparkles, PlusCircle, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
@@ -58,18 +58,37 @@ export default function AdminPlans() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // Add-on settings state
+  const [addonEnabled, setAddonEnabled] = useState(false)
+  const [addonFsPrice, setAddonFsPrice] = useState(75000)
+  const [addonCostPrice, setAddonCostPrice] = useState(50000)
+  const [savingAddon, setSavingAddon] = useState(false)
+
   // Load saved plan catalog from DB on mount
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const { data } = await supabase
+        const { data: catalogData } = await supabase
           .from('app_settings')
           .select('value')
           .eq('key', 'plan_catalog')
           .maybeSingle()
-        
-        if (data?.value && Array.isArray(data.value) && data.value.length > 0) {
-          setPlans(data.value)
+        if (catalogData?.value && Array.isArray(catalogData.value) && catalogData.value.length > 0) {
+          setPlans(catalogData.value)
+        }
+
+        // Load addon settings
+        const { data: addonRows } = await supabase
+          .from('app_settings')
+          .select('key, value')
+          .in('key', ['addon_features_enabled', 'addon_fs_price', 'addon_cost_price'])
+        if (addonRows) {
+          const enabledRow = addonRows.find(r => r.key === 'addon_features_enabled')
+          const fsPriceRow = addonRows.find(r => r.key === 'addon_fs_price')
+          const costPriceRow = addonRows.find(r => r.key === 'addon_cost_price')
+          if (enabledRow) setAddonEnabled(enabledRow.value === true || enabledRow.value === 'true')
+          if (fsPriceRow) setAddonFsPrice(Number(fsPriceRow.value) || 75000)
+          if (costPriceRow) setAddonCostPrice(Number(costPriceRow.value) || 50000)
         }
       } catch { /* use defaults */ }
       finally { setLoading(false) }
@@ -79,6 +98,28 @@ export default function AdminPlans() {
 
   function updatePlan(id: string, field: keyof SaaSPlan, value: any) {
     setPlans(plans.map(p => p.id === id ? { ...p, [field]: value } : p))
+  }
+
+  async function saveAddonSettings() {
+    setSavingAddon(true)
+    try {
+      const updates = [
+        { key: 'addon_features_enabled', value: addonEnabled },
+        { key: 'addon_fs_price', value: addonFsPrice },
+        { key: 'addon_cost_price', value: addonCostPrice },
+      ]
+      for (const u of updates) {
+        const { data: existing } = await supabase.from('app_settings').select('key').eq('key', u.key).maybeSingle()
+        if (existing) {
+          await supabase.from('app_settings').update({ value: u.value }).eq('key', u.key)
+        } else {
+          await supabase.from('app_settings').insert({ key: u.key, value: u.value })
+        }
+      }
+      toast({ title: '✅ Pengaturan Add-on Tersimpan', description: 'Perubahan harga dan status add-on berhasil disimpan.' })
+    } catch (err: any) {
+      toast({ title: 'Gagal Menyimpan', description: err.message, variant: 'destructive' })
+    } finally { setSavingAddon(false) }
   }
 
   function toggleFeature(planId: string, featureKey: string) {
@@ -335,6 +376,70 @@ export default function AdminPlans() {
         })}
       </div>
 
+      {/* ─────────────────────────────────────────────── */}
+      {/* Add-on / Beli Slot Ekstra Proyek                */}
+      {/* ─────────────────────────────────────────────── */}
+      <div className="border-2 border-dashed border-navy/20 rounded-[32px] p-8 space-y-6 bg-navy/[0.02]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-navy/10 rounded-2xl flex items-center justify-center">
+              <PlusCircle className="h-7 w-7 text-navy" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-navy">Pengaturan Add-on: Beli Slot Ekstra Proyek</h3>
+              <p className="text-sm text-slate-500 mt-0.5">Aktifkan opsi beli eceran per proyek tanpa harus upgrade paket utama.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setAddonEnabled(!addonEnabled)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-sm border-2 transition-all ${addonEnabled ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
+          >
+            {addonEnabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+            {addonEnabled ? '🟢 AKTIF (Tampil ke User)' : '⭕ NON-AKTIF (Disembunyikan)'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">Harga Ekstra Slot Feasibility Study (IDR)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-4 font-bold text-slate-400">Rp</span>
+              <input
+                type="number"
+                className="w-full h-14 pl-12 pr-4 rounded-2xl font-bold text-xl bg-white border-2 border-slate-100 focus:border-navy/30 focus:ring-2 focus:ring-navy/10 text-navy"
+                value={addonFsPrice}
+                onChange={(e) => setAddonFsPrice(parseInt(e.target.value) || 0)}
+              />
+            </div>
+            <p className="text-xs text-slate-400">Harga sekali bayar untuk menambah 1 proyek FS</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">Harga Ekstra Slot Cost Control (IDR)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-4 font-bold text-slate-400">Rp</span>
+              <input
+                type="number"
+                className="w-full h-14 pl-12 pr-4 rounded-2xl font-bold text-xl bg-white border-2 border-slate-100 focus:border-navy/30 focus:ring-2 focus:ring-navy/10 text-navy"
+                value={addonCostPrice}
+                onChange={(e) => setAddonCostPrice(parseInt(e.target.value) || 0)}
+              />
+            </div>
+            <p className="text-xs text-slate-400">Harga sekali bayar untuk menambah 1 proyek Cost Control</p>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            className="bg-navy text-white hover:bg-navy/90 font-bold gap-2 px-8"
+            onClick={saveAddonSettings}
+            disabled={savingAddon}
+          >
+            {savingAddon ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {savingAddon ? 'Menyimpan...' : 'Simpan Pengaturan Add-on'}
+          </Button>
+        </div>
+      </div>
+
       <div className="bg-amber-50 border-2 border-amber-100 p-8 rounded-[40px] flex flex-col md:flex-row items-center gap-6">
         <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shrink-0 shadow-lg">
           <Info className="h-8 w-8 text-amber-600" />
@@ -346,6 +451,8 @@ export default function AdminPlans() {
             Harga promo akan tampil di landing page dengan format coret harga normal. 
             Fitur yang dicentang akan ditampilkan sebagai ✅ di halaman pricing.
             Pastikan harga promo lebih rendah dari harga normal.
+            <br /><br />
+            <strong>Untuk Add-on:</strong> Jika status Add-on adalah NON-AKTIF, tombol "Beli Slot Ekstra" tidak akan tampil ke pengguna sama sekali, cocok untuk rilis bertahap.
           </p>
         </div>
       </div>

@@ -68,19 +68,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (invoice) {
-        const durationDays = invoice.plan_id === 'pro' ? 30 : 365;
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + durationDays);
+        // ── Add-on: increment project slot instead of creating subscription ──
+        if (invoice.plan_id === 'addon_fs') {
+          await supabase.rpc('increment_addon_slots', { uid: invoice.user_id, slot_col: 'addon_fs_slots' });
+          console.log(`[Webhook] FS addon slot added for user ${invoice.user_id}`);
+        } else if (invoice.plan_id === 'addon_cost') {
+          await supabase.rpc('increment_addon_slots', { uid: invoice.user_id, slot_col: 'addon_cost_slots' });
+          console.log(`[Webhook] Cost addon slot added for user ${invoice.user_id}`);
+        } else {
+          // ── Regular subscription plan ──
+          const durationDays = invoice.plan_id === 'pro' ? 30 : 365;
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + durationDays);
 
-        await supabase.from('subscriptions').upsert({
-          user_id: invoice.user_id,
-          plan_id: invoice.plan_id,
-          status: 'active',
-          started_at: new Date().toISOString(),
-          expires_at: expiresAt.toISOString(),
-          midtrans_order_id: order_id,
-        }, { onConflict: 'user_id' });
-
+          await supabase.from('subscriptions').upsert({
+            user_id: invoice.user_id,
+            plan_id: invoice.plan_id,
+            status: 'active',
+            started_at: new Date().toISOString(),
+            expires_at: expiresAt.toISOString(),
+            midtrans_order_id: order_id,
+          }, { onConflict: 'user_id' });
+        }
         console.log(`[Webhook] Invoice ${invoiceId} marked as PAID.`);
       }
     } else if (transaction_status === 'expire' || transaction_status === 'cancel') {

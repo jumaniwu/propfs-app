@@ -37,17 +37,27 @@ export default function CostDashboard() {
   const [search, setSearch] = useState('')
 
   const { canCreateProject, isSubscriptionEnabled } = useSubscription()
-  const canAdd = canCreateProject(savedProjects.length)
+  const { addonFeaturesEnabled, addonCostPrice } = useAuthStore()
+  const canAdd = canCreateProject(savedProjects.length, 'cost')
 
   const handleCreateNew = () => {
     if (!canAdd) {
       if (isSubscriptionEnabled) {
-        toast({
-          title: 'Batas proyek tercapai',
-          description: 'Anda sudah mencapai batas maksimal proyek untuk paket ini. Silakan upgrade paket Anda.',
-          variant: 'destructive',
-        })
-        navigate('/pricing')
+        if (addonFeaturesEnabled) {
+          toast({
+            title: 'Batas proyek tercapai',
+            description: `Anda bisa membeli slot tambahan Cost Control seharga Rp ${addonCostPrice.toLocaleString('id-ID')}, atau upgrade paket Anda.`,
+            variant: 'destructive',
+          })
+          navigate(`/payment?plan_id=addon_cost&amount=${addonCostPrice}`)
+        } else {
+          toast({
+            title: 'Batas proyek tercapai',
+            description: 'Anda sudah mencapai batas maksimal proyek untuk paket ini. Silakan upgrade paket Anda.',
+            variant: 'destructive',
+          })
+          navigate('/pricing')
+        }
       } else {
         toast({
           title: 'Batas proyek tercapai',
