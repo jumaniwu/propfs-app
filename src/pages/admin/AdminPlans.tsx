@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 // ── Master list of ALL features that can be toggled per plan ──
 const MASTER_FEATURES = [
   { key: 'fs_projects', label: 'Feasibility Study (Proyek)', inputType: 'number' as const, suffix: 'proyek' },
-  { key: 'cost_control', label: 'Cost Control & RAB', inputType: 'toggle' as const },
+  { key: 'cost_control', label: 'Cost Control & RAB', inputType: 'number' as const, suffix: 'proyek' },
   { key: 'upload_rab', label: 'Upload & Parsing RAB Excel (AI)', inputType: 'toggle' as const },
   { key: 'material_schedule', label: 'Material Schedule Otomatis', inputType: 'toggle' as const },
   { key: 'kurva_s', label: 'Kurva S Progres Proyek', inputType: 'toggle' as const },
@@ -35,19 +35,19 @@ interface SaaSPlan {
 const DEFAULT_PLANS: SaaSPlan[] = [
   {
     id: 'free', name: 'Free Trial', priceIdr: 0, promoPriceIdr: null, maxProjects: 2, isVisible: true,
-    features: { fs_projects: 2, cost_control: false, upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false, export_excel: false, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
+    features: { fs_projects: 2, cost_control: 0, upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false, export_excel: false, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
   },
   {
     id: 'starter', name: 'Starter', priceIdr: 149000, promoPriceIdr: null, maxProjects: 5, isVisible: true,
-    features: { fs_projects: 5, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
+    features: { fs_projects: 5, cost_control: 1, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false }
   },
   {
     id: 'pro', name: 'Pro', priceIdr: 399000, promoPriceIdr: null, maxProjects: 50, recommended: true, isVisible: true,
-    features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 3, api_access: false, whitelabel: false, priority_support: true, onboarding: false }
+    features: { fs_projects: 999, cost_control: 999, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 3, api_access: false, whitelabel: false, priority_support: true, onboarding: false }
   },
   {
     id: 'enterprise', name: 'Enterprise', priceIdr: 999000, promoPriceIdr: null, maxProjects: 999, isVisible: true,
-    features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 999, api_access: true, whitelabel: true, priority_support: true, onboarding: true }
+    features: { fs_projects: 999, cost_control: 999, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 999, api_access: true, whitelabel: true, priority_support: true, onboarding: true }
   }
 ]
 

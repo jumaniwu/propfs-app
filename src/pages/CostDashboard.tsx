@@ -48,7 +48,7 @@ export default function CostDashboard() {
     const planId = useAuthStore.getState().getCurrentPlan()
     const catalog = planCatalog.find((p: any) => p.id === planId)
     const addonSlots = (useAuthStore.getState().profile as any)?.addon_cost_slots ?? 0
-    if (catalog?.features?.cost_control_projects) return (catalog.features.cost_control_projects as number) + addonSlots
+    if (catalog?.features?.cost_control !== undefined) return (catalog.features.cost_control as number) + addonSlots
     return Infinity // if not defined, no limit
   }, [planCatalog, useAuthStore.getState().profile])
   // Use catalog-driven limit if available, otherwise fall back to authStore logic
