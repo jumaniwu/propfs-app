@@ -30,6 +30,7 @@ export default function AdminSettings() {
   const [savingPayment, setSavingPayment] = useState(false)
 
   // PPN State
+  const [ppnEnabled, setPpnEnabled] = useState(true)
   const [ppnPct, setPpnPct]       = useState(11)
   const [ppnInput, setPpnInput]   = useState('11')
   const [savingPPN, setSavingPPN] = useState(false)
@@ -77,8 +78,11 @@ export default function AdminSettings() {
           .eq('key', 'ppn_rate')
           .maybeSingle()
         const rate = data?.value ?? 0.11
-        setPpnPct(Math.round(Number(rate) * 100))
-        setPpnInput(String(Math.round(Number(rate) * 100)))
+        const rateNum = Number(rate)
+        // PPN is disabled if rate is exactly 0
+        setPpnEnabled(rateNum > 0)
+        setPpnPct(Math.round(rateNum * 100))
+        setPpnInput(String(Math.round(rateNum * 100)))
 
         const { data: gaData } = await supabase
           .from('app_settings')
@@ -127,9 +131,10 @@ export default function AdminSettings() {
   }
 
   async function savePPN() {
-    const pct = Number(ppnInput)
-    if (isNaN(pct) || pct < 0 || pct > 99) {
-      toast({ title: 'PPN tidak valid (0–99%)', variant: 'destructive' }); return
+    // When disabled, save rate as 0. When enabled, validate input.
+    let pct = ppnEnabled ? Number(ppnInput) : 0
+    if (ppnEnabled && (isNaN(pct) || pct < 1 || pct > 99)) {
+      toast({ title: 'PPN tidak valid (1–99%)', variant: 'destructive' }); return
     }
     setSavingPPN(true)
     try {
@@ -148,7 +153,7 @@ export default function AdminSettings() {
       if (error) throw error
       invalidatePPNCache()
       setPpnPct(pct)
-      toast({ title: `PPN berhasil diubah menjadi ${pct}%` })
+      toast({ title: ppnEnabled ? `✅ PPN diaktifkan: ${pct}%` : '✅ PPN dinonaktifkan (0%)' })
     } catch (err: any) {
       toast({ title: 'Gagal menyimpan PPN', description: err.message, variant: 'destructive' })
     } finally { setSavingPPN(false) }
@@ -292,28 +297,44 @@ export default function AdminSettings() {
           <h2 className="font-serif text-xl font-bold">Tarif PPN (Pajak Pertambahan Nilai)</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Tarif PPN ini dipakai pada semua perhitungan invoice. Harga paket di landing page sudah belum termasuk PPN.
-          PPN akan ditambahkan otomatis saat checkout.
+          Tarif PPN ini dipakai pada semua perhitungan invoice. Jika PPN dinonaktifkan, nilai PPN tidak akan muncul di halaman pricing dan invoice.
         </p>
-        <div className="flex items-center gap-3">
-          <div className="relative w-36">
-            <Input
-              type="number"
-              min={0}
-              max={99}
-              value={ppnInput}
-              onChange={e => setPpnInput(e.target.value)}
-              className="pr-8 text-lg font-bold"
-              disabled={loadingPPN}
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">%</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-4">
+          {/* PPN Toggle */}
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <div
+              onClick={() => setPpnEnabled(!ppnEnabled)}
+              className={`w-12 h-6 rounded-full transition-colors cursor-pointer ${ppnEnabled ? 'bg-navy' : 'bg-slate-300'}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform mt-0.5 ${ppnEnabled ? 'translate-x-6 ml-0.5' : 'translate-x-0.5'}`} />
+            </div>
+            <span className={`text-sm font-bold ${ppnEnabled ? 'text-navy' : 'text-muted-foreground'}`}>
+              {ppnEnabled ? '✅ PPN Aktif' : '⭕ PPN Nonaktif'}
+            </span>
+          </label>
+
+          {/* PPN Rate Input — only shown when enabled */}
+          {ppnEnabled && (
+            <div className="relative w-36">
+              <Input
+                type="number"
+                min={1}
+                max={99}
+                value={ppnInput}
+                onChange={e => setPpnInput(e.target.value)}
+                className="pr-8 text-lg font-bold"
+                disabled={loadingPPN}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">%</span>
+            </div>
+          )}
+
           <Button onClick={savePPN} disabled={savingPPN || loadingPPN} className="gap-2">
             {savingPPN ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Simpan PPN
           </Button>
           <span className="text-sm text-muted-foreground">
-            Berlaku sekarang: <strong>{loadingPPN ? '...' : `${ppnPct}%`}</strong>
+            Berlaku sekarang: <strong>{loadingPPN ? '...' : ppnEnabled ? `${ppnPct}%` : 'Nonaktif (0%)'}</strong>
           </span>
         </div>
       </div>

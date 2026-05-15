@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
+import { useAuthStore } from './authStore'
 
 export interface ProjectInfo {
   id: string
@@ -76,14 +77,32 @@ interface CostStore {
   getActualProgressPct: () => number
 }
 
-const STORAGE_KEY = 'propfs-cost-projects'
+// ── SECURITY: Use user-scoped storage key to prevent data leaking between users ──
+// Each user gets their own isolated localStorage key.
+function getUserStorageKey(): string {
+  try {
+    const user = useAuthStore.getState().user
+    if (user?.id) return `propfs-cost-projects:${user.id}`
+  } catch { /* ignore */ }
+  return 'propfs-cost-projects:anonymous'
+}
 
 function loadLocalData(): SavedCostProject[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') } catch { return [] }
+  try {
+    const key = getUserStorageKey()
+    return JSON.parse(localStorage.getItem(key) ?? '[]')
+  } catch { return [] }
+}
+
+function saveLocalData(projects: SavedCostProject[]) {
+  try {
+    const key = getUserStorageKey()
+    localStorage.setItem(key, JSON.stringify(projects))
+  } catch { /* ignore */ }
 }
 
 export const useCostStore = create<CostStore>((set, get) => ({
-  savedProjects: loadLocalData(),
+  savedProjects: [],  // Will be loaded after auth is ready (see loadProjects)
   
   projectInfo: null,
   activePlan: null,
@@ -116,7 +135,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
     nextProjects.unshift(updatedProject)
 
     set({ savedProjects: nextProjects })
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextProjects))
+    saveLocalData(nextProjects)
   },
 
   initProject: (info) => {
@@ -153,7 +172,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
   deleteProject: (id) => {
     const next = get().savedProjects.filter(p => p.info.id !== id)
     set({ savedProjects: next })
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    saveLocalData(next)
     
     if (get().projectInfo?.id === id) {
       get().clearProject()

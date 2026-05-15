@@ -5,7 +5,7 @@ import {
   RefreshCw, Trash2, ArrowUpRight, ArrowDownRight, Minus,
   Info, Target, AlertTriangle, CheckCircle2, Presentation
 } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import Header from '@/components/layout/Header'
@@ -27,18 +27,34 @@ import { toast } from '@/hooks/use-toast'
 export default function CostDashboard() {
   const navigate = useNavigate()
   const { isFeatureEnabled } = useAuthStore()
-  const {
-    savedProjects, activePlan, projectInfo, realisasiEntries,
+  const { savedProjects, activePlan, projectInfo, realisasiEntries,
     updateActivePlanComponents, clearProject, loadProject,
-    deleteProject, clearActivePlan
+    deleteProject, clearActivePlan, loadProjects
   } = useCostStore()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [search, setSearch] = useState('')
 
   const { canCreateProject, isSubscriptionEnabled } = useSubscription()
-  const { addonFeaturesEnabled, addonCostPrice } = useAuthStore()
-  const canAdd = canCreateProject(savedProjects.length, 'cost')
+  const { addonFeaturesEnabled, addonCostPrice, user, planCatalog } = useAuthStore()
+
+  // SECURITY: Reload projects whenever user changes so data is always user-scoped
+  useEffect(() => {
+    if (user) loadProjects()
+  }, [user?.id])
+
+  // Derive max cost projects from plan catalog (cost_control feature)
+  const maxCostProjects = useMemo(() => {
+    const planId = useAuthStore.getState().getCurrentPlan()
+    const catalog = planCatalog.find((p: any) => p.id === planId)
+    const addonSlots = (useAuthStore.getState().profile as any)?.addon_cost_slots ?? 0
+    if (catalog?.features?.cost_control_projects) return (catalog.features.cost_control_projects as number) + addonSlots
+    return Infinity // if not defined, no limit
+  }, [planCatalog, useAuthStore.getState().profile])
+  // Use catalog-driven limit if available, otherwise fall back to authStore logic
+  const canAdd = isSubscriptionEnabled
+    ? savedProjects.length < maxCostProjects
+    : canCreateProject(savedProjects.length, 'cost')
 
   const handleCreateNew = () => {
     if (!canAdd) {
