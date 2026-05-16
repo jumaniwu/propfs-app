@@ -110,7 +110,7 @@ export default function SubscriptionCard({ variant = 'compact' }: Props) {
     }
   }
 
-  const expiresAt = subscription?.expires_at
+  const expiresAt = subscription?.expired_at
   const isActive  = subscription?.status === 'active'
   const daysLeft  = expiresAt
     ? Math.max(0, Math.round((new Date(expiresAt).getTime() - Date.now()) / 86400000))

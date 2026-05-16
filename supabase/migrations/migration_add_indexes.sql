@@ -20,12 +20,6 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_expired_at ON subscriptions(expired_at);
 
--- 4. Optimasi tabel logs (Email & AI)
--- Mempercepat audit trail dan dashboard admin
-CREATE INDEX IF NOT EXISTS idx_email_logs_user_id ON email_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_email_logs_created_at ON email_logs(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_user_id ON ai_usage_logs(user_id);
-
 -- 5. Optimasi tabel profiles
 -- Walaupun ID biasanya sudah ter-index PK, index pada email sering berguna untuk pencarian cepat
 CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
@@ -35,5 +29,3 @@ ANALYZE projects;
 ANALYZE invoices;
 ANALYZE subscriptions;
 ANALYZE profiles;
-ANALYZE email_logs;
-ANALYZE ai_usage_logs;
