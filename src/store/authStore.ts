@@ -381,9 +381,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // ── resetPassword ─────────────────────────────────────────
   resetPassword: async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
+    // Pastikan selalu pakai production URL
+    // bukan localhost meski dijalankan dari dev environment
+    const origin = typeof window !== 'undefined'
+      ? (window.location.hostname === 'localhost' 
+          ? 'https://propfs.id' 
+          : window.location.origin)
+      : 'https://propfs.id'
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(), 
+      {
+        redirectTo: `${origin}/reset-password`,
+      }
+    )
     if (error) throw error
   },
 
