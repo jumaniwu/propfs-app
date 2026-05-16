@@ -579,13 +579,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const dbPlan = catalog?.find((p: any) => p.id === plan)
     
     if (dbPlan) {
-      // Read fs_projects from catalog features (number = max FS projects)
-      const fsProjects = dbPlan.features?.fs_projects
-      const maxFsFromCatalog = typeof fsProjects === 'number' ? fsProjects : limits.maxFsProjects
+      // Helper to safely parse limits that might be stored as strings or booleans
+      const parseLimit = (val: any, defaultVal: number): number => {
+        if (val === undefined || val === null) return defaultVal
+        if (typeof val === 'number') return val
+        if (typeof val === 'boolean') return val ? 999 : 0
+        if (typeof val === 'string') {
+          if (val === '0' || val.toLowerCase() === 'false') return 0
+          if (val.toLowerCase() === 'true') return 999
+          return parseInt(val) || 0
+        }
+        return 0
+      }
 
-      // Read cost_control from catalog features (number = max Cost Control projects, 0 = disabled)
-      const costControl = dbPlan.features?.cost_control
-      const maxCostFromCatalog = typeof costControl === 'number' ? costControl : (costControl ? 999 : 0)
+      const maxFsFromCatalog = parseLimit(dbPlan.features?.fs_projects, limits.maxFsProjects)
+      const maxCostFromCatalog = parseLimit(dbPlan.features?.cost_control, 0)
 
       return {
         ...limits,
