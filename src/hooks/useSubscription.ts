@@ -15,7 +15,16 @@ export function useSubscription() {
   } = useAuthStore()
 
   const plan   = getCurrentPlan()
-  const limits = getPlanLimits(plan)
+  const limits = getPlanLimits(plan) as typeof PLAN_LIMITS[typeof plan] & {
+    maxFsProjects: number
+    maxCostProjects: number
+  }
+
+  const addonFsSlots   = (profile as any)?.addon_fs_slots   ?? 0
+  const addonCostSlots = (profile as any)?.addon_cost_slots ?? 0
+
+  const maxFsProjects   = (limits.maxFsProjects   ?? limits.maxProjects)  + addonFsSlots
+  const maxCostProjects = (limits.maxCostProjects  ?? 0)                  + addonCostSlots
 
   return {
     // Current state
@@ -27,15 +36,18 @@ export function useSubscription() {
     canExportPDF:           limits.canExportPDF,
     canAccessCashflow:      limits.canAccessCashflow,
     canAccessARAP:          limits.canAccessARAP,
-    maxProjects:            limits.maxProjects,
+    // maxProjects kept for compatibility, now reflects FS limit from catalog
+    maxProjects:            maxFsProjects,
+    maxFsProjects,
+    maxCostProjects,
     projectSlotPermanent:   limits.projectSlotPermanent,
 
     // Project limit helper (pass active project count)
     canCreateProject,
 
-    // For free plan: show how many slots remain
+    // For free plan: show how many slots remain (FS)
     freeProjectsUsed:       profile?.total_projects_created ?? 0,
-    freeProjectsRemaining:  Math.max(0, limits.maxProjects - (profile?.total_projects_created ?? 0)),
+    freeProjectsRemaining:  Math.max(0, maxFsProjects - (profile?.total_projects_created ?? 0)),
 
     // Upgrade needed checks
     needsUpgradeForCashflow: isSubscriptionEnabled && !limits.canAccessCashflow,

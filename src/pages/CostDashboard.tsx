@@ -43,18 +43,16 @@ export default function CostDashboard() {
     if (user) loadProjects()
   }, [user?.id])
 
-  // Derive max cost projects from plan catalog (cost_control feature)
+  // Use authStore canCreateProject which reads 'cost_control' limit from plan catalog
+  const canAdd = canCreateProject(savedProjects.length, 'cost')
+
+  // Derive max cost projects for display (from plan catalog)
   const maxCostProjects = useMemo(() => {
-    const planId = useAuthStore.getState().getCurrentPlan()
-    const catalog = planCatalog.find((p: any) => p.id === planId)
+    const plan = useAuthStore.getState().getCurrentPlan()
+    const limits = useAuthStore.getState().getPlanLimits(plan)
     const addonSlots = (useAuthStore.getState().profile as any)?.addon_cost_slots ?? 0
-    if (catalog?.features?.cost_control !== undefined) return (catalog.features.cost_control as number) + addonSlots
-    return Infinity // if not defined, no limit
-  }, [planCatalog, useAuthStore.getState().profile])
-  // Use catalog-driven limit if available, otherwise fall back to authStore logic
-  const canAdd = isSubscriptionEnabled
-    ? savedProjects.length < maxCostProjects
-    : canCreateProject(savedProjects.length, 'cost')
+    return ((limits as any).maxCostProjects ?? 0) + addonSlots
+  }, [planCatalog, user])
 
   const handleCreateNew = () => {
     if (!canAdd) {
@@ -470,10 +468,32 @@ export default function CostDashboard() {
                 <ArrowLeft className="h-4 w-4" /> Kembali ke Portal
               </button>
               <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Cost Control</h1>
-              <p className="text-muted-foreground mt-1 text-sm">{savedProjects.length} proyek tersimpan</p>
+              {isSubscriptionEnabled ? (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-sm font-bold ${canAdd ? 'text-muted-foreground' : 'text-red-500'}`}>
+                    {savedProjects.length}
+                    {maxCostProjects < 9999 ? ` / ${maxCostProjects} proyek` : ' proyek tersimpan'}
+                  </span>
+                  {!canAdd && (
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-600 px-2 py-0.5 rounded-full">
+                      Kuota Penuh
+                    </span>
+                  )}
+                  {canAdd && maxCostProjects < 9999 && (
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">
+                      Sisa {maxCostProjects - savedProjects.length} slot
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground mt-1 text-sm">{savedProjects.length} proyek tersimpan</p>
+              )}
             </div>
-            <Button className="bg-navy text-white hover:bg-navy/90 font-bold gap-2 w-full sm:w-auto" onClick={handleCreateNew}>
-              <FolderPlus className="h-4 w-4" /> Buat Proyek Baru
+            <Button
+              className={`font-bold gap-2 w-full sm:w-auto ${canAdd ? 'bg-navy text-white hover:bg-navy/90' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+              onClick={handleCreateNew}
+            >
+              <FolderPlus className="h-4 w-4" /> {canAdd ? 'Buat Proyek Baru' : 'Kuota Penuh'}
             </Button>
           </div>
 

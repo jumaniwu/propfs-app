@@ -20,14 +20,16 @@ import type { User, Session } from '@supabase/supabase-js'
 // ── Plan feature definitions (mirrored from DB) ────────────
 export const PLAN_LIMITS: Record<PlanId, {
   maxProjects: number
+  maxFsProjects: number
+  maxCostProjects: number
   canExportPDF: boolean
   canAccessCashflow: boolean
   canAccessARAP: boolean
   projectSlotPermanent: boolean
 }> = {
-  free: { maxProjects: 2, canExportPDF: false, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: true },
-  basic: { maxProjects: 5, canExportPDF: true, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: false },
-  pro: { maxProjects: 10, canExportPDF: true, canAccessCashflow: true, canAccessARAP: true, projectSlotPermanent: false },
+  free: { maxProjects: 2, maxFsProjects: 2, maxCostProjects: 0, canExportPDF: false, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: true },
+  basic: { maxProjects: 5, maxFsProjects: 5, maxCostProjects: 1, canExportPDF: true, canAccessCashflow: false, canAccessARAP: false, projectSlotPermanent: false },
+  pro: { maxProjects: 10, maxFsProjects: 999, maxCostProjects: 999, canExportPDF: true, canAccessCashflow: true, canAccessARAP: true, projectSlotPermanent: false },
 }
 
 export interface BankDetails {
@@ -565,12 +567,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const dbPlan = catalog?.find((p: any) => p.id === plan)
     
     if (dbPlan) {
+      // Read fs_projects from catalog features (number = max FS projects)
+      const fsProjects = dbPlan.features?.fs_projects
+      const maxFsFromCatalog = typeof fsProjects === 'number' ? fsProjects : limits.maxFsProjects
+
+      // Read cost_control from catalog features (number = max Cost Control projects, 0 = disabled)
+      const costControl = dbPlan.features?.cost_control
+      const maxCostFromCatalog = typeof costControl === 'number' ? costControl : (costControl ? 999 : 0)
+
       return {
         ...limits,
         maxProjects: dbPlan.maxProjects ?? limits.maxProjects,
+        maxFsProjects: maxFsFromCatalog,
+        maxCostProjects: maxCostFromCatalog,
         canExportPDF: dbPlan.features?.export_pdf ?? limits.canExportPDF,
-        canAccessCashflow: dbPlan.features?.cost_control ?? limits.canAccessCashflow,
-        canAccessARAP: dbPlan.features?.cost_control ?? limits.canAccessARAP,
+        canAccessCashflow: maxCostFromCatalog > 0,
+        canAccessARAP: maxCostFromCatalog > 0,
       }
     }
     return limits
@@ -586,8 +598,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // Bonus slots from add-on purchases
     const addonFsSlots = (profile as any)?.addon_fs_slots ?? 0
     const addonCostSlots = (profile as any)?.addon_cost_slots ?? 0
-    const bonusSlots = addonType === 'fs' ? addonFsSlots : addonType === 'cost' ? addonCostSlots : Math.max(addonFsSlots, addonCostSlots)
-    const effectiveMax = limits.maxProjects + bonusSlots
+
+    if (addonType === 'cost') {
+      // Use catalog-driven cost_control limit
+      const maxCost = (limits as any).maxCostProjects ?? 0
+      const effectiveMax = maxCost + addonCostSlots
+      if (!isSubscriptionEnabled) return true
+      return activeProjectCount < effectiveMax
+    }
+
+    // Default: FS (or no type specified)
+    const maxFs = (limits as any).maxFsProjects ?? limits.maxProjects
+    const effectiveMax = maxFs + addonFsSlots
 
     // ALWAYS enforce free plan permanent slot limit (total_projects_created)
     if (limits.projectSlotPermanent) {

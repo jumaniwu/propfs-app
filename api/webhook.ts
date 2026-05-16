@@ -77,15 +77,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`[Webhook] Cost addon slot added for user ${invoice.user_id}`);
         } else {
           // ── Regular subscription plan ──
-          const durationDays = invoice.plan_id === 'pro' ? 30 : 365;
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + durationDays);
+          // Calculate duration based on invoice period
+          const periodStart = new Date(invoice.period_start).getTime();
+          const periodEnd = new Date(invoice.period_end).getTime();
+          const durationMs = periodEnd - periodStart;
+          
+          const now = new Date();
+          const expiresAt = new Date(now.getTime() + durationMs);
 
           await supabase.from('subscriptions').upsert({
             user_id: invoice.user_id,
             plan_id: invoice.plan_id,
             status: 'active',
-            started_at: new Date().toISOString(),
+            started_at: now.toISOString(),
             expires_at: expiresAt.toISOString(),
             midtrans_order_id: order_id,
           }, { onConflict: 'user_id' });
