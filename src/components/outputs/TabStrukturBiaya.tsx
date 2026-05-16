@@ -35,7 +35,7 @@ export default function TabStrukturBiaya({ results: r, inputs }: Props) {
       : 0
 
     const hargaFases = r.hargaJualPerFase.filter(h => h.tipeId === prod.id)
-    const avgHarga   = hargaFases.length > 0
+    const avgHarga = hargaFases.length > 0
       ? hargaFases.reduce((s, h) => s + h.hargaTotal, 0) / hargaFases.length
       : 0
 
@@ -76,7 +76,7 @@ export default function TabStrukturBiaya({ results: r, inputs }: Props) {
   let lMarketingTotal = 0
   if (bo.biayaMarketingMode === 'per_bulan') lMarketingTotal = (bo.biayaMarketingPerBulan || 0) * totalMonths
   else if (bo.biayaMarketingMode === 'lumpsum_periode') lMarketingTotal = bo.biayaMarketingLumpsum || 0
-  else if (bo.biayaMarketingMode === 'detail_item') lMarketingTotal = Object.values(bo.biayaMarketingDetail || {}).reduce((s,v) => s + (Number(v)||0), 0)
+  else if (bo.biayaMarketingMode === 'detail_item') lMarketingTotal = Object.values(bo.biayaMarketingDetail || {}).reduce((s, v) => s + (Number(v) || 0), 0)
 
   let lKantorTotal = 0
   if (bo.biayaUmumMode === 'per_bulan') lKantorTotal = (bo.biayaUmumKantorPerBulan || 0) * totalMonths
@@ -87,7 +87,7 @@ export default function TabStrukturBiaya({ results: r, inputs }: Props) {
       return sum + (Number(item) || 0)
     }, 0)
     const d = bo.biayaUmumDetail || {}
-    const totalUmumBulan = totalGajiBulan + (d.atk||0) + (d.konsumsi||0) + (d.akomodasi||0) + (d.transportasi||0) + (d.komunikasi||0) + (d.biayaLainLain||0)
+    const totalUmumBulan = totalGajiBulan + (d.atk || 0) + (d.konsumsi || 0) + (d.akomodasi || 0) + (d.transportasi || 0) + (d.komunikasi || 0) + (d.biayaLainLain || 0)
     lKantorTotal = totalUmumBulan * totalMonths
   }
 

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Konfirmasi Akun PropFS</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+    }
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    .header {
+      background-color: #0f172a; /* Navy */
+      padding: 40px 30px;
+      text-align: center;
+      border-bottom: 4px solid #d4af37; /* Gold */
+    }
+    .logo-text {
+      color: #ffffff;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+    .logo-text span {
+      color: #d4af37; /* Gold */
+    }
+    .content {
+      padding: 40px 30px;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #475569;
+      margin-top: 0;
+      margin-bottom: 24px;
+    }
+    .about-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+    }
+    .about-title {
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 8px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .btn-container {
+      text-align: center;
+      margin: 40px 0;
+    }
+    .btn {
+      display: inline-block;
+      background-color: #d4af37; /* Gold */
+      color: #0f172a; /* Navy */
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      padding: 16px 32px;
+      border-radius: 8px;
+      transition: background-color 0.2s;
+    }
+    .footer {
+      background-color: #f1f5f9;
+      padding: 30px;
+      text-align: center;
+      font-size: 14px;
+      color: #64748b;
+    }
+    .footer a {
+      color: #0f172a;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .social-links {
+      margin-top: 16px;
+    }
+    .text-sm {
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 class="logo-text">Prop<span>FS</span></h2>
+    </div>
+    
+    <div class="content">
+      <h1>Selamat Datang di PropFS! 🏗️</h1>
+      <p>Halo,</p>
+      <p>Terima kasih telah bergabung bersama kami. Satu langkah lagi untuk mulai merencanakan dan mengontrol biaya proyek properti Anda dengan lebih cerdas dan akurat.</p>
+      
+      <div class="about-box">
+        <div class="about-title">Apa itu PropFS?</div>
+        <p style="margin-bottom: 0; font-size: 15px;">
+          PropFS adalah <strong>Platform Feasibility Study & Cost Control</strong> terdepan di Indonesia untuk industri properti. Kami membantu developer, kontraktor, dan investor untuk menghitung kelayakan finansial (IRR, NPV, ROI) dalam hitungan menit, serta memantau realisasi anggaran lapangan agar terhindar dari kerugian proyek (<i>over-budget</i>).
+        </p>
+      </div>
+
+      <p>Untuk memastikan keamanan akun dan mulai menggunakan portal Anda, silakan konfirmasi alamat email ini dengan menekan tombol di bawah:</p>
+      
+      <div class="btn-container">
+        <!-- Supabase Tag for Confirmation URL -->
+        <a href="{{ .ConfirmationURL }}" class="btn">Konfirmasi Email Saya</a>
+      </div>
+      
+      <p class="text-sm">
+        Jika tombol di atas tidak berfungsi, Anda dapat menyalin dan menempelkan tautan berikut ke browser Anda:<br>
+        <a href="{{ .ConfirmationURL }}" style="color: #0f172a; word-break: break-all;">{{ .ConfirmationURL }}</a>
+      </p>
+    </div>
+    
+    <div class="footer">
+      <p>Punya pertanyaan? Tim support kami siap membantu di <a href="mailto:hello@propfs.id">hello@propfs.id</a></p>
+      <p style="margin-bottom: 0;">&copy; 2026 PropFS Indonesia. Hak Cipta Dilindungi.</p>
+    </div>
+  </div>
+</body>
+</html>

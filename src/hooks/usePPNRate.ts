@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 
 const DEFAULT_PPN_RATE = 0.11   // 11%
 const CACHE_KEY        = 'propfs:ppn_rate'
-const CACHE_TTL_MS     = 5 * 60_000  // 5 minutes
+const CACHE_TTL_MS     = 1 * 60_000  // 1 minute
 
 let cached: { rate: number; ts: number } | null = null
 

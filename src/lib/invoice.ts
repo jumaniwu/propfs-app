@@ -211,10 +211,12 @@ export function generateInvoicePDF(invoice: Invoice) {
           <td>${new Date(invoice.period_start).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })} – ${new Date(invoice.period_end).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</td>
           <td style="text-align:right">Rp ${invoice.subtotal_idr.toLocaleString('id-ID')}</td>
         </tr>
+        ${invoice.ppn_idr > 0 ? `
         <tr>
-          <td colspan="2">PPN 11%</td>
+          <td colspan="2">PPN ${Math.round((invoice.ppn_idr / invoice.subtotal_idr) * 100)}%</td>
           <td style="text-align:right">Rp ${invoice.ppn_idr.toLocaleString('id-ID')}</td>
         </tr>
+        ` : ''}
         <tr class="total-row" style="background:#f8f8f8">
           <td colspan="2">TOTAL</td>
           <td style="text-align:right">Rp ${invoice.total_idr.toLocaleString('id-ID')}</td>

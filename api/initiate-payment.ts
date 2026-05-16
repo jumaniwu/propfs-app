@@ -61,11 +61,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (ADDON_TYPES.includes(plan_id)) {
     grossAmount = total_idr || gross_amount || basePrice;
   } else {
-    let subtotal = basePrice * Number(months);
-    if (Number(months) === 3) subtotal = Math.round(subtotal * 0.90);
-    if (Number(months) === 12) subtotal = Math.round(subtotal * 0.80);
-    const ppn = Math.round(subtotal * 0.11);
-    grossAmount = total_idr || gross_amount || (subtotal + ppn);
+    // If total_idr is passed by frontend, trust it (frontend already calculated PPN properly)
+    if (total_idr || gross_amount) {
+      grossAmount = total_idr || gross_amount;
+    } else {
+      let subtotal = basePrice * Number(months);
+      if (Number(months) === 3) subtotal = Math.round(subtotal * 0.90);
+      if (Number(months) === 12) subtotal = Math.round(subtotal * 0.80);
+      
+      let ppnRate = 0.11; // Fallback
+      if (process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        try {
+          const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+          const { data } = await supabase.from('app_settings').select('value').eq('key', 'ppn_rate').maybeSingle();
+          if (data?.value !== undefined) ppnRate = Number(data.value);
+        } catch { /* use fallback */ }
+      }
+      const ppn = Math.round(subtotal * ppnRate);
+      grossAmount = subtotal + ppn;
+    }
   }
 
   const payload = {

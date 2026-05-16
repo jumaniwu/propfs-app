@@ -57,7 +57,7 @@ serve(async (req) => {
       .eq('key', 'ppn_rate')
       .single()
 
-    const ppnRate = ppnData?.value ? Number(ppnData.value) : 0.11
+    const ppnRate = ppnData?.value !== undefined ? Number(ppnData.value) : 0.11
     const ppn = Math.round(subtotal * ppnRate)
     const grandTotal = subtotal + ppn
 

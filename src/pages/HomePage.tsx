@@ -15,6 +15,8 @@ import {
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
+import { fetchPPNRate } from '@/hooks/usePPNRate'
+import { Card, CardContent } from '@/components/ui/card'
 import { useFSStore } from '@/store/fsStore'
 import { useCostStore } from '@/store/costStore'
 import AIUsageWidget from '@/components/usage/AIUsageWidget'
@@ -117,7 +119,8 @@ export default function HomePage() {
          if (months === 3) subtotal = Math.round(subtotal * 0.90) // 10% discount
          if (months === 12) subtotal = Math.round(subtotal * 0.80) // 20% discount
 
-         const ppn = Math.round(subtotal * 0.11)
+         const ppnRate = await fetchPPNRate()
+         const ppn = Math.round(subtotal * ppnRate)
          const grandTotal = subtotal + ppn
          
          const invoiceNumber = `INV-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*10000)}`

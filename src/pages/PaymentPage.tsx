@@ -189,7 +189,9 @@ export default function PaymentPage() {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4">
-                <div className="bg-slate-50 p-4 font-bold md:col-span-1">Total Harga (Inc. PPN)</div>
+                <div className="bg-slate-50 p-4 font-bold md:col-span-1">
+                  Total Harga {invoice.ppn_idr > 0 ? '(Inc. PPN)' : ''}
+                </div>
                 <div className="p-4 md:col-span-3 flex items-center gap-2">
                   <span className="font-black text-base">Rp {invoice.total_idr.toLocaleString('id-ID')}</span>
                   <span 
