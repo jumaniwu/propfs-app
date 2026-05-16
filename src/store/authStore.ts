@@ -72,10 +72,11 @@ interface AuthStore {
   addonFeaturesEnabled: boolean
   addonFsPrice: number
   addonCostPrice: number
+  isAffiliateEnabled: boolean
 
   initialize: () => Promise<void>
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, fullName: string, company: string, phone: string) => Promise<{ needsConfirmation: boolean }>
+  signUp: (email: string, password: string, fullName: string, company: string, phone: string, referralCode?: string) => Promise<{ needsConfirmation: boolean }>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<void>
   refreshProfile: () => Promise<void>
@@ -241,6 +242,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   addonFeaturesEnabled: false,
   addonFsPrice: 75000,
   addonCostPrice: 50000,
+  isAffiliateEnabled: false,
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
     set({ isLoading: true })
@@ -309,7 +311,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   // ── signUp ────────────────────────────────────────────────
-  signUp: async (email, password, fullName, company, phone) => {
+  signUp: async (email, password, fullName, company, phone, referralCode) => {
     set({ isLoading: true, authError: null })
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -318,6 +320,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         options: { data: { full_name: fullName, company, phone } },
       })
       if (error) throw error
+
+      let referredBy = null
+      if (referralCode) {
+        const { data: refUser } = await supabase.from('profiles').select('id').eq('referral_code', referralCode).single()
+        if (refUser) {
+          referredBy = refUser.id
+        }
+      }
 
       // Try to create the profile row immediately
       // Use upsert to avoid duplicate key errors if profile already exists
@@ -330,6 +340,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
             company,
             phone,
             role: 'user',
+            referred_by: referredBy,
             total_projects_created: 0,
           }, { onConflict: 'id' })
         } catch (profileErr: any) {
@@ -437,7 +448,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'affiliate_enabled'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
@@ -458,6 +469,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         addonFeaturesEnabled: addonEnabled === true || addonEnabled === 'true',
         addonFsPrice: addonFsPriceRaw ? Number(addonFsPriceRaw) : 75000,
         addonCostPrice: addonCostPriceRaw ? Number(addonCostPriceRaw) : 50000,
+        isAffiliateEnabled: data?.find(i => i.key === 'affiliate_enabled')?.value === 'true' || data?.find(i => i.key === 'affiliate_enabled')?.value === true,
       })
 
       if (trialFeaturesData && typeof trialFeaturesData === 'object') {

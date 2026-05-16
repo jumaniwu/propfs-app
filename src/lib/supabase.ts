@@ -118,6 +118,8 @@ export interface Profile {
   trial_status?:          TrialStatus
   is_trial_extended?:     boolean
   is_active?:             boolean
+  referral_code?:         string | null
+  referred_by?:           string | null
   created_at:             string
 }
 

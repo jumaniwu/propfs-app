@@ -94,6 +94,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             midtrans_order_id: order_id,
           }, { onConflict: 'user_id' });
         }
+
+        // ── Referral Commission Logic ──
+        try {
+          const { data: settings } = await supabase.from('app_settings').select('key, value').in('key', ['affiliate_enabled', 'affiliate_commission_pct']);
+          const affiliateEnabled = settings?.find((s: any) => s.key === 'affiliate_enabled')?.value === 'true' || settings?.find((s: any) => s.key === 'affiliate_enabled')?.value === true;
+          
+          if (affiliateEnabled) {
+            const { data: profile } = await supabase.from('profiles').select('referred_by').eq('id', invoice.user_id).single();
+            if (profile && profile.referred_by) {
+              const commPct = parseInt(settings?.find((s: any) => s.key === 'affiliate_commission_pct')?.value || '10', 10);
+              const commIdr = Math.floor(invoice.total_idr * (commPct / 100));
+              
+              await supabase.from('referral_earnings').insert({
+                referrer_id: profile.referred_by,
+                referred_user_id: invoice.user_id,
+                invoice_id: invoice.id,
+                commission_idr: commIdr,
+                commission_pct: commPct,
+                status: 'pending'
+              });
+              console.log(`[Webhook] Referral commission recorded for referrer ${profile.referred_by}`);
+            }
+          }
+        } catch (refErr) {
+          console.error('[Webhook] Failed to process referral commission:', refErr);
+        }
+
         console.log(`[Webhook] Invoice ${invoiceId} marked as PAID.`);
       }
     } else if (transaction_status === 'expire' || transaction_status === 'cancel') {

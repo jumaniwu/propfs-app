@@ -44,6 +44,11 @@ export default function AdminSettings() {
   const [gaId, setGaId] = useState('')
   const [savingGa, setSavingGa] = useState(false)
 
+  // Affiliate State
+  const [affiliateEnabled, setAffiliateEnabled] = useState(false)
+  const [affiliateCommissionPct, setAffiliateCommissionPct] = useState('10')
+  const [savingAffiliate, setSavingAffiliate] = useState(false)
+
   // Trial Config State
   const [trialDays, setTrialDays] = useState(30)
   const [trialFeatures, setTrialFeatures] = useState({
@@ -101,15 +106,19 @@ export default function AdminSettings() {
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['trial_duration_days', 'trial_features'])
+        .in('key', ['trial_duration_days', 'trial_features', 'affiliate_enabled', 'affiliate_commission_pct'])
       
       const days = data?.find(i => i.key === 'trial_duration_days')?.value
       const features = data?.find(i => i.key === 'trial_features')?.value
+      const affEnabled = data?.find(i => i.key === 'affiliate_enabled')?.value
+      const affComm = data?.find(i => i.key === 'affiliate_commission_pct')?.value
       
       if (days) setTrialDays(Number(days))
       if (features && typeof features === 'object') {
         setTrialFeatures(features as any)
       }
+      if (affEnabled !== undefined) setAffiliateEnabled(affEnabled === 'true' || affEnabled === true)
+      if (affComm !== undefined) setAffiliateCommissionPct(String(affComm))
     }
     loadTrialSettings()
   }, [])
@@ -248,6 +257,34 @@ export default function AdminSettings() {
       })
     } finally {
       setSavingTrial(false)
+    }
+  }
+
+  async function saveAffiliateSettings() {
+    setSavingAffiliate(true)
+    try {
+      const updates = [
+        { key: 'affiliate_enabled', value: affiliateEnabled },
+        { key: 'affiliate_commission_pct', value: Number(affiliateCommissionPct) },
+      ]
+      for (const update of updates) {
+        const { data: existing } = await supabase.from('app_settings').select('key').eq('key', update.key).maybeSingle()
+        if (existing) {
+          await supabase.from('app_settings').update({ value: update.value }).eq('key', update.key)
+        } else {
+          await supabase.from('app_settings').insert({ key: update.key, value: update.value })
+        }
+      }
+      await loadFeatureFlags()
+      toast({ title: '✅ Pengaturan Afiliasi Tersimpan' })
+    } catch (err: any) {
+      toast({ 
+        title: 'Gagal Menyimpan', 
+        description: err.message, 
+        variant: 'destructive' 
+      })
+    } finally {
+      setSavingAffiliate(false)
     }
   }
 
@@ -540,6 +577,74 @@ export default function AdminSettings() {
            <Button onClick={saveBankDetails} disabled={savingBank} className="w-full sm:w-auto gap-2">
              {savingBank ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
              Simpan Detail Rekening
+           </Button>
+        </div>
+      </div>
+
+      {/* ── Affiliate Program Settings ── */}
+      <div className="bg-white border border-slate-100 rounded-[32px] p-6 sm:p-10 shadow-sm space-y-6">
+        <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+          <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+            <Percent className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-navy">Program Afiliasi</h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+              Komisi & Pengaturan Referral
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="space-y-1">
+                <Label className="text-sm font-bold text-navy">Status Afiliasi</Label>
+                <p className="text-xs text-slate-500">Aktifkan atau nonaktifkan fitur afiliasi untuk semua pengguna.</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setAffiliateEnabled(!affiliateEnabled)} 
+                className={`transition-colors p-2 rounded-xl ${affiliateEnabled ? 'text-emerald-500 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}
+              >
+                {affiliateEnabled ? <ToggleRight className="h-8 w-8" /> : <ToggleLeft className="h-8 w-8" />}
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+               <Label className="text-[10px] font-black uppercase text-slate-400 ml-1">Komisi Afiliasi (%)</Label>
+               <div className="relative">
+                 <Input 
+                   type="number" 
+                   min="0" 
+                   max="100" 
+                   value={affiliateCommissionPct} 
+                   onChange={e => setAffiliateCommissionPct(e.target.value)} 
+                   className="pl-4 pr-10 h-16 rounded-2xl font-bold text-lg" 
+                 />
+                 <span className="absolute right-4 top-5 font-bold text-slate-400">%</span>
+               </div>
+               <p className="text-[10px] text-slate-500 ml-1">Persentase dari total invoice yang akan diberikan ke referrer.</p>
+            </div>
+          </div>
+          
+          <div className="bg-blue-50/50 rounded-2xl p-6 border border-blue-100 space-y-3">
+             <div className="flex items-center gap-2 text-blue-600">
+               <Info className="h-5 w-5" />
+               <span className="font-bold text-sm">Info Program Afiliasi</span>
+             </div>
+             <ul className="text-xs text-blue-800 space-y-2 pl-4 list-disc">
+               <li>Setiap pengguna akan otomatis mendapatkan kode referral unik (misal: PRFS-A1B2).</li>
+               <li>Jika Status Afiliasi <strong>NONAKTIF</strong>, tab "Afiliasi" di profil pengguna akan menampilkan status "Segera Hadir".</li>
+               <li>Jika <strong>AKTIF</strong>, komisi akan otomatis dihitung dan dimasukkan ke tabel <code>referral_earnings</code> saat invoice lunas.</li>
+             </ul>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-slate-50">
+           <Button onClick={saveAffiliateSettings} disabled={savingAffiliate} className="w-full sm:w-auto h-14 rounded-2xl px-8 gap-2 bg-navy hover:bg-navy/90 text-white font-bold">
+             {savingAffiliate ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+             Simpan Pengaturan Afiliasi
            </Button>
         </div>
       </div>

@@ -55,6 +55,11 @@ export default function AuthPage() {
   const [regError, setRegError] = useState('')
   const [regSuccess, setRegSuccess] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
+  
+  const [referralCode, setReferralCode] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('ref') || ''
+  })
 
   // CAPTCHA State
   const [captchaNum1, setCaptchaNum1] = useState(0)
@@ -169,7 +174,7 @@ export default function AuthPage() {
     }
 
     try {
-      const result = await signUp(regEmail, regPass, regName, regCompany, regPhone)
+      const result = await signUp(regEmail, regPass, regName, regCompany, regPhone, referralCode)
       
       if (result.needsConfirmation) {
         // Email confirmation required — store plan so it persists after login
@@ -448,7 +453,19 @@ export default function AuthPage() {
                     )}
                   </div>
                   
-
+                  <div className="space-y-2.5">
+                    <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Kode Referral (Opsional)</Label>
+                    <div className="relative">
+                      <Input 
+                        className="pl-4 h-16 rounded-2xl bg-white uppercase placeholder:normal-case font-bold" 
+                        type="text" 
+                        placeholder="Masukkan kode referral jika ada" 
+                        value={referralCode} 
+                        onChange={e => setReferralCode(e.target.value.toUpperCase())} 
+                      />
+                    </div>
+                    {referralCode && <p className="text-[10px] text-emerald-600 ml-1 mt-1 font-medium">Kode terdeteksi. Bonus referral akan aktif jika kode valid.</p>}
+                  </div>
 
                   {/* Math CAPTCHA */}
                   <div className="space-y-2.5 p-4 bg-slate-50 border border-slate-100 rounded-2xl">

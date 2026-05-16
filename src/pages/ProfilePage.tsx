@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Building2, Phone, Mail, LogOut, Lock, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, User, Building2, Phone, Mail, LogOut, Lock, Eye, EyeOff, Gift, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,7 +18,7 @@ import { toast } from '@/hooks/use-toast'
 
 export default function ProfilePage() {
   const navigate = useNavigate()
-  const { profile, user, subscription, signOut, refreshProfile } = useAuthStore()
+  const { profile, user, subscription, signOut, refreshProfile, isAffiliateEnabled } = useAuthStore()
   const { currentPlan, isSubscriptionEnabled } = useSubscription()
 
   const [fullName, setFullName] = useState(profile?.full_name ?? '')
@@ -154,6 +154,52 @@ export default function ProfilePage() {
 
         {/* Subscription + Invoice */}
         <SubscriptionCard variant="full" />
+
+        {/* Affiliate Program */}
+        <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Gift className="h-4 w-4 text-emerald-600" />
+            <h2 className="font-semibold text-base">Program Afiliasi</h2>
+          </div>
+          
+          {isAffiliateEnabled ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Bagikan link ini ke kolega Anda. Dapatkan komisi untuk setiap pengguna yang berlangganan PropFS melalui link Anda.</p>
+              
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-500 uppercase">Link Referral Anda</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    readOnly 
+                    value={`https://propfs.id/auth?ref=${profile?.referral_code || ''}`} 
+                    className="bg-muted font-mono text-sm"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://propfs.id/auth?ref=${profile?.referral_code || ''}`);
+                      toast({ title: 'Disalin!', description: 'Link referral berhasil disalin ke clipboard.' });
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-500 uppercase">Kode Referral</Label>
+                <div className="font-mono text-lg font-bold text-navy">{profile?.referral_code || '—'}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-2">
+              <div className="w-10 h-10 bg-gold/20 text-gold rounded-full flex items-center justify-center mb-1">
+                <Gift className="h-5 w-5" />
+              </div>
+              <h3 className="font-bold text-navy">Fitur Afiliasi Segera Hadir!</h3>
+              <p className="text-xs text-muted-foreground max-w-sm">Dapatkan penghasilan tambahan dengan mereferensikan PropFS ke kolega Anda. Fitur ini akan segera dibuka untuk umum.</p>
+            </div>
+          )}
+        </div>
 
         {/* Change Password */}
         <form onSubmit={handleChangePassword} className="bg-card border border-border rounded-2xl p-6 space-y-4">
