@@ -36,7 +36,7 @@ export default function ResetPasswordPage() {
   // Validasi kekuatan password
   const passwordStrength = {
     length: newPassword.length >= 8,
-    hasNumber: /\\d/.test(newPassword),
+    hasNumber: /[0-9]/.test(newPassword),
     hasUpper: /[A-Z]/.test(newPassword),
   }
   const isPasswordStrong = Object.values(passwordStrength).every(Boolean)
