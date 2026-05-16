@@ -37,10 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2. Query subscriptions expiring in 14 days
     const { data: expiringSubs, error: subsError } = await supabase
       .from('subscriptions')
-      .select('user_id, plan_id, expires_at, id')
+      .select('user_id, plan_id, expired_at, id')
       .eq('status', 'active')
-      .gte('expires_at', startOfDay.toISOString())
-      .lte('expires_at', endOfDay.toISOString());
+      .gte('expired_at', startOfDay.toISOString())
+      .lte('expired_at', endOfDay.toISOString());
 
     if (subsError) throw new Error(`Query Error: ${subsError.message}`);
 
@@ -89,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
             <h2 style="color: #0f172a;">Pengingat Masa Aktif PropFS</h2>
             <p>Halo ${profile.full_name},</p>
-            <p>Masa aktif paket <strong>${sub.plan_id.toUpperCase()}</strong> Anda akan berakhir dalam <strong>14 hari</strong> pada tanggal ${new Date(sub.expires_at).toLocaleDateString('id-ID')}.</p>
+            <p>Masa aktif paket <strong>${sub.plan_id.toUpperCase()}</strong> Anda akan berakhir dalam <strong>14 hari</strong> pada tanggal ${new Date(sub.expired_at).toLocaleDateString('id-ID')}.</p>
             <p>Pastikan Anda memperpanjang layanan agar proyek, RAB, dan data Cost Control Anda tetap dapat diakses tanpa hambatan.</p>
             <br>
             <a href="https://propfs.id/payment?plan_id=${sub.plan_id}" style="background-color: #d4af37; color: #111; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Perpanjang Sekarang</a>

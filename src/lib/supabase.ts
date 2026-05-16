@@ -142,7 +142,7 @@ export interface Subscription {
   plan_id:            PlanId
   status:             'active' | 'expired' | 'cancelled'
   started_at:         string | null
-  expires_at:         string | null
+  expired_at:         string | null
   midtrans_order_id:  string | null
   created_at:         string
   plan?:              SubscriptionPlan

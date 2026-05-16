@@ -90,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             plan_id: invoice.plan_id,
             status: 'active',
             started_at: now.toISOString(),
-            expires_at: expiresAt.toISOString(),
+            expired_at: expiresAt.toISOString(),
             midtrans_order_id: order_id,
           }, { onConflict: 'user_id' });
         }

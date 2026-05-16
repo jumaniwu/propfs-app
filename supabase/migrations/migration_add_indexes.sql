@@ -18,7 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_created_at ON invoices(created_at DESC);
 -- Mempercepat pengecekan status langganan saat login
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_expires_at ON subscriptions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_expired_at ON subscriptions(expired_at);
 
 -- 4. Optimasi tabel logs (Email & AI)
 -- Mempercepat audit trail dan dashboard admin
