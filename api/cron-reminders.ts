@@ -82,7 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let emailStatus = 'sent';
       let messageId = 'simulated_id';
 
-      if (process.env.RESEND_API_KEY) {
+      const resendKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
+
+      if (resendKey) {
         const emailHtml = `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
             <h2 style="color: #0f172a;">Pengingat Masa Aktif PropFS</h2>
@@ -101,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
+              'Authorization': `Bearer ${resendKey}`
             },
             body: JSON.stringify({
               from: 'PropFS <noreply@propfs.id>',
