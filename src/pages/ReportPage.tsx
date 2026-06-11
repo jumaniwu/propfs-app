@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Printer, Download, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -194,13 +194,34 @@ export default function ReportPage() {
                       : t.jumlahUnit
                     const lblt = isApt ? '-' : `${t.luasBangunan}/${t.luasKavling}`
                     
+                    if (!isApt) {
+                      return (
+                        <tr key={t.id}>
+                          <td className="px-4 py-2 font-medium">{t.nama || 'Tanpa Nama'}</td>
+                          <td className="px-4 py-2 text-right capitalize">{t.kategori || 'landed'}</td>
+                          <td className="px-4 py-2 text-right">{lblt}</td>
+                          <td className="px-4 py-2 text-right font-bold">{units}</td>
+                        </tr>
+                      )
+                    }
+
                     return (
-                      <tr key={t.id}>
-                        <td className="px-4 py-2 font-medium">{t.nama || 'Tanpa Nama'}</td>
-                        <td className="px-4 py-2 text-right capitalize">{t.kategori || 'landed'}</td>
-                        <td className="px-4 py-2 text-right">{lblt}</td>
-                        <td className="px-4 py-2 text-right font-bold">{units}</td>
-                      </tr>
+                      <Fragment key={t.id}>
+                        <tr className="bg-gray-50/50">
+                          <td className="px-4 py-2 font-bold text-navy">{t.nama || 'Tanpa Nama'}</td>
+                          <td className="px-4 py-2 text-right capitalize font-medium">{t.kategori || 'apartemen'}</td>
+                          <td className="px-4 py-2 text-right text-gray-500">-</td>
+                          <td className="px-4 py-2 text-right font-bold text-navy">{units}</td>
+                        </tr>
+                        {t.tipeUnit?.map((u, idx) => (
+                          <tr key={`${t.id}-unit-${u.id || idx}`} className="text-gray-600 bg-white border-t border-gray-50 border-dashed">
+                            <td className="px-4 py-1 pl-8 text-sm">↳ Tipe {u.nama || 'Tanpa Nama'}</td>
+                            <td className="px-4 py-1 text-right text-xs">Unit Apartemen</td>
+                            <td className="px-4 py-1 text-right text-sm">{u.luasSemigross} m² (NSA)</td>
+                            <td className="px-4 py-1 text-right font-medium">{u.jumlahUnit}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     )
                   })}
                   <tr className="bg-gray-50 font-bold">
