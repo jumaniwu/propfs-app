@@ -171,6 +171,47 @@ export default function ReportPage() {
 
           <KPICards results={r} />
 
+          {/* Rencana Tipe Bangunan */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mt-6 mb-6">
+            <div className="bg-navy text-white px-4 py-2 font-serif font-medium">
+              Rencana Tipe Bangunan & Jumlah Unit
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-gray-50 text-gray-600 border-b">
+                  <tr>
+                    <th className="px-4 py-2">Nama Tipe</th>
+                    <th className="px-4 py-2 text-right">Kategori</th>
+                    <th className="px-4 py-2 text-right">LB/LT (m²)</th>
+                    <th className="px-4 py-2 text-right">Jumlah Unit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {inp.tipeBangunan.map(t => {
+                    const isApt = t.kategori === 'apartemen'
+                    const units = isApt 
+                      ? (t.tipeUnit?.reduce((acc, u) => acc + u.jumlahUnit, 0) || 0)
+                      : t.jumlahUnit
+                    const lblt = isApt ? '-' : `${t.luasBangunan}/${t.luasKavling}`
+                    
+                    return (
+                      <tr key={t.id}>
+                        <td className="px-4 py-2 font-medium">{t.nama || 'Tanpa Nama'}</td>
+                        <td className="px-4 py-2 text-right capitalize">{t.kategori || 'landed'}</td>
+                        <td className="px-4 py-2 text-right">{lblt}</td>
+                        <td className="px-4 py-2 text-right font-bold">{units}</td>
+                      </tr>
+                    )
+                  })}
+                  <tr className="bg-gray-50 font-bold">
+                    <td className="px-4 py-2" colSpan={3}>Total Keseluruhan</td>
+                    <td className="px-4 py-2 text-right text-navy">{r.totalUnit}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="bg-navy/5 rounded-xl p-5 space-y-3">
             <h3 className="font-serif font-semibold text-navy">Kesimpulan & Rekomendasi</h3>
             <div className="text-sm space-y-2 text-gray-700">
