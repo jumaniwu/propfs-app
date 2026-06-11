@@ -104,6 +104,10 @@ export default function ReportPage() {
           body {
             background-color: white !important;
           }
+          #report-content {
+            max-width: 100% !important;
+            margin: 0 !important;
+          }
           .sticky {
             position: static !important;
           }
@@ -233,7 +237,7 @@ export default function ReportPage() {
             </div>
           </div>
 
-          <div className="bg-navy/5 rounded-xl p-5 space-y-3">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 space-y-3">
             <h3 className="font-serif font-semibold text-navy">Kesimpulan & Rekomendasi</h3>
             <div className="text-sm space-y-2 text-gray-700">
               <p>
