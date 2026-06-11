@@ -92,7 +92,7 @@ export default function ReportPage() {
         @media print {
           @page {
             margin: 15mm 20mm;
-            size: auto;
+            size: A4 portrait;
           }
           @page :first {
             margin: 0;
