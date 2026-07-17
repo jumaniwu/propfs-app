@@ -17,6 +17,11 @@ export interface SiteplanFormState {
   comEnabled: boolean; comW: number; comD: number; comMax: number
   towerW: number; towerD: number; towerCount: number
   mixTowerEnabled?: boolean
+  mixRumah?: boolean
+  mixRuko?: boolean
+  mixPlaza?: boolean
+  plazaW?: number
+  plazaD?: number
 }
 
 export interface SavedSiteplan {

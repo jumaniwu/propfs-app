@@ -27,6 +27,10 @@ export interface AIKonsepResult {
     towerW: number; towerD: number; towerCount: number
     rthPct: number; fasumPct: number
   }>
+  /** saran jumlah unit yang wajar untuk luas lahan (opsional) */
+  units: Partial<{ rumah: number; ruko: number }>
+  /** saran jumlah lantai per jenis bangunan (untuk render) */
+  floors: Partial<{ rumah: number; ruko: number; tower: number }>
   /** catatan/alasan penataan dari AI, bahasa Indonesia */
   notes: string
 }
@@ -42,10 +46,11 @@ Identifikasi:
 2. Posisi JALAN UTAMA (jalan raya eksisting terbesar) relatif terhadap lahan — sebutkan sisi/arah (mis. "sisi barat laut lahan, jalan raya besar di kiri gambar").
 3. Zona-zona yang digambar (warna/label) beserta posisinya di lahan.
 4. Saran parameter wajar untuk konsep tsb (dimensi kavling/ruko/tower dalam meter, jumlah tower, target RTH %).
-5. Catatan penataan singkat ala arsitek profesional (aksesibilitas, orientasi komersial ke jalan utama, buffer hunian, dsb).
+5. KEBUTUHAN UNIT: perkirakan jumlah unit yang wajar untuk luas lahan ini (jumlah rumah, jumlah ruko) dan jumlah lantai tiap jenis bangunan (rumah/ruko/tower).
+6. Catatan penataan singkat ala arsitek profesional (aksesibilitas, orientasi komersial ke jalan utama, buffer hunian, dsb).
 
 Balas HANYA JSON valid tanpa teks lain, format:
-{"concept":"mixed","jalanUtama":"...","zones":[{"type":"ruko","posisi":"..."}],"params":{"rukoW":5,"rukoD":15,"towerW":20,"towerD":30,"towerCount":1,"lotW":6,"lotD":12,"rthPct":10},"notes":"..."}`
+{"concept":"mixed","jalanUtama":"...","zones":[{"type":"ruko","posisi":"..."}],"params":{"rukoW":5,"rukoD":15,"towerW":20,"towerD":30,"towerCount":1,"lotW":6,"lotD":12,"rthPct":10},"units":{"rumah":60,"ruko":24},"floors":{"rumah":2,"ruko":3,"tower":15},"notes":"..."}`
 
 function fileToBase64(file: File): Promise<{ data: string; mime: string }> {
   return new Promise((resolve, reject) => {
@@ -172,6 +177,8 @@ export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> 
       ? parsed.zones.map(z => ({ type: String(z.type ?? '-'), posisi: String(z.posisi ?? '-') }))
       : [],
     params: typeof parsed.params === 'object' && parsed.params ? parsed.params : {},
+    units: typeof parsed.units === 'object' && parsed.units ? parsed.units : {},
+    floors: typeof parsed.floors === 'object' && parsed.floors ? parsed.floors : {},
     notes: String(parsed.notes ?? '').trim(),
   }
 }

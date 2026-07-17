@@ -14,6 +14,7 @@ export const PARCEL_COLORS: Record<ParcelType | 'boundary', { fill: string; stro
   fasum: { fill: '#64b5f6', stroke: '#3d7fb5' },
   tower: { fill: '#9fa8da', stroke: '#5c6bc0' },
   parkir: { fill: '#eceff1', stroke: '#a7b6bd' },
+  plaza: { fill: '#80deea', stroke: '#31a3b5' },
   boundary: { fill: 'none', stroke: '#22303c' },
 }
 
@@ -25,12 +26,14 @@ export const PARCEL_TYPE_LABELS: Record<ParcelType, string> = {
   rth: 'RTH / Taman',
   tower: 'Tower (Apartemen/Hotel)',
   parkir: 'Parkir',
+  plaza: 'Foodcourt / Plaza',
 }
 
 const LEGEND_ITEMS: Array<[ParcelType, string]> = [
   ['kavling', 'Kavling Rumah'],
   ['komersial', 'Komersial (Ruko)'],
   ['tower', 'Tower'],
+  ['plaza', 'Foodcourt/Plaza'],
   ['parkir', 'Parkir'],
   ['jalan', 'Jalan'],
   ['fasum', 'Fasum / Fasos'],
@@ -42,10 +45,11 @@ const LABEL_COLORS: Partial<Record<ParcelType, string>> = {
   fasum: '#1d4f7a',
   tower: '#33397a',
   parkir: '#546e7a',
+  plaza: '#0d5b66',
 }
 
 const DRAW_ORDER: Record<ParcelType, number> = {
-  jalan: 0, parkir: 1, rth: 2, fasum: 3, kavling: 4, komersial: 5, tower: 6,
+  jalan: 0, parkir: 1, rth: 2, fasum: 3, kavling: 4, komersial: 5, plaza: 6, tower: 7,
 }
 
 export interface RendererOptions {

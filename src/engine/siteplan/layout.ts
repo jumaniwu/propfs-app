@@ -10,7 +10,7 @@ import {
   bbox, dist, polygonArea, clipPolyToRect, rectFullyInside, rectToPoly,
 } from './geometry.ts'
 
-export type ParcelType = 'kavling' | 'jalan' | 'rth' | 'fasum' | 'komersial' | 'tower' | 'parkir'
+export type ParcelType = 'kavling' | 'jalan' | 'rth' | 'fasum' | 'komersial' | 'tower' | 'parkir' | 'plaza'
 
 /**
  * Konsep pembangunan:
@@ -33,7 +33,7 @@ export interface Parcel {
 }
 
 export interface SiteplanParams {
-  lot: { w: number; d: number }
+  lot: { w: number; d: number; maxCount?: number }
   road: { main: number; secondary: number }
   rthPct: number
   fasumPct: number
@@ -43,8 +43,12 @@ export interface SiteplanParams {
   concept?: SiteplanConcept
   /** Dimensi tower untuk konsep apartemen/hotel (dan mixed bila mixTower). */
   tower?: { w: number; d: number; count: number }
-  /** Konsep mixed: sertakan tower apartemen di frontage (ruko + rumah + tower). */
+  /** Konsep mixed (lama): sertakan tower apartemen di frontage. Dipertahankan untuk kompatibilitas. */
   mixTower?: boolean
+  /** Konsep mixed: pilihan komponen yang disertakan. Default {rumah,ruko}=true. */
+  mix?: { rumah: boolean; ruko: boolean; tower: boolean; plaza: boolean }
+  /** Dimensi blok foodcourt/commercial plaza untuk komponen mixed. */
+  plaza?: { w: number; d: number }
   /**
    * Index sisi boundary (setelah normalisasi CCW) yang menghadap jalan utama:
    * sisi i = titik i → titik i+1. Kosong = otomatis (sisi terpanjang).
@@ -101,6 +105,7 @@ export function defaultSiteplanParams(): SiteplanParams {
     blockMaxLen: 60,
     concept: 'perumahan',
     tower: { w: 20, d: 30, count: 1 },
+    plaza: { w: 30, d: 20 },
   }
 }
 
@@ -467,8 +472,21 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     lot: { ...inputParams.lot },
     commercial: { ...inputParams.commercial },
     tower: { w: 20, d: 30, count: 1, ...inputParams.tower },
+    plaza: { w: 30, d: 20, ...inputParams.plaza },
   }
-  if (concept === 'mixed') params.commercial.enabled = true
+  // konfigurasi komponen mixed (kompatibel param lama mixTower)
+  const mix = concept === 'mixed'
+    ? {
+        rumah: inputParams.mix?.rumah ?? true,
+        ruko: inputParams.mix?.ruko ?? true,
+        tower: inputParams.mix?.tower ?? inputParams.mixTower === true,
+        plaza: inputParams.mix?.plaza ?? false,
+      }
+    : null
+  if (mix && !mix.rumah && !mix.ruko && !mix.tower && !mix.plaza) {
+    throw new Error('Pilih minimal satu komponen Mixed-Use (rumah/ruko/tower/plaza).')
+  }
+  if (concept === 'mixed') params.commercial.enabled = mix!.ruko
   if (concept === 'ruko') {
     // seluruh baris memakai dimensi ruko
     params.lot = { w: params.commercial.w, d: params.commercial.d }
@@ -492,13 +510,20 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   }
 
   const com = params.commercial
-  // mixed + tower: frontage berisi tower + ruko sekaligus
-  const mixTower = concept === 'mixed' && params.mixTower === true && (params.tower?.count ?? 0) > 0
-  const firstRowDepth = isTower
-    ? params.tower!.d
-    : mixTower
-      ? Math.max(params.tower!.d, com.d > params.lot.d ? com.d : params.lot.d)
-      : com.enabled && com.d > params.lot.d ? com.d : null
+  // mixed: kedalaman baris frontage = komponen terdalam yang dipilih
+  let firstRowDepth: number | null = null
+  if (isTower) {
+    firstRowDepth = params.tower!.d
+  } else if (mix) {
+    const depths = [params.lot.d]
+    if (mix.ruko) depths.push(com.d)
+    if (mix.tower && (params.tower?.count ?? 0) > 0) depths.push(params.tower!.d)
+    if (mix.plaza) depths.push(params.plaza!.d)
+    const maxD = Math.max(...depths)
+    firstRowDepth = maxD > params.lot.d ? maxD : null
+  } else if (com.enabled && com.d > params.lot.d) {
+    firstRowDepth = com.d
+  }
   const bands = buildBands(bb, params, firstRowDepth)
   // konsep tower: sirkulasi cukup jalan horizontal, tanpa jalan lingkungan vertikal
   const crossRoads = isTower ? [] : crossRoadXs(bb, params)
@@ -539,6 +564,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   let allRemnants: Point[][] = []
   let comCells: Cell[] = []
   const towerParcels: ProtoParcel[] = []
+  const plazaParcels: ProtoParcel[] = []
   const parkirPolys: Point[][] = []
 
   if (isTower) {
@@ -586,57 +612,97 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
       throw new Error('Tower tidak muat di dalam batas lahan. Kecilkan dimensi tower.')
     }
   } else rowBands.forEach((band, bi) => {
-    if (com.enabled && band.first && comCells.length < com.maxCount) {
+    const pushParkirStrip = (x1: number, y1: number, x2: number, y2: number) => {
+      if (y2 - y1 <= 0.01 || x2 - x1 <= 0.01) return
+      const piece = clipPolyToRect(rotB, { x1, y1, x2, y2 })
+      if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
+    }
+
+    if (mix && band.first) {
+      // ===== frontage mixed: blok besar (tower/plaza) + ruko + rumah =====
       let bandIntervals = intervals
-      // mixed + tower: tempatkan tower dulu di tengah frontage
-      if (mixTower) {
+      const bigBlocks: Array<{ w: number; d: number; type: 'tower' | 'plaza'; label: string }> = []
+      if (mix.tower && (params.tower?.count ?? 0) > 0) {
         const tw = params.tower!
+        for (let i = 0; i < tw.count; i++) {
+          bigBlocks.push({ w: tw.w, d: tw.d, type: 'tower', label: tw.count > 1 ? `TOWER-${i + 1}` : 'TOWER' })
+        }
+      }
+      if (mix.plaza) {
+        const pz = params.plaza!
+        bigBlocks.push({ w: pz.w, d: pz.d, type: 'plaza', label: 'PLAZA' })
+      }
+      if (bigBlocks.length) {
+        // tiap blok mencari posisi muat terdekat dari tengah frontage (greedy),
+        // sehingga di lahan miring/tidak beraturan blok tetap terpasang semua
         const gap = params.road.secondary
         const cx = (bb.minX + bb.maxX) / 2
-        let placed: Rect[] = []
-        for (let n = tw.count; n >= 1 && placed.length === 0; n--) {
-          const total = n * tw.w + (n - 1) * gap
-          const candidate: Rect[] = []
-          for (let i = 0; i < n; i++) {
-            const x1 = cx - total / 2 + i * (tw.w + gap)
-            const rect: Rect = { x1, y1: band.y1, x2: x1 + tw.w, y2: Math.min(band.y1 + tw.d, band.y2) }
-            if (rectFullyInside(rect, rotB)) candidate.push(rect)
+        const step = Math.max(2, params.lot.w / 2)
+        const placedRects: Rect[] = []
+        let placedCount = 0
+        for (const b of bigBlocks) {
+          let placedRect: Rect | null = null
+          for (let k = 0; k <= 400 && !placedRect; k++) {
+            for (const sign of k === 0 ? [1] : [-1, 1]) {
+              const x1 = cx - b.w / 2 + sign * k * step
+              const rect: Rect = { x1, y1: band.y1, x2: x1 + b.w, y2: Math.min(band.y1 + b.d, band.y2) }
+              if (rect.x1 < bb.minX || rect.x2 > bb.maxX) continue
+              if (!rectFullyInside(rect, rotB)) continue
+              if (placedRects.some(r => rect.x1 < r.x2 + gap && rect.x2 > r.x1 - gap)) continue
+              placedRect = rect
+              break
+            }
           }
-          if (candidate.length === n) placed = candidate
+          if (!placedRect) continue
+          placedRects.push(placedRect)
+          placedCount++
+          const proto: ProtoParcel = { type: b.type, polygon: rectToPoly(placedRect), label: b.label }
+          if (b.type === 'tower') towerParcels.push(proto)
+          else plazaParcels.push(proto)
+          pushParkirStrip(placedRect.x1, placedRect.y2, placedRect.x2, band.y2)
         }
-        if (placed.length < tw.count) {
-          warnings.push(`Hanya ${placed.length} dari ${tw.count} tower yang muat di frontage.`)
+        if (placedCount < bigBlocks.length) {
+          warnings.push(`Hanya ${placedCount} dari ${bigBlocks.length} blok besar (tower/plaza) yang muat di frontage.`)
         }
-        placed.forEach((rect, i) => {
-          towerParcels.push({
-            type: 'tower',
-            polygon: rectToPoly(rect),
-            label: placed.length > 1 ? `TOWER-${i + 1}` : 'TOWER',
-          })
-          // strip di belakang tower (bila band lebih dalam) → parkir/servis
-          if (band.y2 - rect.y2 > 0.01) {
-            const piece = clipPolyToRect(rotB, { x1: rect.x1, y1: rect.y2, x2: rect.x2, y2: band.y2 })
-            if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
-          }
-        })
-        bandIntervals = subtractIntervals(intervals, placed.map(r => [r.x1, r.x2] as Interval))
+        bandIntervals = subtractIntervals(intervals, placedRects.map(r => [r.x1, r.x2] as Interval))
       }
-      // baris frontage: iris dengan dimensi ruko dulu (dari kiri), sisanya kavling
-      const rukoDepth = Math.min(com.d, band.y2 - band.y1)
-      const rukoBand: Band = { ...band, y2: band.y1 + rukoDepth }
-      const res = sliceRow(rukoBand, bandIntervals, rotB, { w: com.w, d: rukoDepth })
+      if (mix.ruko) {
+        const rukoDepth = Math.min(com.d, band.y2 - band.y1)
+        const rukoBand: Band = { ...band, y2: band.y1 + rukoDepth }
+        const res = sliceRow(rukoBand, bandIntervals, rotB, { w: com.w, d: rukoDepth })
+        const take = Math.min(com.maxCount, res.cells.length)
+        comCells = res.cells.slice(0, take)
+        for (const iv of bandIntervals) pushParkirStrip(iv[0], rukoBand.y2, iv[1], band.y2)
+        const restIntervals = subtractIntervals(bandIntervals, comCells.map(c => [c.rect.x1, c.rect.x2] as Interval))
+        if (mix.rumah) {
+          const res2 = sliceRow(rukoBand, restIntervals, rotB, { w: params.lot.w, d: rukoDepth })
+          for (const c of res2.cells) { c.bandIndex = bi; allCells.push(c) }
+          allRemnants = allRemnants.concat(res2.remnants)
+        } else {
+          for (const iv of restIntervals) pushParkirStrip(iv[0], rukoBand.y1, iv[1], rukoBand.y2)
+        }
+      } else if (mix.rumah) {
+        const rowDepth = Math.min(params.lot.d, band.y2 - band.y1)
+        const rowBand: Band = { ...band, y2: band.y1 + rowDepth }
+        const r = sliceRow(rowBand, bandIntervals, rotB, { w: params.lot.w, d: rowDepth })
+        for (const c of r.cells) { c.bandIndex = bi; allCells.push(c) }
+        allRemnants = allRemnants.concat(r.remnants)
+        for (const iv of bandIntervals) pushParkirStrip(iv[0], rowBand.y2, iv[1], band.y2)
+      } else {
+        // hanya tower/plaza: sisa frontage jadi parkir
+        for (const iv of bandIntervals) pushParkirStrip(iv[0], band.y1, iv[1], band.y2)
+      }
+    } else if (mix && !mix.rumah) {
+      // ===== mixed tanpa rumah: baris belakang menjadi parkir =====
+      for (const iv of intervals) pushParkirStrip(iv[0], band.y1, iv[1], band.y2)
+    } else if (com.enabled && band.first && comCells.length < com.maxCount) {
+      // baris frontage (perumahan + opsi ruko): iris ruko dulu, sisanya kavling
+      const res = sliceRow(band, intervals, rotB, { w: com.w, d: band.y2 - band.y1 })
       const take = Math.min(com.maxCount, res.cells.length)
       comCells = res.cells.slice(0, take)
-      // strip di belakang deretan ruko (band lebih dalam karena tower) → parkir
-      if (band.y2 - rukoBand.y2 > 0.01) {
-        for (const iv of bandIntervals) {
-          const piece = clipPolyToRect(rotB, { x1: iv[0], y1: rukoBand.y2, x2: iv[1], y2: band.y2 })
-          if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
-        }
-      }
       const occupied: Interval[] = comCells.map(c => [c.rect.x1, c.rect.x2])
-      const restIntervals = subtractIntervals(bandIntervals, occupied)
-      const res2 = sliceRow(rukoBand, restIntervals, rotB, { w: params.lot.w, d: rukoDepth })
+      const restIntervals = subtractIntervals(intervals, occupied)
+      const res2 = sliceRow(band, restIntervals, rotB, { w: params.lot.w, d: band.y2 - band.y1 })
       for (const c of res2.cells) { c.bandIndex = bi; allCells.push(c) }
       allRemnants = allRemnants.concat(res2.remnants)
     } else {
@@ -654,13 +720,23 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     }
   }
 
-  if (!isTower && allCells.length === 0 && comCells.length === 0) {
+  // batas jumlah rumah (target unit dari kebutuhan/AI): kelebihan → RTH
+  const lotMax = params.lot.maxCount ?? 0
+  if (lotMax > 0 && allCells.length > lotMax) {
+    while (allCells.length > lotMax) {
+      const c = allCells.pop()!
+      allRemnants.push(rectToPoly(c.rect))
+    }
+  }
+
+  if (!isTower && allCells.length === 0 && comCells.length === 0 &&
+      towerParcels.length === 0 && plazaParcels.length === 0) {
     throw new Error('Tidak ada kavling yang muat di dalam batas lahan. Coba kecilkan ukuran kavling atau lebar jalan.')
   }
 
   // --- Fasum & RTH ---
   let alloc: { fasum: ProtoParcel[]; rth: ProtoParcel[] }
-  if (isTower) {
+  if (isTower || allCells.length === 0) {
     // RTH = remnant + konversi petak parkir teratas sampai target terpenuhi
     const rthPolys = allRemnants.slice()
     let rthArea = rthPolys.reduce((s, p) => s + polygonArea(p), 0)
@@ -716,6 +792,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     })
   }
   for (const p of towerParcels) addParcel(p)
+  for (const p of plazaParcels) addParcel(p)
   for (const poly of parkirPolys) addParcel({ type: 'parkir', polygon: poly, label: 'PARKIR' })
   for (const p of alloc.fasum) addParcel(p)
   for (const p of alloc.rth) addParcel(p)
@@ -734,7 +811,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
 
   // --- Statistik ---
   const byTypeArea: Record<ParcelType, number> = {
-    kavling: 0, jalan: 0, rth: 0, fasum: 0, komersial: 0, tower: 0, parkir: 0,
+    kavling: 0, jalan: 0, rth: 0, fasum: 0, komersial: 0, tower: 0, parkir: 0, plaza: 0,
   }
   const counts = { kavling: 0, komersial: 0, tower: 0 }
   for (const p of finalParcels) {
@@ -757,7 +834,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     totalAreaM2: +totalArea.toFixed(2),
     counts,
     byType,
-    efficiencyPct: +((byTypeArea.kavling + byTypeArea.komersial + byTypeArea.tower) / totalArea * 100).toFixed(2),
+    efficiencyPct: +((byTypeArea.kavling + byTypeArea.komersial + byTypeArea.tower + byTypeArea.plaza) / totalArea * 100).toFixed(2),
   }
 
   const sumPct = (Object.keys(stats.byType) as ParcelType[]).reduce((s, t) => s + stats.byType[t].pct, 0)

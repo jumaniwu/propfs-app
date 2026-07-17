@@ -2,11 +2,11 @@
  * Dialog "Render Masterplan": setelah siteplan jadi, AI me-render visual
  * bird-eye view fotorealistis kawasan dari 2-3 sudut pandang.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Palette, Loader2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
+import NumInput from '@/components/siteplan/NumInput'
 import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -22,17 +22,29 @@ import {
 
 interface Props {
   result: SiteplanResult | null
+  /** lantai awal dari kebutuhan proyek (form utama / saran AI) */
+  initialFloors?: { rumah: number; ruko: number; tower: number }
+  /** coretan/draft user sebagai referensi zonasi render */
+  sketchDataUrl?: string | null
 }
 
 const ALL_ANGLES: RenderAngle[] = ['depan', 'sudut', 'belakang']
 
-export default function RenderMasterplanDialog({ result }: Props) {
+export default function RenderMasterplanDialog({ result, initialFloors, sketchDataUrl }: Props) {
   const [open, setOpen] = useState(false)
   const [style, setStyle] = useState<RenderStyle>('modern-minimalis')
   const [timeOfDay, setTimeOfDay] = useState<RenderTime>('siang')
-  const [floorRumah, setFloorRumah] = useState(1)
-  const [floorRuko, setFloorRuko] = useState(2)
-  const [floorTower, setFloorTower] = useState(12)
+  const [floorRumah, setFloorRumah] = useState(initialFloors?.rumah ?? 1)
+  const [floorRuko, setFloorRuko] = useState(initialFloors?.ruko ?? 2)
+  const [floorTower, setFloorTower] = useState(initialFloors?.tower ?? 12)
+  // sinkron bila kebutuhan lantai diubah dari form utama / AI
+  useEffect(() => {
+    if (initialFloors) {
+      setFloorRumah(initialFloors.rumah)
+      setFloorRuko(initialFloors.ruko)
+      setFloorTower(initialFloors.tower)
+    }
+  }, [initialFloors])
   const [angles, setAngles] = useState<RenderAngle[]>(['depan', 'sudut'])
   const [rendering, setRendering] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -58,7 +70,7 @@ export default function RenderMasterplanDialog({ result }: Props) {
       const ordered = ALL_ANGLES.filter(a => angles.includes(a))
       const res = await renderMasterplanViews(
         result,
-        { style, timeOfDay, floors: { rumah: floorRumah, ruko: floorRuko, tower: floorTower }, angles: ordered },
+        { style, timeOfDay, floors: { rumah: floorRumah, ruko: floorRuko, tower: floorTower }, angles: ordered, sketchDataUrl },
         (done, total, label) => {
           setProgress(Math.max(4, (done / total) * 100))
           setStatus(done < total ? `Me-render ${label}… (${done + 1}/${total})` : 'Selesai')
@@ -129,22 +141,19 @@ export default function RenderMasterplanDialog({ result }: Props) {
             {hasRumah && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Lantai Rumah</Label>
-                <Input type="number" min={1} max={3} value={floorRumah}
-                  onChange={e => setFloorRumah(+e.target.value || 1)} />
+                <NumInput value={floorRumah} onValue={setFloorRumah} min={1} max={3} />
               </div>
             )}
             {hasRuko && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Lantai Ruko</Label>
-                <Input type="number" min={1} max={5} value={floorRuko}
-                  onChange={e => setFloorRuko(+e.target.value || 2)} />
+                <NumInput value={floorRuko} onValue={setFloorRuko} min={1} max={5} />
               </div>
             )}
             {hasTower && (
               <div className="space-y-1.5">
                 <Label className="text-xs">Lantai Tower</Label>
-                <Input type="number" min={4} max={50} value={floorTower}
-                  onChange={e => setFloorTower(+e.target.value || 12)} />
+                <NumInput value={floorTower} onValue={setFloorTower} min={4} max={50} />
               </div>
             )}
           </div>
@@ -169,6 +178,11 @@ export default function RenderMasterplanDialog({ result }: Props) {
             </div>
           </div>
 
+          {sketchDataUrl && (
+            <p className="text-[11px] text-muted-foreground">
+              ✓ Draft coretan Anda dipakai sebagai referensi zonasi render.
+            </p>
+          )}
           <Button
             className="w-full h-11 font-bold bg-navy hover:bg-steel"
             disabled={rendering || angles.length === 0}

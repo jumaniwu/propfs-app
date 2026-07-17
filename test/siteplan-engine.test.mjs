@@ -136,6 +136,46 @@ const pMixOld = defaultSiteplanParams()
 pMixOld.concept = 'mixed'
 assert(generateSiteplan(SITEPLAN_PRESETS[0].coords, pMixOld).stats.counts.tower === 0, 'mixed tanpa flag → tidak ada tower')
 
+section('Konsep: mixed checklist komponen')
+// semua komponen: rumah + ruko + tower + plaza
+const pAll = defaultSiteplanParams()
+pAll.concept = 'mixed'
+pAll.mix = { rumah: true, ruko: true, tower: true, plaza: true }
+pAll.tower = { w: 20, d: 30, count: 1 }
+pAll.plaza = { w: 30, d: 20 }
+const rAll = generateSiteplan(SITEPLAN_PRESETS[1].coords, pAll)
+assert(rAll.stats.counts.kavling > 0 && rAll.stats.counts.komersial > 0 && rAll.stats.counts.tower >= 1,
+  'semua komponen hadir (rumah/ruko/tower)')
+assert(rAll.stats.byType.plaza.area > 0, 'plaza hadir (' + rAll.stats.byType.plaza.area + ' m²)')
+// tanpa rumah: ruko + plaza saja
+const pNoHouse = defaultSiteplanParams()
+pNoHouse.concept = 'mixed'
+pNoHouse.mix = { rumah: false, ruko: true, tower: false, plaza: true }
+const rNoHouse = generateSiteplan(SITEPLAN_PRESETS[0].coords, pNoHouse)
+assert(rNoHouse.stats.counts.kavling === 0, 'tanpa rumah: kavling 0')
+assert(rNoHouse.stats.counts.komersial > 0, 'tanpa rumah: ruko tetap ada')
+assert(rNoHouse.stats.byType.plaza.area > 0, 'tanpa rumah: plaza ada')
+assert(rNoHouse.stats.byType.parkir.area > 0, 'tanpa rumah: baris belakang jadi parkir')
+// tidak ada komponen → error
+let threwMix = false
+const pNone = defaultSiteplanParams()
+pNone.concept = 'mixed'
+pNone.mix = { rumah: false, ruko: false, tower: false, plaza: false }
+try { generateSiteplan(SITEPLAN_PRESETS[0].coords, pNone) } catch { threwMix = true }
+assert(threwMix, 'tanpa komponen → error')
+// kompatibilitas: param lama mixTower masih bekerja
+const pCompat = defaultSiteplanParams()
+pCompat.concept = 'mixed'
+pCompat.mixTower = true
+assert(generateSiteplan(SITEPLAN_PRESETS[0].coords, pCompat).stats.counts.tower >= 1, 'kompat mixTower lama')
+
+section('Batas jumlah rumah (lot.maxCount)')
+const pTarget = defaultSiteplanParams()
+pTarget.lot = { w: 6, d: 12, maxCount: 30 }
+const rTarget = generateSiteplan(SITEPLAN_PRESETS[0].coords, pTarget)
+assert(rTarget.stats.counts.kavling <= 30, 'jumlah rumah dibatasi target (' + rTarget.stats.counts.kavling + ' ≤ 30)')
+assert(rTarget.stats.byType.rth.area > 0, 'kelebihan lahan menjadi RTH')
+
 section('Posisi jalan utama (frontageEdge)')
 // persegi panjang: sisi terpanjang = bawah (index 0). Paksa frontage ke sisi kanan (index 1)
 const rectLand = [[0, 0], [200, 0], [200, 80], [0, 80]]
