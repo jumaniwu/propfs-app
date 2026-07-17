@@ -200,7 +200,14 @@ export default function RenderMasterplanDialog({ result, initialFloors, sketchDa
               {views.map((v, i) => (
                 <div key={v.angle} className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-navy">{v.label}</p>
+                    <p className="text-xs font-bold text-navy">
+                      {v.label}
+                      {v.source === 'skematik' && (
+                        <span className="ml-2 text-[10px] font-semibold text-blue-dk bg-blue-lt px-1.5 py-0.5 rounded">
+                          Skematik 3D — geometri akurat
+                        </span>
+                      )}
+                    </p>
                     <Button variant="outline" size="sm" className="h-7 gap-1 text-xs"
                       onClick={() => downloadView(v, i)}>
                       <Download className="h-3 w-3" /> Unduh
