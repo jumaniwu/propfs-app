@@ -7,6 +7,7 @@ import { toast } from './hooks/use-toast'
 import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute, FeatureRoute } from './components/auth/RouteGuards'
 import { supabase } from './lib/supabase'
 import { Button } from './components/ui/button'
+import BottomNav from './components/layout/BottomNav'
 
 // Code-split routes
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -127,6 +128,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </Suspense>
+      <BottomNav />
       <Toaster />
       <PasswordRecoveryModal />
     </BrowserRouter>

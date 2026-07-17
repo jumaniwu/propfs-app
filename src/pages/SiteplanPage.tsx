@@ -308,6 +308,7 @@ export default function SiteplanPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-x-10 gap-y-3 items-start">
+                  <div className="overflow-x-auto w-full lg:w-auto">
                   <table className="text-sm min-w-[380px]">
                     <thead>
                       <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b">
@@ -353,6 +354,7 @@ export default function SiteplanPage() {
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                   {result.warnings.length > 0 && (
                     <div className="space-y-2 max-w-md">
                       {result.warnings.map((w, i) => (
