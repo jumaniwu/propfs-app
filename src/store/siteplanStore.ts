@@ -16,6 +16,7 @@ export interface SiteplanFormState {
   rthPct: number; fasumPct: number
   comEnabled: boolean; comW: number; comD: number; comMax: number
   towerW: number; towerD: number; towerCount: number
+  mixTowerEnabled?: boolean
 }
 
 export interface SavedSiteplan {

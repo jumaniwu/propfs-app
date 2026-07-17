@@ -67,6 +67,7 @@ export default function SiteplanPage() {
   const [comW, setComW] = useState(5)
   const [comD, setComD] = useState(15)
   const [comMax, setComMax] = useState(10)
+  const [mixTowerEnabled, setMixTowerEnabled] = useState(false)
 
   const parsed = useMemo(() => parseManualCoords(coordsText), [coordsText])
   const parsedArea = parsed.points.length >= 3 ? polygonArea(parsed.points) : 0
@@ -126,7 +127,7 @@ export default function SiteplanPage() {
       coordsText,
       concept,
       frontageEdge,
-      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount },
+      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled },
       summary: { totalAreaM2: result.stats.totalAreaM2, units, efficiencyPct: result.stats.efficiencyPct },
     })
     toast({ title: 'Desain tersimpan', description: 'Buka kembali dari daftar "Desain Tersimpan".' })
@@ -143,6 +144,7 @@ export default function SiteplanPage() {
     setRthPct(f.rthPct); setFasumPct(f.fasumPct)
     setComEnabled(f.comEnabled); setComW(f.comW); setComD(f.comD); setComMax(f.comMax)
     setTowerW(f.towerW); setTowerD(f.towerD); setTowerCount(f.towerCount)
+    setMixTowerEnabled(f.mixTowerEnabled ?? false)
     // generate ulang langsung dari data tersimpan (state belum tentu ter-apply)
     setGenError('')
     try {
@@ -155,6 +157,7 @@ export default function SiteplanPage() {
         blockMaxLen: f.blockMaxLen,
         concept: d.concept,
         tower: { w: f.towerW, d: f.towerD, count: f.towerCount },
+        mixTower: d.concept === 'mixed' ? (f.mixTowerEnabled ?? false) : undefined,
         frontageEdge: d.frontageEdge,
       })
       setResult(res)
@@ -215,6 +218,7 @@ export default function SiteplanPage() {
         blockMaxLen,
         concept,
         tower: { w: towerW, d: towerD, count: towerCount },
+        mixTower: concept === 'mixed' ? mixTowerEnabled : undefined,
         frontageEdge,
       })
       setResult(res)
@@ -384,7 +388,7 @@ export default function SiteplanPage() {
                     <SelectItem value="ruko">Ruko / Komersial</SelectItem>
                     <SelectItem value="apartemen">Apartemen (tower + parkir)</SelectItem>
                     <SelectItem value="hotel">Hotel (tower + parkir)</SelectItem>
-                    <SelectItem value="mixed">Mixed-Use (ruko + rumah)</SelectItem>
+                    <SelectItem value="mixed">Mixed-Use (ruko + rumah + tower)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -459,6 +463,38 @@ export default function SiteplanPage() {
                   </div>
                   )}
                 </div>
+                {concept === 'mixed' && (
+                  <div className="mt-3">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={mixTowerEnabled}
+                        onChange={e => setMixTowerEnabled(e.target.checked)}
+                        className="accent-gold h-4 w-4"
+                      />
+                      Sertakan tower apartemen di frontage
+                    </label>
+                    {mixTowerEnabled && (
+                      <div className="grid grid-cols-3 gap-3 mt-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Lebar (m)</Label>
+                          <Input type="number" value={towerW} min={10} step={1}
+                            onChange={e => setTowerW(+e.target.value || 20)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Dalam (m)</Label>
+                          <Input type="number" value={towerD} min={10} step={1}
+                            onChange={e => setTowerD(+e.target.value || 30)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Jml. Tower</Label>
+                          <Input type="number" value={towerCount} min={1} max={10}
+                            onChange={e => setTowerCount(+e.target.value || 1)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               )}
               <div>

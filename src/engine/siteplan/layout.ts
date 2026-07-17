@@ -41,8 +41,10 @@ export interface SiteplanParams {
   blockMaxLen: number
   /** Konsep pembangunan; default 'perumahan' (kompatibel dengan data lama). */
   concept?: SiteplanConcept
-  /** Dimensi tower untuk konsep apartemen/hotel. */
+  /** Dimensi tower untuk konsep apartemen/hotel (dan mixed bila mixTower). */
   tower?: { w: number; d: number; count: number }
+  /** Konsep mixed: sertakan tower apartemen di frontage (ruko + rumah + tower). */
+  mixTower?: boolean
   /**
    * Index sisi boundary (setelah normalisasi CCW) yang menghadap jalan utama:
    * sisi i = titik i → titik i+1. Kosong = otomatis (sisi terpanjang).
@@ -490,9 +492,13 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   }
 
   const com = params.commercial
+  // mixed + tower: frontage berisi tower + ruko sekaligus
+  const mixTower = concept === 'mixed' && params.mixTower === true && (params.tower?.count ?? 0) > 0
   const firstRowDepth = isTower
     ? params.tower!.d
-    : com.enabled && com.d > params.lot.d ? com.d : null
+    : mixTower
+      ? Math.max(params.tower!.d, com.d > params.lot.d ? com.d : params.lot.d)
+      : com.enabled && com.d > params.lot.d ? com.d : null
   const bands = buildBands(bb, params, firstRowDepth)
   // konsep tower: sirkulasi cukup jalan horizontal, tanpa jalan lingkungan vertikal
   const crossRoads = isTower ? [] : crossRoadXs(bb, params)
@@ -581,13 +587,56 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     }
   } else rowBands.forEach((band, bi) => {
     if (com.enabled && band.first && comCells.length < com.maxCount) {
+      let bandIntervals = intervals
+      // mixed + tower: tempatkan tower dulu di tengah frontage
+      if (mixTower) {
+        const tw = params.tower!
+        const gap = params.road.secondary
+        const cx = (bb.minX + bb.maxX) / 2
+        let placed: Rect[] = []
+        for (let n = tw.count; n >= 1 && placed.length === 0; n--) {
+          const total = n * tw.w + (n - 1) * gap
+          const candidate: Rect[] = []
+          for (let i = 0; i < n; i++) {
+            const x1 = cx - total / 2 + i * (tw.w + gap)
+            const rect: Rect = { x1, y1: band.y1, x2: x1 + tw.w, y2: Math.min(band.y1 + tw.d, band.y2) }
+            if (rectFullyInside(rect, rotB)) candidate.push(rect)
+          }
+          if (candidate.length === n) placed = candidate
+        }
+        if (placed.length < tw.count) {
+          warnings.push(`Hanya ${placed.length} dari ${tw.count} tower yang muat di frontage.`)
+        }
+        placed.forEach((rect, i) => {
+          towerParcels.push({
+            type: 'tower',
+            polygon: rectToPoly(rect),
+            label: placed.length > 1 ? `TOWER-${i + 1}` : 'TOWER',
+          })
+          // strip di belakang tower (bila band lebih dalam) → parkir/servis
+          if (band.y2 - rect.y2 > 0.01) {
+            const piece = clipPolyToRect(rotB, { x1: rect.x1, y1: rect.y2, x2: rect.x2, y2: band.y2 })
+            if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
+          }
+        })
+        bandIntervals = subtractIntervals(intervals, placed.map(r => [r.x1, r.x2] as Interval))
+      }
       // baris frontage: iris dengan dimensi ruko dulu (dari kiri), sisanya kavling
-      const res = sliceRow(band, intervals, rotB, { w: com.w, d: band.y2 - band.y1 })
+      const rukoDepth = Math.min(com.d, band.y2 - band.y1)
+      const rukoBand: Band = { ...band, y2: band.y1 + rukoDepth }
+      const res = sliceRow(rukoBand, bandIntervals, rotB, { w: com.w, d: rukoDepth })
       const take = Math.min(com.maxCount, res.cells.length)
       comCells = res.cells.slice(0, take)
+      // strip di belakang deretan ruko (band lebih dalam karena tower) → parkir
+      if (band.y2 - rukoBand.y2 > 0.01) {
+        for (const iv of bandIntervals) {
+          const piece = clipPolyToRect(rotB, { x1: iv[0], y1: rukoBand.y2, x2: iv[1], y2: band.y2 })
+          if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
+        }
+      }
       const occupied: Interval[] = comCells.map(c => [c.rect.x1, c.rect.x2])
-      const restIntervals = subtractIntervals(intervals, occupied)
-      const res2 = sliceRow(band, restIntervals, rotB, { w: params.lot.w, d: band.y2 - band.y1 })
+      const restIntervals = subtractIntervals(bandIntervals, occupied)
+      const res2 = sliceRow(rukoBand, restIntervals, rotB, { w: params.lot.w, d: rukoDepth })
       for (const c of res2.cells) { c.bandIndex = bi; allCells.push(c) }
       allRemnants = allRemnants.concat(res2.remnants)
     } else {
