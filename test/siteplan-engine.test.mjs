@@ -71,6 +71,46 @@ pRuko.commercial = { enabled: true, w: 5, d: 15, maxCount: 8 }
 const rRuko = checkSiteplan('Preset 1 + ruko', SITEPLAN_PRESETS[0].coords, pRuko)
 assert(rRuko.parcels.filter(p => p.type === 'komersial').length > 0, 'ruko terbentuk')
 
+/* ---------- Konsep pembangunan ---------- */
+section('Konsep: ruko')
+const pKonsepRuko = defaultSiteplanParams()
+pKonsepRuko.concept = 'ruko'
+const rKonsepRuko = generateSiteplan(SITEPLAN_PRESETS[0].coords, pKonsepRuko)
+assert(rKonsepRuko.stats.counts.komersial > 0, 'semua unit jadi ruko (' + rKonsepRuko.stats.counts.komersial + ')')
+assert(rKonsepRuko.stats.counts.kavling === 0, 'tidak ada kavling rumah')
+
+section('Konsep: apartemen')
+const pApt = defaultSiteplanParams()
+pApt.concept = 'apartemen'
+pApt.tower = { w: 20, d: 30, count: 2 }
+const rApt = generateSiteplan(SITEPLAN_PRESETS[0].coords, pApt)
+const towers = rApt.parcels.filter(p => p.type === 'tower')
+assert(towers.length >= 1 && towers.length <= 2, 'tower terbentuk (' + towers.length + ')')
+assert(rApt.stats.counts.tower === towers.length, 'counts.tower konsisten')
+let towersInside = true
+for (const t of towers) {
+  const c = Geom.centroid(t.polygon)
+  for (const v of t.polygon) {
+    const shrunk = [v[0] + (c[0] - v[0]) * 0.01, v[1] + (c[1] - v[1]) * 0.01]
+    if (!Geom.pointInPolygon(shrunk, rApt.boundary)) towersInside = false
+  }
+}
+assert(towersInside, 'tower di dalam batas lahan')
+assert(rApt.stats.byType.parkir.area > 0, 'ada area parkir (' + rApt.stats.byType.parkir.area + ' m²)')
+assert(rApt.stats.counts.kavling === 0 && rApt.stats.counts.komersial === 0, 'tanpa kavling/ruko')
+
+section('Konsep: hotel')
+const pHotel = defaultSiteplanParams()
+pHotel.concept = 'hotel'
+const rHotel = generateSiteplan(SITEPLAN_PRESETS[1].coords, pHotel)
+assert(rHotel.parcels.some(p => p.type === 'tower' && p.label && p.label.includes('HOTEL')), 'tower hotel berlabel HOTEL')
+
+section('Konsep: mixed')
+const pMix = defaultSiteplanParams()
+pMix.concept = 'mixed'
+const rMix = generateSiteplan(SITEPLAN_PRESETS[0].coords, pMix)
+assert(rMix.stats.counts.komersial > 0 && rMix.stats.counts.kavling > 0, 'mixed: ada ruko (' + rMix.stats.counts.komersial + ') dan kavling (' + rMix.stats.counts.kavling + ')')
+
 section('Layout: validasi input')
 let threw = false
 try { generateSiteplan([[0, 0], [1, 0]], defaultSiteplanParams()) } catch { threw = true }

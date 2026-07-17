@@ -4,7 +4,7 @@
  * kirim ke input koordinat.
  */
 import { useRef, useState } from 'react'
-import { Camera } from 'lucide-react'
+import { Camera, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -59,6 +59,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
 }
 
 export default function OcrScanDialog({ onUse }: Props) {
+  const cameraRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [phase, setPhase] = useState<'progress' | 'result' | 'error'>('progress')
@@ -70,27 +71,68 @@ export default function OcrScanDialog({ onUse }: Props) {
   const preview = parseManualCoords(coordsText)
   const previewArea = preview.points.length >= 3 ? polygonArea(preview.points) : 0
 
+  /** Render halaman-halaman awal PDF menjadi canvas (untuk OCR). */
+  async function pdfToCanvases(file: File, maxPages = 3): Promise<HTMLCanvasElement[]> {
+    // build legacy: kompatibel dengan browser yang lebih lama
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const workerUrl = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default
+    pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+    const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise
+    const canvases: HTMLCanvasElement[] = []
+    const n = Math.min(doc.numPages, maxPages)
+    for (let i = 1; i <= n; i++) {
+      const page = await doc.getPage(i)
+      const viewport = page.getViewport({ scale: 2 })
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(viewport.width)
+      canvas.height = Math.round(viewport.height)
+      await page.render({ canvas, viewport }).promise
+      canvases.push(canvas)
+    }
+    return canvases
+  }
+
   async function processFile(file: File) {
     setOpen(true)
     setPhase('progress')
     setProgress(2)
-    setStatus('Memproses gambar…')
     try {
-      const img = await loadImage(file)
-      const canvas = preprocessImage(img)
+      let canvases: HTMLCanvasElement[]
+      if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+        setStatus('Membuka PDF…')
+        canvases = await pdfToCanvases(file)
+      } else {
+        setStatus('Memproses gambar…')
+        const img = await loadImage(file)
+        canvases = [preprocessImage(img)]
+      }
       setProgress(5)
       setStatus('Memuat mesin OCR…')
-      const Tesseract = (await import('tesseract.js')).default
-      const res = await Tesseract.recognize(canvas, 'eng', {
-        logger: (m: { status?: string; progress?: number }) => {
-          if (m.status === 'recognizing text') {
-            const p = m.progress ?? 0
-            setProgress(20 + 80 * p)
-            setStatus(`Membaca dokumen… ${Math.round(p * 100)}%`)
-          }
-        },
-      })
-      const parsed = parseOcrCoords(res.data.text)
+      // global override (dipakai test); default: modul tesseract.js
+      type TesseractLike = {
+        recognize: (
+          image: HTMLCanvasElement,
+          lang: string,
+          opts?: { logger?: (m: { status?: string; progress?: number }) => void },
+        ) => Promise<{ data: { text: string } }>
+      }
+      const globalT = (window as { Tesseract?: TesseractLike }).Tesseract
+      const Tesseract: TesseractLike =
+        globalT ?? ((await import('tesseract.js')).default as unknown as TesseractLike)
+      let fullText = ''
+      for (let i = 0; i < canvases.length; i++) {
+        const res = await Tesseract.recognize(canvases[i], 'eng', {
+          logger: (m: { status?: string; progress?: number }) => {
+            if (m.status === 'recognizing text') {
+              const p = (i + (m.progress ?? 0)) / canvases.length
+              setProgress(20 + 80 * p)
+              setStatus(`Membaca dokumen… ${Math.round(p * 100)}%${canvases.length > 1 ? ` (hal. ${i + 1}/${canvases.length})` : ''}`)
+            }
+          },
+        })
+        fullText += res.data.text + '\n'
+      }
+      const parsed = parseOcrCoords(fullText)
       if (!parsed.points.length) {
         setPhase('error')
         setStatus('Tidak ada koordinat terbaca. Coba foto yang lebih tajam/terang, atau ketik manual.')
@@ -109,22 +151,47 @@ export default function OcrScanDialog({ onUse }: Props) {
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full gap-2 border-dashed border-gold text-navy hover:bg-gold-lt"
-        onClick={() => {
-          if (fileRef.current) fileRef.current.value = ''
-          fileRef.current?.click()
-        }}
-      >
-        <Camera className="h-4 w-4" /> Scan Foto Dokumen
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 border-dashed border-gold text-navy hover:bg-gold-lt"
+          onClick={() => {
+            if (cameraRef.current) cameraRef.current.value = ''
+            cameraRef.current?.click()
+          }}
+        >
+          <Camera className="h-4 w-4" /> Ambil Foto
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-2 border-dashed border-gold text-navy hover:bg-gold-lt"
+          onClick={() => {
+            if (fileRef.current) fileRef.current.value = ''
+            fileRef.current?.click()
+          }}
+        >
+          <Upload className="h-4 w-4" /> Upload Foto/File
+        </Button>
+      </div>
+      {/* kamera langsung (HP) */}
       <input
-        ref={fileRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
+        hidden
+        onChange={e => {
+          const f = e.target.files?.[0]
+          if (f) void processFile(f)
+        }}
+      />
+      {/* galeri / file manager: gambar atau PDF */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,application/pdf"
         hidden
         onChange={e => {
           const f = e.target.files?.[0]

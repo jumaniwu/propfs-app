@@ -94,12 +94,13 @@ export function downloadPdf(result: SiteplanResult, filenameBase = 'siteplan'): 
   doc.line(tx, ty, tx + colW.reduce((a, b) => a + b, 0), ty)
   ty += 4
   doc.setFont('helvetica', 'normal')
-  const order: ParcelType[] = ['kavling', 'komersial', 'jalan', 'fasum', 'rth']
+  const order: ParcelType[] = ['kavling', 'komersial', 'tower', 'parkir', 'jalan', 'fasum', 'rth']
   for (const t of order) {
     const s = result.stats.byType[t]
     if (!s || s.area < 0.5) continue
     const count = t === 'kavling' ? String(result.stats.counts.kavling)
-      : t === 'komersial' ? String(result.stats.counts.komersial) : '-'
+      : t === 'komersial' ? String(result.stats.counts.komersial)
+      : t === 'tower' ? String(result.stats.counts.tower) : '-'
     const row = [
       PARCEL_TYPE_LABELS[t], count,
       s.area.toLocaleString('id-ID', { maximumFractionDigits: 0 }), s.pct.toFixed(1),
