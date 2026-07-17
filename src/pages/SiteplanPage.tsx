@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
 import RenderMasterplanDialog from '@/components/siteplan/RenderMasterplanDialog'
+import NumInput from '@/components/siteplan/NumInput'
 import { SiteplanRenderer, PARCEL_COLORS, PARCEL_TYPE_LABELS } from '@/components/siteplan/SiteplanRenderer.ts'
 import { downloadPng, downloadPdf } from '@/components/siteplan/exportImage.ts'
 import { downloadDxf } from '@/engine/siteplan/exportDxf.ts'
@@ -68,6 +69,16 @@ export default function SiteplanPage() {
   const [comD, setComD] = useState(15)
   const [comMax, setComMax] = useState(10)
   const [mixTowerEnabled, setMixTowerEnabled] = useState(false)
+  const [mixRumah, setMixRumah] = useState(true)
+  const [mixRuko, setMixRuko] = useState(true)
+  const [mixPlaza, setMixPlaza] = useState(false)
+  const [plazaW, setPlazaW] = useState(30)
+  const [plazaD, setPlazaD] = useState(20)
+  const [lotMax, setLotMax] = useState(0) // 0 = tanpa batas
+  const [floorRumah, setFloorRumah] = useState(1)
+  const [floorRuko, setFloorRuko] = useState(2)
+  const [floorTower, setFloorTower] = useState(12)
+  const [sketchDataUrl, setSketchDataUrl] = useState<string | null>(null)
 
   const parsed = useMemo(() => parseManualCoords(coordsText), [coordsText])
   const parsedArea = parsed.points.length >= 3 ? polygonArea(parsed.points) : 0
@@ -127,7 +138,7 @@ export default function SiteplanPage() {
       coordsText,
       concept,
       frontageEdge,
-      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled },
+      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled, mixRumah, mixRuko, mixPlaza, plazaW, plazaD },
       summary: { totalAreaM2: result.stats.totalAreaM2, units, efficiencyPct: result.stats.efficiencyPct },
     })
     toast({ title: 'Desain tersimpan', description: 'Buka kembali dari daftar "Desain Tersimpan".' })
@@ -145,6 +156,8 @@ export default function SiteplanPage() {
     setComEnabled(f.comEnabled); setComW(f.comW); setComD(f.comD); setComMax(f.comMax)
     setTowerW(f.towerW); setTowerD(f.towerD); setTowerCount(f.towerCount)
     setMixTowerEnabled(f.mixTowerEnabled ?? false)
+    setMixRumah(f.mixRumah ?? true); setMixRuko(f.mixRuko ?? true); setMixPlaza(f.mixPlaza ?? false)
+    setPlazaW(f.plazaW ?? 30); setPlazaD(f.plazaD ?? 20)
     // generate ulang langsung dari data tersimpan (state belum tentu ter-apply)
     setGenError('')
     try {
@@ -157,7 +170,15 @@ export default function SiteplanPage() {
         blockMaxLen: f.blockMaxLen,
         concept: d.concept,
         tower: { w: f.towerW, d: f.towerD, count: f.towerCount },
-        mixTower: d.concept === 'mixed' ? (f.mixTowerEnabled ?? false) : undefined,
+        plaza: { w: f.plazaW ?? 30, d: f.plazaD ?? 20 },
+        mix: d.concept === 'mixed'
+          ? {
+              rumah: f.mixRumah ?? true,
+              ruko: f.mixRuko ?? true,
+              tower: f.mixTowerEnabled ?? false,
+              plaza: f.mixPlaza ?? false,
+            }
+          : undefined,
         frontageEdge: d.frontageEdge,
       })
       setResult(res)
@@ -177,9 +198,19 @@ export default function SiteplanPage() {
     setAiError('')
     setAiLoading(true)
     try {
+      // simpan coretan sebagai referensi render
+      const reader = new FileReader()
+      reader.onload = () => setSketchDataUrl(String(reader.result))
+      reader.readAsDataURL(file)
+
       const res = await analyzeConceptSketch(file)
       setAiResult(res)
       setConcept(res.concept)
+      if (res.units.rumah) setLotMax(res.units.rumah)
+      if (res.units.ruko) setComMax(res.units.ruko)
+      if (res.floors.rumah) setFloorRumah(res.floors.rumah)
+      if (res.floors.ruko) setFloorRuko(res.floors.ruko)
+      if (res.floors.tower) setFloorTower(res.floors.tower)
       const p = res.params
       if (p.lotW) setLotW(p.lotW)
       if (p.lotD) setLotD(p.lotD)
@@ -211,14 +242,17 @@ export default function SiteplanPage() {
     }
     try {
       const res = generateSiteplan(parsed.points, {
-        lot: { w: lotW, d: lotD },
+        lot: { w: lotW, d: lotD, maxCount: lotMax > 0 ? lotMax : undefined },
         road: { main: roadMain, secondary: roadSec },
         rthPct, fasumPct,
         commercial: { enabled: comEnabled, w: comW, d: comD, maxCount: comMax },
         blockMaxLen,
         concept,
         tower: { w: towerW, d: towerD, count: towerCount },
-        mixTower: concept === 'mixed' ? mixTowerEnabled : undefined,
+        plaza: { w: plazaW, d: plazaD },
+        mix: concept === 'mixed'
+          ? { rumah: mixRumah, ruko: mixRuko, tower: mixTowerEnabled, plaza: mixPlaza }
+          : undefined,
         frontageEdge,
       })
       setResult(res)
@@ -235,7 +269,7 @@ export default function SiteplanPage() {
     }
   }
 
-  const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'tower', 'parkir', 'jalan', 'fasum', 'rth']
+  const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'tower', 'plaza', 'parkir', 'jalan', 'fasum', 'rth']
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -388,24 +422,50 @@ export default function SiteplanPage() {
                     <SelectItem value="ruko">Ruko / Komersial</SelectItem>
                     <SelectItem value="apartemen">Apartemen (tower + parkir)</SelectItem>
                     <SelectItem value="hotel">Hotel (tower + parkir)</SelectItem>
-                    <SelectItem value="mixed">Mixed-Use (ruko + rumah + tower)</SelectItem>
+                    <SelectItem value="mixed">Mixed-Use (pilih komponen)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {(concept === 'perumahan' || concept === 'mixed') && (
+              {concept === 'mixed' && (
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">Komponen Mixed-Use</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['Rumah (kavling)', mixRumah, setMixRumah],
+                    ['Ruko', mixRuko, setMixRuko],
+                    ['Tower Apartemen', mixTowerEnabled, setMixTowerEnabled],
+                    ['Foodcourt / Plaza', mixPlaza, setMixPlaza],
+                  ] as Array<[string, boolean, (v: boolean) => void]>).map(([label, val, setter]) => (
+                    <label key={label} className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer border border-border rounded-lg px-2.5 py-2">
+                      <input type="checkbox" checked={val}
+                        onChange={e => setter(e.target.checked)}
+                        className="accent-gold h-4 w-4" />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {!mixRumah && !mixRuko && !mixTowerEnabled && !mixPlaza && (
+                  <p className="text-xs text-red-dk mt-1.5">Pilih minimal satu komponen.</p>
+                )}
+              </div>
+              )}
+
+              {(concept === 'perumahan' || (concept === 'mixed' && mixRumah)) && (
               <div>
                 <p className="text-xs font-semibold text-navy mb-2">Kavling Rumah</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Lebar (m)</Label>
-                    <Input type="number" value={lotW} min={3} step={0.5}
-                      onChange={e => setLotW(+e.target.value || 6)} />
+                    <NumInput value={lotW} onValue={setLotW} min={3} step={0.5} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Kedalaman (m)</Label>
-                    <Input type="number" value={lotD} min={5} step={0.5}
-                      onChange={e => setLotD(+e.target.value || 12)} />
+                    <NumInput value={lotD} onValue={setLotD} min={5} step={0.5} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Maks. Unit</Label>
+                    <NumInput value={lotMax} onValue={setLotMax} min={0} placeholder="0 = bebas" />
                   </div>
                 </div>
               </div>
@@ -419,18 +479,15 @@ export default function SiteplanPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Lebar (m)</Label>
-                    <Input type="number" value={towerW} min={10} step={1}
-                      onChange={e => setTowerW(+e.target.value || 20)} />
+                    <NumInput value={towerW} onValue={setTowerW} min={10} step={1} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Dalam (m)</Label>
-                    <Input type="number" value={towerD} min={10} step={1}
-                      onChange={e => setTowerD(+e.target.value || 30)} />
+                    <NumInput value={towerD} onValue={setTowerD} min={10} step={1} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Jml. Tower</Label>
-                    <Input type="number" value={towerCount} min={1} max={10}
-                      onChange={e => setTowerCount(+e.target.value || 1)} />
+                    <NumInput value={towerCount} onValue={setTowerCount} min={1} max={10} />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-2">
@@ -439,7 +496,7 @@ export default function SiteplanPage() {
               </div>
               )}
 
-              {(concept === 'ruko' || concept === 'mixed') && (
+              {(concept === 'ruko' || (concept === 'mixed' && mixRuko)) && (
               <div>
                 <p className="text-xs font-semibold text-navy mb-2">
                   Ruko{concept === 'mixed' ? ' (di frontage jalan utama)' : ''}
@@ -447,54 +504,55 @@ export default function SiteplanPage() {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Lebar (m)</Label>
-                    <Input type="number" value={comW} min={3} step={0.5}
-                      onChange={e => setComW(+e.target.value || 5)} />
+                    <NumInput value={comW} onValue={setComW} min={3} step={0.5} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Dalam (m)</Label>
-                    <Input type="number" value={comD} min={5} step={0.5}
-                      onChange={e => setComD(+e.target.value || 15)} />
+                    <NumInput value={comD} onValue={setComD} min={5} step={0.5} />
                   </div>
                   {concept === 'mixed' && (
                   <div className="space-y-1">
                     <Label className="text-xs">Maks.</Label>
-                    <Input type="number" value={comMax} min={1}
-                      onChange={e => setComMax(+e.target.value || 10)} />
+                    <NumInput value={comMax} onValue={setComMax} min={1} />
                   </div>
                   )}
                 </div>
-                {concept === 'mixed' && (
-                  <div className="mt-3">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={mixTowerEnabled}
-                        onChange={e => setMixTowerEnabled(e.target.checked)}
-                        className="accent-gold h-4 w-4"
-                      />
-                      Sertakan tower apartemen di frontage
-                    </label>
-                    {mixTowerEnabled && (
-                      <div className="grid grid-cols-3 gap-3 mt-2">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Lebar (m)</Label>
-                          <Input type="number" value={towerW} min={10} step={1}
-                            onChange={e => setTowerW(+e.target.value || 20)} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Dalam (m)</Label>
-                          <Input type="number" value={towerD} min={10} step={1}
-                            onChange={e => setTowerD(+e.target.value || 30)} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Jml. Tower</Label>
-                          <Input type="number" value={towerCount} min={1} max={10}
-                            onChange={e => setTowerCount(+e.target.value || 1)} />
-                        </div>
-                      </div>
-                    )}
+              </div>
+              )}
+
+              {concept === 'mixed' && mixTowerEnabled && (
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">Tower Apartemen (frontage)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Lebar (m)</Label>
+                    <NumInput value={towerW} onValue={setTowerW} min={10} step={1} />
                   </div>
-                )}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dalam (m)</Label>
+                    <NumInput value={towerD} onValue={setTowerD} min={10} step={1} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Jml. Tower</Label>
+                    <NumInput value={towerCount} onValue={setTowerCount} min={1} max={10} />
+                  </div>
+                </div>
+              </div>
+              )}
+
+              {concept === 'mixed' && mixPlaza && (
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">Foodcourt / Commercial Plaza</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Lebar (m)</Label>
+                    <NumInput value={plazaW} onValue={setPlazaW} min={10} step={1} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dalam (m)</Label>
+                    <NumInput value={plazaD} onValue={setPlazaD} min={10} step={1} />
+                  </div>
+                </div>
               </div>
               )}
               <div>
@@ -502,19 +560,16 @@ export default function SiteplanPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Jalan Utama (m)</Label>
-                    <Input type="number" value={roadMain} min={4} step={0.5}
-                      onChange={e => setRoadMain(+e.target.value || 8)} />
+                    <NumInput value={roadMain} onValue={setRoadMain} min={4} step={0.5} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Jalan Lingkungan (m)</Label>
-                    <Input type="number" value={roadSec} min={3} step={0.5}
-                      onChange={e => setRoadSec(+e.target.value || 6)} />
+                    <NumInput value={roadSec} onValue={setRoadSec} min={3} step={0.5} />
                   </div>
                   {!(concept === 'apartemen' || concept === 'hotel') && (
                   <div className="space-y-1 col-span-2">
                     <Label className="text-xs">Panjang Blok Maks. (m)</Label>
-                    <Input type="number" value={blockMaxLen} min={20} step={5}
-                      onChange={e => setBlockMaxLen(+e.target.value || 60)} />
+                    <NumInput value={blockMaxLen} onValue={setBlockMaxLen} min={20} step={5} />
                   </div>
                   )}
                 </div>
@@ -526,18 +581,34 @@ export default function SiteplanPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Target RTH (%)</Label>
-                    <Input type="number" value={rthPct} min={0} max={60}
-                      onChange={e => setRthPct(+e.target.value || 0)} />
+                    <NumInput value={rthPct} onValue={setRthPct} min={0} max={60} />
                   </div>
                   {!(concept === 'apartemen' || concept === 'hotel') && (
                   <div className="space-y-1">
                     <Label className="text-xs">Target Fasum (%)</Label>
-                    <Input type="number" value={fasumPct} min={0} max={40}
-                      onChange={e => setFasumPct(+e.target.value || 0)} />
+                    <NumInput value={fasumPct} onValue={setFasumPct} min={0} max={40} />
                   </div>
                   )}
                 </div>
               </div>
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">Lantai Bangunan (untuk render)</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Rumah</Label>
+                    <NumInput value={floorRumah} onValue={setFloorRumah} min={1} max={3} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Ruko</Label>
+                    <NumInput value={floorRuko} onValue={setFloorRuko} min={1} max={5} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tower</Label>
+                    <NumInput value={floorTower} onValue={setFloorTower} min={4} max={50} />
+                  </div>
+                </div>
+              </div>
+
               {concept === 'perumahan' && (
               <div>
                 <label className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer">
@@ -553,18 +624,15 @@ export default function SiteplanPage() {
                   <div className="grid grid-cols-3 gap-3 mt-2">
                     <div className="space-y-1">
                       <Label className="text-xs">Lebar (m)</Label>
-                      <Input type="number" value={comW} min={3} step={0.5}
-                        onChange={e => setComW(+e.target.value || 5)} />
+                      <NumInput value={comW} onValue={setComW} min={3} step={0.5} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Dalam (m)</Label>
-                      <Input type="number" value={comD} min={5} step={0.5}
-                        onChange={e => setComD(+e.target.value || 15)} />
+                      <NumInput value={comD} onValue={setComD} min={5} step={0.5} />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Maks.</Label>
-                      <Input type="number" value={comMax} min={1}
-                        onChange={e => setComMax(+e.target.value || 10)} />
+                      <NumInput value={comMax} onValue={setComMax} min={1} />
                     </div>
                   </div>
                 )}
@@ -582,7 +650,11 @@ export default function SiteplanPage() {
             <Save className="h-4 w-4" /> Simpan Desain
           </Button>
 
-          <RenderMasterplanDialog result={result} />
+          <RenderMasterplanDialog
+            result={result}
+            initialFloors={{ rumah: floorRumah, ruko: floorRuko, tower: floorTower }}
+            sketchDataUrl={sketchDataUrl}
+          />
 
           <div className="grid grid-cols-4 gap-2">
             <Button variant="outline" size="sm" disabled={!result} className="gap-1"

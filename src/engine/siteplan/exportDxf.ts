@@ -16,6 +16,7 @@ export const DXF_LAYERS: Array<[string, number]> = [
   ['KOMERSIAL', 6],
   ['TOWER', 4],
   ['PARKIR', 9],
+  ['PLAZA', 40],
   ['LABEL', 2],
 ]
 
@@ -27,6 +28,7 @@ const TYPE_TO_LAYER: Record<ParcelType, string> = {
   komersial: 'KOMERSIAL',
   tower: 'TOWER',
   parkir: 'PARKIR',
+  plaza: 'PLAZA',
 }
 
 const n = (v: number) => v.toFixed(3)

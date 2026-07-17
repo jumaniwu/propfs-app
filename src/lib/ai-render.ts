@@ -19,6 +19,8 @@ export interface RenderOptions {
   timeOfDay: RenderTime
   floors: { rumah: number; ruko: number; tower: number }
   angles: RenderAngle[]
+  /** dataURL coretan/draft user sebagai referensi zonasi (opsional) */
+  sketchDataUrl?: string | null
 }
 
 export interface RenderedView {
@@ -61,6 +63,9 @@ export function buildSceneDescription(result: SiteplanResult, opts: RenderOption
   if (s.counts.tower > 0) {
     parts.push(`${s.counts.tower} tower ${prm.concept === 'hotel' ? 'hotel' : 'apartemen'} ${prm.tower?.w}×${prm.tower?.d} m setinggi ${opts.floors.tower} lantai dengan podium.`)
   }
+  if (s.byType.plaza?.area > 0.5) {
+    parts.push(`Bangunan foodcourt/commercial plaza ${prm.plaza?.w}×${prm.plaza?.d} m, 1-2 lantai, area kuliner semi-terbuka yang ramai.`)
+  }
   if (s.byType.parkir?.area > 0.5) {
     parts.push(`Area parkir luas ${Math.round(s.byType.parkir.area).toLocaleString('id-ID')} m² dengan marka parkir.`)
   }
@@ -90,19 +95,21 @@ ${ANGLE_PROMPTS[angle]}
 
 KETENTUAN RENDER:
 - Fotorealistis kualitas presentasi developer properti (bukan kartun/sketsa).
-- Tata letak bangunan, jalan, dan zona HARUS mengikuti denah terlampir (warna oranye=rumah, ungu=ruko, biru keunguan=tower, abu=jalan, hijau=taman/RTH, biru=fasum, abu terang=parkir).
-- Lingkungan sekitar: lahan hijau dan jalan raya eksisting di sisi jalan utama.
+- Tata letak bangunan, jalan, dan zona HARUS mengikuti denah terlampir (warna oranye=rumah, ungu=ruko, biru keunguan=tower, cyan=foodcourt/plaza, abu=jalan, hijau=taman/RTH, biru=fasum, abu terang=parkir).
+${opts.sketchDataUrl ? '- Gambar kedua adalah DRAFT CORETAN konsep dari arsitek di atas foto lahan asli: gunakan sebagai referensi utama penataan zona, orientasi jalan raya eksisting, dan konteks lingkungan sekitar.' : '- Lingkungan sekitar: lahan hijau dan jalan raya eksisting di sisi jalan utama.'}
 - Rasio 16:9 landscape.`
 }
 
-async function callGeminiImage(apiKey: string, prompt: string, planPngBase64: string): Promise<string> {
+async function callGeminiImage(
+  apiKey: string, prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
+): Promise<string> {
+  const parts: Array<Record<string, unknown>> = [
+    { text: prompt },
+    { inline_data: { mime_type: 'image/png', data: planPngBase64 } },
+  ]
+  if (sketch) parts.push({ inline_data: { mime_type: sketch.mime, data: sketch.data } })
   const body = {
-    contents: [{
-      parts: [
-        { text: prompt },
-        { inline_data: { mime_type: 'image/png', data: planPngBase64 } },
-      ],
-    }],
+    contents: [{ parts }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
   const models = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation']
@@ -161,7 +168,13 @@ export async function renderMasterplanViews(
   for (let i = 0; i < opts.angles.length; i++) {
     const angle = opts.angles[i]
     onProgress?.(i, opts.angles.length, RENDER_ANGLE_LABELS[angle])
-    const dataUrl = await callGeminiImage(geminiKey, buildPrompt(result, opts, angle), planB64)
+    const sketch = opts.sketchDataUrl
+      ? {
+          mime: opts.sketchDataUrl.slice(5, opts.sketchDataUrl.indexOf(';')),
+          data: opts.sketchDataUrl.slice(opts.sketchDataUrl.indexOf(',') + 1),
+        }
+      : null
+    const dataUrl = await callGeminiImage(geminiKey, buildPrompt(result, opts, angle), planB64, sketch)
     views.push({ angle, label: RENDER_ANGLE_LABELS[angle], dataUrl })
     onProgress?.(i + 1, opts.angles.length, RENDER_ANGLE_LABELS[angle])
   }
