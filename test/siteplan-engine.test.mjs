@@ -111,6 +111,31 @@ pMix.concept = 'mixed'
 const rMix = generateSiteplan(SITEPLAN_PRESETS[0].coords, pMix)
 assert(rMix.stats.counts.komersial > 0 && rMix.stats.counts.kavling > 0, 'mixed: ada ruko (' + rMix.stats.counts.komersial + ') dan kavling (' + rMix.stats.counts.kavling + ')')
 
+section('Konsep: mixed + tower (semua sekaligus)')
+const pMixAll = defaultSiteplanParams()
+pMixAll.concept = 'mixed'
+pMixAll.mixTower = true
+pMixAll.tower = { w: 20, d: 30, count: 1 }
+const rMixAll = generateSiteplan(SITEPLAN_PRESETS[1].coords, pMixAll)
+assert(rMixAll.stats.counts.tower >= 1, 'mixed+tower: ada tower (' + rMixAll.stats.counts.tower + ')')
+assert(rMixAll.stats.counts.komersial > 0, 'mixed+tower: ada ruko (' + rMixAll.stats.counts.komersial + ')')
+assert(rMixAll.stats.counts.kavling > 0, 'mixed+tower: ada rumah (' + rMixAll.stats.counts.kavling + ')')
+{
+  // tower & ruko tidak tumpang tindih (centroid saling di luar)
+  const twr = rMixAll.parcels.filter(p => p.type === 'tower')
+  const rk = rMixAll.parcels.filter(p => p.type === 'komersial')
+  let ovl = false
+  for (const t of twr) {
+    const c = Geom.centroid(t.polygon)
+    for (const r of rk) if (Geom.pointInPolygon(c, r.polygon, 1e-12)) ovl = true
+  }
+  assert(!ovl, 'mixed+tower: tower tidak tumpang tindih ruko')
+}
+// tanpa flag mixTower → perilaku lama (tanpa tower)
+const pMixOld = defaultSiteplanParams()
+pMixOld.concept = 'mixed'
+assert(generateSiteplan(SITEPLAN_PRESETS[0].coords, pMixOld).stats.counts.tower === 0, 'mixed tanpa flag → tidak ada tower')
+
 section('Posisi jalan utama (frontageEdge)')
 // persegi panjang: sisi terpanjang = bawah (index 0). Paksa frontage ke sisi kanan (index 1)
 const rectLand = [[0, 0], [200, 0], [200, 80], [0, 80]]

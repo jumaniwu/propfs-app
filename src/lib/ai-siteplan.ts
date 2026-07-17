@@ -68,14 +68,11 @@ function extractJson(text: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1))
 }
 
-async function callGeminiVision(apiKey: string, image: { data: string; mime: string }): Promise<string> {
+type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } }
+
+async function callGeminiVision(apiKey: string, parts: GeminiPart[]): Promise<string> {
   const body = {
-    contents: [{
-      parts: [
-        { text: PROMPT },
-        { inline_data: { mime_type: image.mime, data: image.data } },
-      ],
-    }],
+    contents: [{ parts }],
     generationConfig: { temperature: 0.2 },
   }
   const models = ['gemini-2.5-flash', 'gemini-2.0-flash']
@@ -99,6 +96,53 @@ async function callGeminiVision(apiKey: string, image: { data: string; mime: str
   throw new Error(`Gagal memanggil AI (${lastErr}).`)
 }
 
+const COORD_PROMPT = `Anda adalah asisten surveyor profesional Indonesia.
+Gambar berikut adalah dokumen resmi berisi DAFTAR KOORDINAT titik batas bidang tanah
+(mis. Surat Ukur BPN, Gambar Penetapan Lokasi BP Batam, atau tabel koordinat surveyor).
+
+Tugas: ekstrak SEMUA titik koordinat batas lahan secara akurat.
+Perhatikan dengan teliti:
+- Format bisa berupa tabel "No | X | Y", atau pasangan bertumpuk "X 4288.287 / Y -4670.258" per titik berlabel A, B, C, D…
+- Tanda minus pada nilai harus dipertahankan.
+- Titik/koma bisa berarti desimal ATAU pemisah ribuan gaya Indonesia — nilai koordinat dalam METER; putuskan dari konteks (angka koordinat UTM biasanya 6-7 digit; koordinat lokal 3-5 digit dengan 2-3 desimal).
+- Urutkan sesuai label/urutan titik pada dokumen (A, B, C, … atau 1, 2, 3, …).
+- Abaikan angka yang bukan koordinat (luas, nomor surat, tanggal, ROW jalan, skala).
+
+Balas HANYA JSON valid tanpa teks lain:
+{"points":[[x1,y1],[x2,y2],...],"catatan":"format yang terdeteksi"}`
+
+/** Ekstraksi koordinat dari gambar dokumen memakai AI vision (lebih akurat dari OCR biasa). */
+export async function extractCoordsWithAI(canvases: HTMLCanvasElement[]): Promise<[number, number][]> {
+  // hook mock untuk pengujian E2E tanpa jaringan
+  const mock = (window as { __aiCoordsMock?: (n: number) => Promise<[number, number][]> }).__aiCoordsMock
+  if (mock) return mock(canvases.length)
+
+  const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
+  if (!geminiKey) throw new Error('VITE_GEMINI_API_KEY belum di-set.')
+
+  const parts: GeminiPart[] = [{ text: COORD_PROMPT }]
+  for (const c of canvases) {
+    parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } })
+  }
+  const raw = await callGeminiVision(geminiKey, parts)
+  const parsed = extractJson(raw) as { points?: unknown }
+  if (!Array.isArray(parsed.points)) throw new Error('AI tidak menemukan koordinat pada dokumen.')
+  const pts: [number, number][] = []
+  for (const p of parsed.points) {
+    if (Array.isArray(p) && p.length >= 2 && isFinite(+p[0]) && isFinite(+p[1])) {
+      pts.push([+p[0], +p[1]])
+    }
+  }
+  if (pts.length < 3) throw new Error('AI hanya menemukan ' + pts.length + ' titik koordinat.')
+  return pts
+}
+
+/** Apakah jalur AI vision tersedia (key ter-set atau mock aktif). */
+export function aiVisionAvailable(): boolean {
+  if ((window as { __aiCoordsMock?: unknown }).__aiCoordsMock) return true
+  return Boolean((import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY)
+}
+
 /** Analisis gambar draft konsep → rekomendasi terstruktur. */
 export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> {
   // hook mock untuk pengujian E2E tanpa jaringan
@@ -111,7 +155,10 @@ export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> 
   }
 
   const image = await fileToBase64(file)
-  const raw = await callGeminiVision(geminiKey, image)
+  const raw = await callGeminiVision(geminiKey, [
+    { text: PROMPT },
+    { inline_data: { mime_type: image.mime, data: image.data } },
+  ])
   const parsed = extractJson(raw) as Partial<AIKonsepResult> & { concept?: string }
 
   const concept = VALID_CONCEPTS.includes(parsed.concept as SiteplanConcept)

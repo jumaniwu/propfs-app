@@ -3,7 +3,7 @@
  * otomatis: kavling, jalan, fasum, RTH, ruko. Export PNG / DXF / PDF.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map, FileImage, FileText, FileDown, Maximize2, Settings2, Building2, Sparkles, Loader2 } from 'lucide-react'
+import { Map, FileImage, FileText, FileDown, Maximize2, Settings2, Building2, Sparkles, Loader2, Save, FolderOpen, Trash2 } from 'lucide-react'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -13,11 +13,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
+import RenderMasterplanDialog from '@/components/siteplan/RenderMasterplanDialog'
 import { SiteplanRenderer, PARCEL_COLORS, PARCEL_TYPE_LABELS } from '@/components/siteplan/SiteplanRenderer.ts'
 import { downloadPng, downloadPdf } from '@/components/siteplan/exportImage.ts'
 import { downloadDxf } from '@/engine/siteplan/exportDxf.ts'
 import { ensureCCW, polygonArea } from '@/engine/siteplan/geometry.ts'
 import { analyzeConceptSketch, type AIKonsepResult } from '@/lib/ai-siteplan.ts'
+import { useSiteplanStore, type SavedSiteplan } from '@/store/siteplanStore.ts'
+import { toast } from '@/hooks/use-toast'
 import {
   generateSiteplan, defaultSiteplanParams,
   type Parcel, type ParcelType, type SiteplanConcept, type SiteplanResult,
@@ -64,6 +67,7 @@ export default function SiteplanPage() {
   const [comW, setComW] = useState(5)
   const [comD, setComD] = useState(15)
   const [comMax, setComMax] = useState(10)
+  const [mixTowerEnabled, setMixTowerEnabled] = useState(false)
 
   const parsed = useMemo(() => parseManualCoords(coordsText), [coordsText])
   const parsedArea = parsed.points.length >= 3 ? polygonArea(parsed.points) : 0
@@ -107,6 +111,67 @@ export default function SiteplanPage() {
       r.draw()
     }
   }, [boundaryCCW, frontageEdge, result])
+
+  const designs = useSiteplanStore(s => s.designs)
+  const saveDesign = useSiteplanStore(s => s.saveDesign)
+  const deleteDesign = useSiteplanStore(s => s.deleteDesign)
+
+  function handleSave() {
+    if (!result) return
+    const defaultName = `Desain ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} · ${concept}`
+    const name = window.prompt('Nama desain:', defaultName)
+    if (name === null) return
+    const units = result.stats.counts.kavling + result.stats.counts.komersial + result.stats.counts.tower
+    saveDesign({
+      name: name.trim() || defaultName,
+      coordsText,
+      concept,
+      frontageEdge,
+      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled },
+      summary: { totalAreaM2: result.stats.totalAreaM2, units, efficiencyPct: result.stats.efficiencyPct },
+    })
+    toast({ title: 'Desain tersimpan', description: 'Buka kembali dari daftar "Desain Tersimpan".' })
+  }
+
+  function loadDesign(d: SavedSiteplan) {
+    // pulihkan seluruh form
+    setCoordsText(d.coordsText)
+    setConcept(d.concept)
+    setFrontageEdge(d.frontageEdge)
+    const f = d.form
+    setLotW(f.lotW); setLotD(f.lotD)
+    setRoadMain(f.roadMain); setRoadSec(f.roadSec); setBlockMaxLen(f.blockMaxLen)
+    setRthPct(f.rthPct); setFasumPct(f.fasumPct)
+    setComEnabled(f.comEnabled); setComW(f.comW); setComD(f.comD); setComMax(f.comMax)
+    setTowerW(f.towerW); setTowerD(f.towerD); setTowerCount(f.towerCount)
+    setMixTowerEnabled(f.mixTowerEnabled ?? false)
+    // generate ulang langsung dari data tersimpan (state belum tentu ter-apply)
+    setGenError('')
+    try {
+      const pts = parseManualCoords(d.coordsText).points
+      const res = generateSiteplan(pts, {
+        lot: { w: f.lotW, d: f.lotD },
+        road: { main: f.roadMain, secondary: f.roadSec },
+        rthPct: f.rthPct, fasumPct: f.fasumPct,
+        commercial: { enabled: f.comEnabled, w: f.comW, d: f.comD, maxCount: f.comMax },
+        blockMaxLen: f.blockMaxLen,
+        concept: d.concept,
+        tower: { w: f.towerW, d: f.towerD, count: f.towerCount },
+        mixTower: d.concept === 'mixed' ? (f.mixTowerEnabled ?? false) : undefined,
+        frontageEdge: d.frontageEdge,
+      })
+      setResult(res)
+      requestAnimationFrame(() => {
+        const r = rendererRef.current
+        if (!r) return
+        r.resize()
+        r.setData(res)
+        r.fitToView()
+      })
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   async function handleAiSketch(file: File) {
     setAiError('')
@@ -153,6 +218,7 @@ export default function SiteplanPage() {
         blockMaxLen,
         concept,
         tower: { w: towerW, d: towerD, count: towerCount },
+        mixTower: concept === 'mixed' ? mixTowerEnabled : undefined,
         frontageEdge,
       })
       setResult(res)
@@ -173,7 +239,7 @@ export default function SiteplanPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Header breadcrumbs={[{ label: 'Design Siteplan' }]} />
+      <Header breadcrumbs={[{ label: 'AI Architect' }]} />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 p-4 max-w-[1800px] w-full mx-auto">
         {/* ============ SIDEBAR ============ */}
@@ -322,7 +388,7 @@ export default function SiteplanPage() {
                     <SelectItem value="ruko">Ruko / Komersial</SelectItem>
                     <SelectItem value="apartemen">Apartemen (tower + parkir)</SelectItem>
                     <SelectItem value="hotel">Hotel (tower + parkir)</SelectItem>
-                    <SelectItem value="mixed">Mixed-Use (ruko + rumah)</SelectItem>
+                    <SelectItem value="mixed">Mixed-Use (ruko + rumah + tower)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -397,6 +463,38 @@ export default function SiteplanPage() {
                   </div>
                   )}
                 </div>
+                {concept === 'mixed' && (
+                  <div className="mt-3">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={mixTowerEnabled}
+                        onChange={e => setMixTowerEnabled(e.target.checked)}
+                        className="accent-gold h-4 w-4"
+                      />
+                      Sertakan tower apartemen di frontage
+                    </label>
+                    {mixTowerEnabled && (
+                      <div className="grid grid-cols-3 gap-3 mt-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Lebar (m)</Label>
+                          <Input type="number" value={towerW} min={10} step={1}
+                            onChange={e => setTowerW(+e.target.value || 20)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Dalam (m)</Label>
+                          <Input type="number" value={towerD} min={10} step={1}
+                            onChange={e => setTowerD(+e.target.value || 30)} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Jml. Tower</Label>
+                          <Input type="number" value={towerCount} min={1} max={10}
+                            onChange={e => setTowerCount(+e.target.value || 1)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               )}
               <div>
@@ -479,6 +577,13 @@ export default function SiteplanPage() {
             Generate Siteplan
           </Button>
 
+          <Button variant="outline" disabled={!result} className="w-full gap-2 border-gold text-navy hover:bg-gold-lt"
+            onClick={handleSave}>
+            <Save className="h-4 w-4" /> Simpan Desain
+          </Button>
+
+          <RenderMasterplanDialog result={result} />
+
           <div className="grid grid-cols-4 gap-2">
             <Button variant="outline" size="sm" disabled={!result} className="gap-1"
               onClick={() => result && downloadPng(result)}>
@@ -497,6 +602,43 @@ export default function SiteplanPage() {
               <Maximize2 className="h-3.5 w-3.5" /> Fit
             </Button>
           </div>
+
+          {designs.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-gold" /> Desain Tersimpan ({designs.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {designs.map(d => (
+                  <div key={d.id} className="flex items-center gap-2 border border-border rounded-lg px-3 py-2">
+                    <button
+                      type="button"
+                      className="flex-1 text-left min-w-0"
+                      onClick={() => loadDesign(d)}
+                    >
+                      <p className="text-xs font-bold text-navy truncate">{d.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {new Date(d.savedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {' · '}{d.summary.units} unit · {fmt(d.summary.totalAreaM2)} m²
+                      </p>
+                    </button>
+                    <Button
+                      type="button" variant="ghost" size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-red-dk"
+                      title="Hapus desain"
+                      onClick={() => {
+                        if (window.confirm(`Hapus desain "${d.name}"?`)) deleteDesign(d.id)
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* ============ AREA UTAMA ============ */}
