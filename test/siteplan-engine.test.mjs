@@ -111,6 +111,29 @@ pMix.concept = 'mixed'
 const rMix = generateSiteplan(SITEPLAN_PRESETS[0].coords, pMix)
 assert(rMix.stats.counts.komersial > 0 && rMix.stats.counts.kavling > 0, 'mixed: ada ruko (' + rMix.stats.counts.komersial + ') dan kavling (' + rMix.stats.counts.kavling + ')')
 
+section('Posisi jalan utama (frontageEdge)')
+// persegi panjang: sisi terpanjang = bawah (index 0). Paksa frontage ke sisi kanan (index 1)
+const rectLand = [[0, 0], [200, 0], [200, 80], [0, 80]]
+for (const edge of [0, 1, 2, 3]) {
+  const pf = defaultSiteplanParams()
+  pf.frontageEdge = edge
+  const rf = generateSiteplan(rectLand, pf)
+  // rotasi boundary CCW dengan -theta: sisi terpilih harus horizontal di bawah
+  const ccw = Geom.ensureCCW(rectLand)
+  const c = Geom.centroid(ccw)
+  const rot = Geom.rotatePoints(ccw, -rf.theta, c)
+  const a = rot[edge]
+  const b = rot[(edge + 1) % rot.length]
+  const bbAll = Geom.bbox(rot)
+  assert(Math.abs(a[1] - b[1]) < 1e-6, `sisi ${edge + 1} horizontal setelah rotasi frame`)
+  assert(Math.abs(a[1] - bbAll.minY) < 1e-6, `sisi ${edge + 1} berada di bawah (frontage)`)
+  assert(rf.parcels.filter(p => p.type === 'kavling').length > 0, `frontage sisi ${edge + 1}: kavling tetap terbentuk`)
+}
+// frontageEdge tidak valid → fallback otomatis tanpa error
+const pfx = defaultSiteplanParams()
+pfx.frontageEdge = 99
+assert(generateSiteplan(rectLand, pfx).parcels.length > 0, 'frontageEdge tidak valid → fallback otomatis')
+
 section('Layout: validasi input')
 let threw = false
 try { generateSiteplan([[0, 0], [1, 0]], defaultSiteplanParams()) } catch { threw = true }
