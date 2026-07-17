@@ -11,7 +11,10 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { polygonArea } from '@/engine/siteplan/geometry.ts'
-import { parseManualCoords, parseOcrCoords } from '@/engine/siteplan/ocrParse.ts'
+import {
+  parseManualCoords, parseOcrCoords, normalizeUtmPoints, type OcrParseResult,
+} from '@/engine/siteplan/ocrParse.ts'
+import { aiVisionAvailable, extractCoordsWithAI } from '@/lib/ai-siteplan.ts'
 
 interface Props {
   onUse: (coordsText: string) => void
@@ -92,6 +95,23 @@ export default function OcrScanDialog({ onUse }: Props) {
     return canvases
   }
 
+  /** Terapkan hasil parsing ke pratinjau dialog. */
+  function applyParsed(parsed: OcrParseResult, via: string) {
+    if (!parsed.points.length) {
+      setPhase('error')
+      setStatus('Tidak ada koordinat terbaca. Coba foto yang lebih tajam/terang, atau ketik manual.')
+      return
+    }
+    setCoordsText(parsed.points.map(p => `${p[0]},${p[1]}`).join('\n'))
+    setOffsetInfo([
+      via === 'ai' ? 'Dibaca dengan AI vision.' : '',
+      parsed.offset
+        ? `Koordinat asli terdeteksi skala UTM/TM3 dan dikurangi offset E=${parsed.offset.x.toLocaleString('id-ID')}, N=${parsed.offset.y.toLocaleString('id-ID')} (bentuk & luas tidak berubah).`
+        : '',
+    ].filter(Boolean).join(' '))
+    setPhase('result')
+  }
+
   async function processFile(file: File) {
     setOpen(true)
     setPhase('progress')
@@ -105,6 +125,21 @@ export default function OcrScanDialog({ onUse }: Props) {
         setStatus('Memproses gambar…')
         const img = await loadImage(file)
         canvases = [preprocessImage(img)]
+      }
+
+      // Jalur utama: AI vision (akurasi jauh lebih baik untuk dokumen
+      // berformat rumit, mis. pasangan X/Y bertumpuk per titik A/B/C/D)
+      if (aiVisionAvailable()) {
+        try {
+          setProgress(35)
+          setStatus('Membaca dokumen dengan AI…')
+          const rawPts = await extractCoordsWithAI(canvases)
+          setProgress(100)
+          applyParsed(normalizeUtmPoints(rawPts), 'ai')
+          return
+        } catch (err) {
+          console.warn('[Scan] AI vision gagal, fallback ke OCR biasa:', err)
+        }
       }
       setProgress(5)
       setStatus('Memuat mesin OCR…')
@@ -132,17 +167,7 @@ export default function OcrScanDialog({ onUse }: Props) {
         })
         fullText += res.data.text + '\n'
       }
-      const parsed = parseOcrCoords(fullText)
-      if (!parsed.points.length) {
-        setPhase('error')
-        setStatus('Tidak ada koordinat terbaca. Coba foto yang lebih tajam/terang, atau ketik manual.')
-        return
-      }
-      setCoordsText(parsed.points.map(p => `${p[0]},${p[1]}`).join('\n'))
-      setOffsetInfo(parsed.offset
-        ? `Koordinat asli terdeteksi skala UTM/TM3 dan dikurangi offset E=${parsed.offset.x.toLocaleString('id-ID')}, N=${parsed.offset.y.toLocaleString('id-ID')} (bentuk & luas tidak berubah).`
-        : '')
-      setPhase('result')
+      applyParsed(parseOcrCoords(fullText), 'ocr')
     } catch (e) {
       setPhase('error')
       setStatus(`OCR gagal: ${e instanceof Error ? e.message : String(e)} (fitur ini butuh koneksi internet).`)
@@ -204,7 +229,8 @@ export default function OcrScanDialog({ onUse }: Props) {
           <DialogHeader>
             <DialogTitle>Scan Foto Dokumen</DialogTitle>
             <DialogDescription>
-              Koordinat dibaca otomatis dari foto dokumen (mis. Surat Ukur).
+              Koordinat dibaca otomatis dari foto dokumen (mis. Surat Ukur / Penetapan Lokasi),
+              diutamakan dengan AI vision agar akurat.
             </DialogDescription>
           </DialogHeader>
 

@@ -44,23 +44,28 @@ export function parseOcrCoords(text: string): OcrParseResult {
     if (isFinite(x) && isFinite(y)) rawPairs.push([x, y])
   }
 
-  // normalisasi skala UTM/TM3 → meter lokal
+  return normalizeUtmPoints(rawPairs)
+}
+
+/** Normalisasi koordinat skala UTM/TM3 (>10.000 m) menjadi meter lokal. */
+export function normalizeUtmPoints(rawPairs: Point[]): OcrParseResult {
+  let pairs = rawPairs
   let offset: OcrParseResult['offset'] = null
-  if (rawPairs.length) {
+  if (pairs.length) {
     let minX = Infinity
     let minY = Infinity
     let maxAbs = 0
-    for (const p of rawPairs) {
+    for (const p of pairs) {
       minX = Math.min(minX, p[0])
       minY = Math.min(minY, p[1])
       maxAbs = Math.max(maxAbs, Math.abs(p[0]), Math.abs(p[1]))
     }
     if (maxAbs > 10000) {
       offset = { x: minX, y: minY }
-      rawPairs = rawPairs.map(p => [+(p[0] - minX).toFixed(3), +(p[1] - minY).toFixed(3)])
+      pairs = pairs.map(p => [+(p[0] - minX).toFixed(3), +(p[1] - minY).toFixed(3)])
     }
   }
-  return { points: rawPairs, offset }
+  return { points: pairs, offset }
 }
 
 function looksLikeIndex(n: number, expectedIdx: number): boolean {
