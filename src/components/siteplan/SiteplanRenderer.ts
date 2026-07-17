@@ -53,6 +53,8 @@ export interface RendererOptions {
   interactive?: boolean
   forceLabels?: boolean
   onHover?: (parcel: Parcel | null, screenPos: [number, number]) => void
+  /** Dipanggil saat user mengeklik salah satu sisi boundary pada mode pratinjau. */
+  onEdgeClick?: (edgeIndex: number) => void
 }
 
 export class SiteplanRenderer {
@@ -97,14 +99,24 @@ export class SiteplanRenderer {
     return { w: this.canvas.width / dpr, h: this.canvas.height / dpr, dpr }
   }
 
+  private previewBoundary: Point[] | null = null
+  private previewFrontage: number | null = null
+
   setData(result: SiteplanResult | null): void {
     this.result = result
     this.hovered = null
   }
 
+  /** Mode pratinjau batas lahan (sebelum generate): tampilkan polygon + pilih sisi jalan utama. */
+  setPreview(boundary: Point[] | null, frontageEdge: number | null): void {
+    this.previewBoundary = boundary
+    this.previewFrontage = frontageEdge
+  }
+
   fitToView(): void {
-    if (!this.result) return
-    const bb = bbox(this.result.boundary)
+    const ref = this.result?.boundary ?? this.previewBoundary
+    if (!ref) return
+    const bb = bbox(ref)
     const v = this.viewSize()
     const pad = 0.08
     const sw = (v.w * (1 - 2 * pad)) / Math.max(bb.maxX - bb.minX, 1e-6)
@@ -143,7 +155,10 @@ export class SiteplanRenderer {
     ctx.clearRect(0, 0, v.w, v.h)
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, v.w, v.h)
-    if (!this.result) return
+    if (!this.result) {
+      if (this.previewBoundary) this.drawPreview(v)
+      return
+    }
 
     const parcels = this.result.parcels.slice().sort((a, b) => DRAW_ORDER[a.type] - DRAW_ORDER[b.type])
 
@@ -173,6 +188,84 @@ export class SiteplanRenderer {
     this.drawLegend(v)
     this.drawNorthArrow()
     this.drawScaleBar(v)
+  }
+
+  private drawPreview(v: { w: number; h: number }): void {
+    const ctx = this.ctx
+    const pts = this.previewBoundary!
+    // isi polygon tipis
+    this.path(pts)
+    ctx.fillStyle = 'rgba(201, 168, 76, 0.08)'
+    ctx.fill()
+    ctx.strokeStyle = '#22303c'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    // sisi frontage terpilih disorot emas
+    if (this.previewFrontage != null && this.previewFrontage < pts.length) {
+      const a = this.worldToScreen(pts[this.previewFrontage])
+      const b = this.worldToScreen(pts[(this.previewFrontage + 1) % pts.length])
+      ctx.strokeStyle = '#C9A84C'
+      ctx.lineWidth = 6
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(a[0], a[1])
+      ctx.lineTo(b[0], b[1])
+      ctx.stroke()
+      ctx.lineCap = 'butt'
+      ctx.fillStyle = '#8a6d1a'
+      ctx.font = '700 12px system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('JALAN UTAMA', (a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 14)
+    }
+    // titik & nomor sisi
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (let i = 0; i < pts.length; i++) {
+      const s = this.worldToScreen(pts[i])
+      ctx.fillStyle = '#22303c'
+      ctx.beginPath()
+      ctx.arc(s[0], s[1], 4, 0, Math.PI * 2)
+      ctx.fill()
+      const nxt = this.worldToScreen(pts[(i + 1) % pts.length])
+      const mx = (s[0] + nxt[0]) / 2
+      const my = (s[1] + nxt[1]) / 2
+      if (i !== this.previewFrontage) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.beginPath()
+        ctx.arc(mx, my, 9, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#62707e'
+        ctx.font = '600 10px system-ui, sans-serif'
+        ctx.fillText(String(i + 1), mx, my)
+      }
+    }
+    // petunjuk
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+    ctx.fillRect(v.w / 2 - 190, v.h - 40, 380, 26)
+    ctx.fillStyle = '#62707e'
+    ctx.font = '11.5px system-ui, sans-serif'
+    ctx.fillText('Klik salah satu sisi lahan untuk menandai posisi JALAN UTAMA', v.w / 2, v.h - 27)
+    this.drawNorthArrow()
+    this.drawScaleBar(v)
+  }
+
+  /** Cari index sisi terdekat dari titik layar (threshold px). */
+  edgeAtScreenPoint(px: number, py: number, thresholdPx = 14): number | null {
+    const pts = this.previewBoundary
+    if (!pts) return null
+    let best = -1
+    let bestD = Infinity
+    for (let i = 0; i < pts.length; i++) {
+      const a = this.worldToScreen(pts[i])
+      const b = this.worldToScreen(pts[(i + 1) % pts.length])
+      const d = distToSegment([px, py], a, b)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    return bestD <= thresholdPx ? best : null
   }
 
   private path(poly: Point[]): void {
@@ -309,6 +402,8 @@ export class SiteplanRenderer {
     let dragging = false
     let lastX = 0
     let lastY = 0
+    let downX = 0
+    let downY = 0
 
     const onWheel = (e: WheelEvent) => {
       if (!this.result) return
@@ -329,6 +424,8 @@ export class SiteplanRenderer {
       dragging = true
       lastX = e.clientX
       lastY = e.clientY
+      downX = e.clientX
+      downY = e.clientY
       canvas.setPointerCapture(e.pointerId)
       canvas.style.cursor = 'grabbing'
     }
@@ -350,6 +447,13 @@ export class SiteplanRenderer {
       dragging = false
       canvas.releasePointerCapture(e.pointerId)
       canvas.style.cursor = 'grab'
+      // klik (bukan drag) pada mode pratinjau → pilih sisi jalan utama
+      const moved = Math.hypot(e.clientX - downX, e.clientY - downY)
+      if (moved < 5 && !this.result && this.previewBoundary && this.opts.onEdgeClick) {
+        const rect = canvas.getBoundingClientRect()
+        const idx = this.edgeAtScreenPoint(e.clientX - rect.left, e.clientY - rect.top)
+        if (idx !== null) this.opts.onEdgeClick(idx)
+      }
     }
 
     const onPointerLeave = () => {
@@ -399,6 +503,16 @@ export class SiteplanRenderer {
     }
     this.opts.onHover?.(hit, [mx, my])
   }
+}
+
+function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return Math.hypot(p[0] - a[0], p[1] - a[1])
+  let t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy))
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {

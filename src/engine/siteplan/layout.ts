@@ -43,6 +43,11 @@ export interface SiteplanParams {
   concept?: SiteplanConcept
   /** Dimensi tower untuk konsep apartemen/hotel. */
   tower?: { w: number; d: number; count: number }
+  /**
+   * Index sisi boundary (setelah normalisasi CCW) yang menghadap jalan utama:
+   * sisi i = titik i → titik i+1. Kosong = otomatis (sisi terpanjang).
+   */
+  frontageEdge?: number | null
 }
 
 export interface SiteplanStats {
@@ -114,7 +119,7 @@ function longestEdgeMidY(pts: Point[]): number {
   return midY
 }
 
-function computeFrame(boundary: Point[]) {
+function computeFrame(boundary: Point[], frontageEdge?: number | null) {
   if (!boundary || boundary.length < 3) {
     throw new Error('Minimal 3 titik koordinat diperlukan.')
   }
@@ -122,8 +127,19 @@ function computeFrame(boundary: Point[]) {
   if (!isSimplePolygon(pts)) {
     throw new Error('Polygon batas lahan saling berpotongan (self-intersecting). Periksa urutan titik.')
   }
-  let theta = longestEdgeAngle(pts)
   const origin = centroid(pts)
+
+  if (frontageEdge != null && frontageEdge >= 0 && frontageEdge < pts.length) {
+    // sisi pilihan user menjadi frontage; pada polygon CCW interior selalu di
+    // kiri arah sisi, sehingga setelah dirotasi horizontal sisi ada di bawah
+    const a = pts[frontageEdge]
+    const b = pts[(frontageEdge + 1) % pts.length]
+    const theta = Math.atan2(b[1] - a[1], b[0] - a[0])
+    const rot = rotatePoints(pts, -theta, origin)
+    return { theta, origin, rotBoundary: rot, bbox: bbox(rot) }
+  }
+
+  let theta = longestEdgeAngle(pts)
   let rot = rotatePoints(pts, -theta, origin)
   // pastikan sisi terpanjang berada di bawah (frontage utama = tepi bawah)
   const c = centroid(rot)
@@ -461,7 +477,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     params.fasumPct = 0 // fasum tidak relevan untuk tower tunggal
   }
 
-  const frame = computeFrame(boundaryPts)
+  const frame = computeFrame(boundaryPts, params.frontageEdge)
   const rotB = frame.rotBoundary
   const bb = frame.bbox
   const totalArea = polygonArea(rotB)

@@ -3,7 +3,7 @@
  * otomatis: kavling, jalan, fasum, RTH, ruko. Export PNG / DXF / PDF.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map, FileImage, FileText, FileDown, Maximize2, Settings2, Building2 } from 'lucide-react'
+import { Map, FileImage, FileText, FileDown, Maximize2, Settings2, Building2, Sparkles, Loader2 } from 'lucide-react'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -16,7 +16,8 @@ import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
 import { SiteplanRenderer, PARCEL_COLORS, PARCEL_TYPE_LABELS } from '@/components/siteplan/SiteplanRenderer.ts'
 import { downloadPng, downloadPdf } from '@/components/siteplan/exportImage.ts'
 import { downloadDxf } from '@/engine/siteplan/exportDxf.ts'
-import { polygonArea } from '@/engine/siteplan/geometry.ts'
+import { ensureCCW, polygonArea } from '@/engine/siteplan/geometry.ts'
+import { analyzeConceptSketch, type AIKonsepResult } from '@/lib/ai-siteplan.ts'
 import {
   generateSiteplan, defaultSiteplanParams,
   type Parcel, type ParcelType, type SiteplanConcept, type SiteplanResult,
@@ -41,6 +42,11 @@ export default function SiteplanPage() {
   const [genError, setGenError] = useState('')
   const [result, setResult] = useState<SiteplanResult | null>(null)
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
+  const [frontageEdge, setFrontageEdge] = useState<number | null>(null)
+  const aiFileRef = useRef<HTMLInputElement>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiResult, setAiResult] = useState<AIKonsepResult | null>(null)
 
   // parameter form
   const [concept, setConcept] = useState<SiteplanConcept>('perumahan')
@@ -61,6 +67,11 @@ export default function SiteplanPage() {
 
   const parsed = useMemo(() => parseManualCoords(coordsText), [coordsText])
   const parsedArea = parsed.points.length >= 3 ? polygonArea(parsed.points) : 0
+  // boundary ternormalisasi CCW — index sisi di UI & engine mengacu ke array ini
+  const boundaryCCW = useMemo(
+    () => (parsed.points.length >= 3 ? ensureCCW(parsed.points) : null),
+    [parsed.points],
+  )
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -69,6 +80,7 @@ export default function SiteplanPage() {
       onHover: (parcel, pos) => {
         setTooltip(parcel ? { text: tooltipText(parcel), x: pos[0], y: pos[1] } : null)
       },
+      onEdgeClick: idx => setFrontageEdge(prev => (prev === idx ? null : idx)),
     })
     rendererRef.current = renderer
     const onResize = () => {
@@ -82,6 +94,45 @@ export default function SiteplanPage() {
       rendererRef.current = null
     }
   }, [])
+
+  // mode pratinjau: tampilkan boundary + pilihan sisi jalan utama sebelum generate
+  useEffect(() => {
+    const r = rendererRef.current
+    if (!r) return
+    if (!result && boundaryCCW) {
+      r.setPreview(boundaryCCW, frontageEdge)
+      r.fitToView()
+    } else {
+      r.setPreview(null, null)
+      r.draw()
+    }
+  }, [boundaryCCW, frontageEdge, result])
+
+  async function handleAiSketch(file: File) {
+    setAiError('')
+    setAiLoading(true)
+    try {
+      const res = await analyzeConceptSketch(file)
+      setAiResult(res)
+      setConcept(res.concept)
+      const p = res.params
+      if (p.lotW) setLotW(p.lotW)
+      if (p.lotD) setLotD(p.lotD)
+      if (p.rukoW) setComW(p.rukoW)
+      if (p.rukoD) setComD(p.rukoD)
+      if (p.rukoMax) setComMax(p.rukoMax)
+      if (p.towerW) setTowerW(p.towerW)
+      if (p.towerD) setTowerD(p.towerD)
+      if (p.towerCount) setTowerCount(p.towerCount)
+      if (p.rthPct) setRthPct(p.rthPct)
+      if (p.fasumPct) setFasumPct(p.fasumPct)
+      if (res.concept === 'perumahan' && (p.rukoW || p.rukoMax)) setComEnabled(true)
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   function handleGenerate() {
     setGenError('')
@@ -102,6 +153,7 @@ export default function SiteplanPage() {
         blockMaxLen,
         concept,
         tower: { w: towerW, d: towerD, count: towerCount },
+        frontageEdge,
       })
       setResult(res)
       // canvas baru terukur setelah panel ringkasan dirender → fit pada frame berikutnya
@@ -164,10 +216,88 @@ export default function SiteplanPage() {
                 Titik: {parsed.points.length}
                 {parsedArea > 0 && <> · Luas: ±{fmt(parsedArea)} m²</>}
               </p>
+              {boundaryCCW && (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs">
+                    <span className="text-muted-foreground">Jalan utama:</span>{' '}
+                    <span className="font-semibold text-navy">
+                      {frontageEdge != null ? `Sisi ${frontageEdge + 1}` : 'Otomatis (sisi terpanjang)'}
+                    </span>
+                  </p>
+                  {result ? (
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs"
+                      onClick={() => setResult(null)}>
+                      Pilih Sisi Jalan
+                    </Button>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">klik sisi lahan di kanvas →</span>
+                  )}
+                </div>
+              )}
               {(parsed.errors.length > 0 || genError) && (
                 <p className="text-xs text-red-dk whitespace-pre-line">
                   {genError || parsed.errors.join('\n')}
                 </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-gold/40">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-gold" /> AI Baca Draft Konsep
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Upload foto coretan/draft perencanaan (mis. foto udara yang sudah ditandai zona).
+                AI menganalisis layaknya arsitek berpengalaman lalu mengisi konsep &amp; parameter otomatis.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2 border-dashed border-gold text-navy hover:bg-gold-lt"
+                disabled={aiLoading}
+                onClick={() => {
+                  if (aiFileRef.current) aiFileRef.current.value = ''
+                  aiFileRef.current?.click()
+                }}
+              >
+                {aiLoading
+                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Menganalisis draft…</>
+                  : <><Sparkles className="h-4 w-4" /> Upload Draft / Coretan</>}
+              </Button>
+              <input
+                ref={aiFileRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={e => {
+                  const f = e.target.files?.[0]
+                  if (f) void handleAiSketch(f)
+                }}
+              />
+              {aiError && <p className="text-xs text-red-dk">{aiError}</p>}
+              {aiResult && (
+                <div className="space-y-2 text-xs bg-gold-lt/40 border border-gold/30 rounded-lg p-3">
+                  <p><span className="font-bold text-navy">Konsep:</span> {aiResult.concept}</p>
+                  <p><span className="font-bold text-navy">Jalan utama:</span> {aiResult.jalanUtama}</p>
+                  {aiResult.zones.length > 0 && (
+                    <div>
+                      <p className="font-bold text-navy">Zona teridentifikasi:</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        {aiResult.zones.map((z, i) => (
+                          <li key={i}><span className="font-semibold">{z.type}</span> — {z.posisi}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {aiResult.notes && <p className="text-muted-foreground italic">{aiResult.notes}</p>}
+                  <p className="text-[11px] text-muted-foreground">
+                    Parameter sudah diterapkan. Tandai posisi jalan utama sesuai deskripsi di atas
+                    dengan mengeklik sisi lahan di kanvas, lalu klik Generate Siteplan.
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -381,7 +511,7 @@ export default function SiteplanPage() {
                 {tooltip.text}
               </div>
             )}
-            {!result && (
+            {!result && !boundaryCCW && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center text-muted-foreground gap-2 pointer-events-none p-6">
                 <Map className="h-10 w-10 text-slate-300" />
                 <p className="font-semibold text-navy">Belum ada siteplan.</p>
