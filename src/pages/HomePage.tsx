@@ -10,7 +10,8 @@ import {
   LayoutDashboard,
   LogOut,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  Map
 } from 'lucide-react'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
@@ -213,6 +214,16 @@ export default function HomePage() {
       color: 'bg-slate-100 text-navy',
       visible: true,
       available: isFeatureEnabled('fs_module')
+    },
+    {
+      id: 'siteplan',
+      title: 'Design Siteplan',
+      desc: 'Input titik koordinat lahan, siteplan kavling/jalan/fasum terbentuk otomatis. Export PNG, DXF, PDF.',
+      icon: <Map className="h-7 w-7" />,
+      path: '/siteplan',
+      color: 'bg-slate-100 text-navy',
+      visible: true,
+      available: true
     },
     {
       id: 'cost_control',
