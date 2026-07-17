@@ -217,8 +217,8 @@ export default function HomePage() {
     },
     {
       id: 'siteplan',
-      title: 'Design Siteplan',
-      desc: 'Input titik koordinat lahan, siteplan kavling/jalan/fasum terbentuk otomatis. Export PNG, DXF, PDF.',
+      title: 'AI Architect',
+      desc: 'Desain siteplan otomatis dari titik koordinat: kavling, ruko, tower, jalan, fasum. AI membaca draft konsep. Export PNG, DXF, PDF.',
       icon: <Map className="h-7 w-7" />,
       path: '/siteplan',
       color: 'bg-slate-100 text-navy',

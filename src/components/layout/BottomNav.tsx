@@ -18,7 +18,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { path: '/home', label: 'Beranda', icon: Home, match: ['/home'] },
   { path: '/dashboard', label: 'Feasibility', icon: Calculator, match: ['/dashboard', '/input', '/result', '/report'] },
-  { path: '/siteplan', label: 'Siteplan', icon: Map, match: ['/siteplan'] },
+  { path: '/siteplan', label: 'AI Architect', icon: Map, match: ['/siteplan'] },
   { path: '/cost-control', label: 'Cost Control', icon: BarChart3, match: ['/cost-control', '/cost-report'] },
   { path: '/profile', label: 'Profil', icon: User, match: ['/profile', '/pricing', '/payment'] },
 ]
