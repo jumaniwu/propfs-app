@@ -28,6 +28,7 @@ const AdminStaff      = lazy(() => import('./pages/admin/AdminEmployeeManager'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
+const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
 const LegalPage   = lazy(() => import('./pages/LegalPage'))
@@ -103,6 +104,7 @@ export default function App() {
           <Route path="/report/:id" element={<PrivateRoute><ReportPage /></PrivateRoute>} />
           <Route path="/pricing"    element={<PrivateRoute><PricingPage /></PrivateRoute>} />
           <Route path="/profile"    element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          <Route path="/siteplan"   element={<PrivateRoute><SiteplanPage /></PrivateRoute>} />
           <Route path="/payment/:id" element={<PrivateRoute><PaymentPage /></PrivateRoute>} />
           
           {/* Cost Control Module — blocked for free plan */}
