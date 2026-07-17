@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
+import RenderMasterplanDialog from '@/components/siteplan/RenderMasterplanDialog'
 import { SiteplanRenderer, PARCEL_COLORS, PARCEL_TYPE_LABELS } from '@/components/siteplan/SiteplanRenderer.ts'
 import { downloadPng, downloadPdf } from '@/components/siteplan/exportImage.ts'
 import { downloadDxf } from '@/engine/siteplan/exportDxf.ts'
@@ -544,6 +545,8 @@ export default function SiteplanPage() {
             onClick={handleSave}>
             <Save className="h-4 w-4" /> Simpan Desain
           </Button>
+
+          <RenderMasterplanDialog result={result} />
 
           <div className="grid grid-cols-4 gap-2">
             <Button variant="outline" size="sm" disabled={!result} className="gap-1"
