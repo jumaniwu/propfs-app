@@ -9,6 +9,7 @@
 
 import type { SiteplanResult } from '@/engine/siteplan/layout.ts'
 import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
+import { renderIsometric } from '@/components/siteplan/render3d.ts'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
 export type RenderStyle = 'modern-minimalis' | 'tropis' | 'klasik' | 'industrial'
@@ -27,6 +28,8 @@ export interface RenderedView {
   angle: RenderAngle
   label: string
   dataUrl: string
+  /** 'ai' = foto realistis AI; 'skematik' = render 3D geometri akurat (fallback/tanpa key) */
+  source: 'ai' | 'skematik'
 }
 
 export const RENDER_STYLE_LABELS: Record<RenderStyle, string> = {
@@ -42,11 +45,8 @@ export const RENDER_ANGLE_LABELS: Record<RenderAngle, string> = {
   belakang: 'Bird-eye dari Belakang',
 }
 
-const ANGLE_PROMPTS: Record<RenderAngle, string> = {
-  depan: 'Kamera drone bird-eye view rendah (~45°) dari arah JALAN UTAMA (sisi bawah denah), menghadap ke dalam kawasan; gerbang masuk dan deretan bangunan frontage terlihat jelas di depan.',
-  sudut: 'Kamera drone bird-eye view dari sudut 45° kiri-depan kawasan (pojok kiri bawah denah), memperlihatkan kedalaman blok-blok bangunan dan jaringan jalan secara diagonal.',
-  belakang: 'Kamera drone bird-eye view dari sisi BELAKANG kawasan (sisi atas denah) menghadap ke arah jalan utama, memperlihatkan barisan bangunan dari belakang dengan jalan utama di kejauhan.',
-}
+/** rotasi denah untuk tiap sudut pandang skematik */
+const ANGLE_DEG: Record<RenderAngle, number> = { depan: 0, sudut: 45, belakang: 180 }
 
 /** Susun deskripsi kawasan terstruktur dari data siteplan. */
 export function buildSceneDescription(result: SiteplanResult, opts: RenderOptions): string {
@@ -83,21 +83,19 @@ export function buildSceneDescription(result: SiteplanResult, opts: RenderOption
   return parts.join(' ')
 }
 
-function buildPrompt(result: SiteplanResult, opts: RenderOptions, angle: RenderAngle): string {
+function buildPrompt(result: SiteplanResult, opts: RenderOptions): string {
   return `Anda adalah visualisator arsitektur profesional.
-Buat SATU gambar render 3D fotorealistis masterplan kawasan berdasarkan denah siteplan terlampir.
+GAMBAR PERTAMA terlampir adalah MODEL 3D SKEMATIK kawasan dengan geometri PASTI: bentuk batas lahan, posisi, ukuran, dan tinggi SETIAP bangunan serta jaringan jalan sudah final.
 
-DESKRIPSI KAWASAN:
+TUGAS (image-to-image): ubah model skematik tersebut menjadi FOTO REALISTIS drone dengan SUDUT KAMERA, KOMPOSISI, PROPORSI, JUMLAH DAN POSISI BANGUNAN PERSIS SAMA dengan gambar pertama.
+LARANGAN KERAS: jangan menambah, mengurangi, memindahkan, atau mengubah bentuk bangunan/jalan/zona; jangan mengubah bentuk batas lahan; jangan mengganti sudut kamera.
+
+Panduan warna skematik: oranye=rumah (atap genteng), ungu=ruko, biru keunguan=tower, cyan=foodcourt/plaza, abu=jalan aspal, hijau=taman/RTH, biru=fasum, abu terang=parkir.
+
+DETAIL MATERIAL & SUASANA:
 ${buildSceneDescription(result, opts)}
-
-SUDUT PANDANG:
-${ANGLE_PROMPTS[angle]}
-
-KETENTUAN RENDER:
-- Fotorealistis kualitas presentasi developer properti (bukan kartun/sketsa).
-- Tata letak bangunan, jalan, dan zona HARUS mengikuti denah terlampir (warna oranye=rumah, ungu=ruko, biru keunguan=tower, cyan=foodcourt/plaza, abu=jalan, hijau=taman/RTH, biru=fasum, abu terang=parkir).
-${opts.sketchDataUrl ? '- Gambar kedua adalah DRAFT CORETAN konsep dari arsitek di atas foto lahan asli: gunakan sebagai referensi utama penataan zona, orientasi jalan raya eksisting, dan konteks lingkungan sekitar.' : '- Lingkungan sekitar: lahan hijau dan jalan raya eksisting di sisi jalan utama.'}
-- Rasio 16:9 landscape.`
+${opts.sketchDataUrl ? '\nGAMBAR KEDUA adalah foto udara lokasi asli dengan coretan konsep: gunakan HANYA untuk konteks lingkungan sekitar (jalan raya eksisting, vegetasi, bangunan tetangga). Geometri kawasan tetap 100% mengikuti gambar pertama.' : '\nLingkungan sekitar: lahan hijau dan jalan raya eksisting di sisi depan kawasan.'}
+- Fotorealistis kualitas presentasi developer, rasio 16:9 landscape.`
 }
 
 async function callGeminiImage(
@@ -147,35 +145,47 @@ export async function renderMasterplanViews(
   const mock = (window as {
     __aiRenderMock?: (opts: RenderOptions) => Promise<RenderedView[]>
   }).__aiRenderMock
-  if (mock) return mock(opts)
+  if (mock) return (await mock(opts)).map(v => ({ ...v, source: v.source ?? ('ai' as const) }))
 
   const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
-  if (!geminiKey) {
-    throw new Error('Fitur render membutuhkan VITE_GEMINI_API_KEY. Hubungi admin untuk mengaktifkannya.')
-  }
 
-  // denah 2D dengan label lengkap sebagai acuan tata letak
-  const planCanvas = renderToCanvas(result)
-  // perkecil agar payload wajar (~1024 px sisi panjang)
-  const scale = Math.min(1, 1024 / Math.max(planCanvas.width, planCanvas.height))
-  const small = document.createElement('canvas')
-  small.width = Math.round(planCanvas.width * scale)
-  small.height = Math.round(planCanvas.height * scale)
-  small.getContext('2d')!.drawImage(planCanvas, 0, 0, small.width, small.height)
-  const planB64 = small.toDataURL('image/png').split(',')[1]
+  const sketch = opts.sketchDataUrl
+    ? {
+        mime: opts.sketchDataUrl.slice(5, opts.sketchDataUrl.indexOf(';')),
+        data: opts.sketchDataUrl.slice(opts.sketchDataUrl.indexOf(',') + 1),
+      }
+    : null
 
   const views: RenderedView[] = []
   for (let i = 0; i < opts.angles.length; i++) {
     const angle = opts.angles[i]
     onProgress?.(i, opts.angles.length, RENDER_ANGLE_LABELS[angle])
-    const sketch = opts.sketchDataUrl
-      ? {
-          mime: opts.sketchDataUrl.slice(5, opts.sketchDataUrl.indexOf(';')),
-          data: opts.sketchDataUrl.slice(opts.sketchDataUrl.indexOf(',') + 1),
-        }
-      : null
-    const dataUrl = await callGeminiImage(geminiKey, buildPrompt(result, opts, angle), planB64, sketch)
-    views.push({ angle, label: RENDER_ANGLE_LABELS[angle], dataUrl })
+    // 1) render 3D skematik dengan geometri pasti untuk sudut ini
+    const schematic = renderIsometric(result, {
+      angleDeg: ANGLE_DEG[angle],
+      floors: opts.floors,
+    })
+    const schematicUrl = schematic.toDataURL('image/png')
+    // 2) AI memfotorealistiskan skematik (geometri dipertahankan);
+    //    tanpa key / gagal → tampilkan skematiknya langsung
+    if (geminiKey) {
+      try {
+        const dataUrl = await callGeminiImage(
+          geminiKey, buildPrompt(result, opts), schematicUrl.split(',')[1], sketch,
+        )
+        views.push({ angle, label: RENDER_ANGLE_LABELS[angle], dataUrl, source: 'ai' })
+        onProgress?.(i + 1, opts.angles.length, RENDER_ANGLE_LABELS[angle])
+        continue
+      } catch {
+        // jatuh ke skematik di bawah
+      }
+    }
+    views.push({
+      angle,
+      label: RENDER_ANGLE_LABELS[angle],
+      dataUrl: schematicUrl,
+      source: 'skematik',
+    })
     onProgress?.(i + 1, opts.angles.length, RENDER_ANGLE_LABELS[angle])
   }
   return views
