@@ -12,6 +12,8 @@ export const PARCEL_COLORS: Record<ParcelType | 'boundary', { fill: string; stro
   jalan: { fill: '#b0bec5', stroke: '#8fa0a8' },
   rth: { fill: '#81c784', stroke: '#4e9553' },
   fasum: { fill: '#64b5f6', stroke: '#3d7fb5' },
+  tower: { fill: '#9fa8da', stroke: '#5c6bc0' },
+  parkir: { fill: '#eceff1', stroke: '#a7b6bd' },
   boundary: { fill: 'none', stroke: '#22303c' },
 }
 
@@ -21,17 +23,30 @@ export const PARCEL_TYPE_LABELS: Record<ParcelType, string> = {
   jalan: 'Jalan',
   fasum: 'Fasum / Fasos',
   rth: 'RTH / Taman',
+  tower: 'Tower (Apartemen/Hotel)',
+  parkir: 'Parkir',
 }
 
 const LEGEND_ITEMS: Array<[ParcelType, string]> = [
   ['kavling', 'Kavling Rumah'],
   ['komersial', 'Komersial (Ruko)'],
+  ['tower', 'Tower'],
+  ['parkir', 'Parkir'],
   ['jalan', 'Jalan'],
   ['fasum', 'Fasum / Fasos'],
   ['rth', 'RTH / Taman'],
 ]
 
-const DRAW_ORDER: Record<ParcelType, number> = { jalan: 0, rth: 1, fasum: 2, kavling: 3, komersial: 4 }
+const LABEL_COLORS: Partial<Record<ParcelType, string>> = {
+  rth: '#2e5e31',
+  fasum: '#1d4f7a',
+  tower: '#33397a',
+  parkir: '#546e7a',
+}
+
+const DRAW_ORDER: Record<ParcelType, number> = {
+  jalan: 0, parkir: 1, rth: 2, fasum: 3, kavling: 4, komersial: 5, tower: 6,
+}
 
 export interface RendererOptions {
   fixedSize?: boolean
@@ -195,7 +210,7 @@ export class SiteplanRenderer {
       } else {
         const areaPx = p.areaM2 * this.scale * this.scale
         if (!force && areaPx < 2000) continue
-        ctx.fillStyle = p.type === 'rth' ? '#2e5e31' : '#1d4f7a'
+        ctx.fillStyle = LABEL_COLORS[p.type] ?? '#33414e'
         ctx.font = '700 12px system-ui, sans-serif'
         ctx.fillText(p.label, s[0], s[1])
       }
@@ -204,10 +219,14 @@ export class SiteplanRenderer {
 
   private drawLegend(v: { w: number }): void {
     const ctx = this.ctx
+    // hanya tampilkan kategori yang benar-benar ada di siteplan ini
+    const present = new Set(this.result!.parcels.map(p => p.type))
+    const items = LEGEND_ITEMS.filter(([type]) => present.has(type))
+    if (!items.length) return
     const pad = 10
     const lh = 19
-    const w = 150
-    const h = LEGEND_ITEMS.length * lh + 16
+    const w = 160
+    const h = items.length * lh + 16
     const x = v.w - w - 12
     const y = 12
     ctx.fillStyle = 'rgba(255,255,255,0.92)'
@@ -218,7 +237,7 @@ export class SiteplanRenderer {
     ctx.stroke()
     ctx.textAlign = 'left'
     ctx.textBaseline = 'middle'
-    LEGEND_ITEMS.forEach(([type, name], i) => {
+    items.forEach(([type, name], i) => {
       const iy = y + 8 + lh * i + lh / 2 - 2
       ctx.fillStyle = PARCEL_COLORS[type].fill
       ctx.strokeStyle = PARCEL_COLORS[type].stroke

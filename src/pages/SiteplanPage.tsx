@@ -3,7 +3,10 @@
  * otomatis: kavling, jalan, fasum, RTH, ruko. Export PNG / DXF / PDF.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Map, FileImage, FileText, FileDown, Maximize2, Settings2 } from 'lucide-react'
+import { Map, FileImage, FileText, FileDown, Maximize2, Settings2, Building2 } from 'lucide-react'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import Header from '@/components/layout/Header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +19,7 @@ import { downloadDxf } from '@/engine/siteplan/exportDxf.ts'
 import { polygonArea } from '@/engine/siteplan/geometry.ts'
 import {
   generateSiteplan, defaultSiteplanParams,
-  type Parcel, type ParcelType, type SiteplanResult,
+  type Parcel, type ParcelType, type SiteplanConcept, type SiteplanResult,
 } from '@/engine/siteplan/layout.ts'
 import { parseManualCoords } from '@/engine/siteplan/ocrParse.ts'
 import { SITEPLAN_PRESETS } from '@/engine/siteplan/presets.ts'
@@ -40,6 +43,10 @@ export default function SiteplanPage() {
   const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
 
   // parameter form
+  const [concept, setConcept] = useState<SiteplanConcept>('perumahan')
+  const [towerW, setTowerW] = useState(20)
+  const [towerD, setTowerD] = useState(30)
+  const [towerCount, setTowerCount] = useState(1)
   const [lotW, setLotW] = useState(6)
   const [lotD, setLotD] = useState(12)
   const [roadMain, setRoadMain] = useState(8)
@@ -93,6 +100,8 @@ export default function SiteplanPage() {
         rthPct, fasumPct,
         commercial: { enabled: comEnabled, w: comW, d: comD, maxCount: comMax },
         blockMaxLen,
+        concept,
+        tower: { w: towerW, d: towerD, count: towerCount },
       })
       setResult(res)
       // canvas baru terukur setelah panel ringkasan dirender → fit pada frame berikutnya
@@ -108,7 +117,7 @@ export default function SiteplanPage() {
     }
   }
 
-  const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'jalan', 'fasum', 'rth']
+  const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'tower', 'parkir', 'jalan', 'fasum', 'rth']
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -171,6 +180,25 @@ export default function SiteplanPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
+                <p className="text-xs font-semibold text-navy mb-2 flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-gold" /> Konsep Pembangunan
+                </p>
+                <Select value={concept} onValueChange={v => setConcept(v as SiteplanConcept)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih konsep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="perumahan">Perumahan (kavling rumah)</SelectItem>
+                    <SelectItem value="ruko">Ruko / Komersial</SelectItem>
+                    <SelectItem value="apartemen">Apartemen (tower + parkir)</SelectItem>
+                    <SelectItem value="hotel">Hotel (tower + parkir)</SelectItem>
+                    <SelectItem value="mixed">Mixed-Use (ruko + rumah)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(concept === 'perumahan' || concept === 'mixed') && (
+              <div>
                 <p className="text-xs font-semibold text-navy mb-2">Kavling Rumah</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -185,6 +213,62 @@ export default function SiteplanPage() {
                   </div>
                 </div>
               </div>
+              )}
+
+              {(concept === 'apartemen' || concept === 'hotel') && (
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">
+                  Tower {concept === 'hotel' ? 'Hotel' : 'Apartemen'}
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Lebar (m)</Label>
+                    <Input type="number" value={towerW} min={10} step={1}
+                      onChange={e => setTowerW(+e.target.value || 20)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dalam (m)</Label>
+                    <Input type="number" value={towerD} min={10} step={1}
+                      onChange={e => setTowerD(+e.target.value || 30)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Jml. Tower</Label>
+                    <Input type="number" value={towerCount} min={1} max={10}
+                      onChange={e => setTowerCount(+e.target.value || 1)} />
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Sisa lahan otomatis menjadi area parkir, jalan, dan RTH.
+                </p>
+              </div>
+              )}
+
+              {(concept === 'ruko' || concept === 'mixed') && (
+              <div>
+                <p className="text-xs font-semibold text-navy mb-2">
+                  Ruko{concept === 'mixed' ? ' (di frontage jalan utama)' : ''}
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Lebar (m)</Label>
+                    <Input type="number" value={comW} min={3} step={0.5}
+                      onChange={e => setComW(+e.target.value || 5)} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dalam (m)</Label>
+                    <Input type="number" value={comD} min={5} step={0.5}
+                      onChange={e => setComD(+e.target.value || 15)} />
+                  </div>
+                  {concept === 'mixed' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Maks.</Label>
+                    <Input type="number" value={comMax} min={1}
+                      onChange={e => setComMax(+e.target.value || 10)} />
+                  </div>
+                  )}
+                </div>
+              </div>
+              )}
               <div>
                 <p className="text-xs font-semibold text-navy mb-2">Jalan</p>
                 <div className="grid grid-cols-2 gap-3">
@@ -198,28 +282,35 @@ export default function SiteplanPage() {
                     <Input type="number" value={roadSec} min={3} step={0.5}
                       onChange={e => setRoadSec(+e.target.value || 6)} />
                   </div>
+                  {!(concept === 'apartemen' || concept === 'hotel') && (
                   <div className="space-y-1 col-span-2">
                     <Label className="text-xs">Panjang Blok Maks. (m)</Label>
                     <Input type="number" value={blockMaxLen} min={20} step={5}
                       onChange={e => setBlockMaxLen(+e.target.value || 60)} />
                   </div>
+                  )}
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-navy mb-2">Fasum &amp; RTH</p>
+                <p className="text-xs font-semibold text-navy mb-2">
+                  {concept === 'apartemen' || concept === 'hotel' ? 'RTH' : 'Fasum & RTH'}
+                </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Target RTH (%)</Label>
                     <Input type="number" value={rthPct} min={0} max={60}
                       onChange={e => setRthPct(+e.target.value || 0)} />
                   </div>
+                  {!(concept === 'apartemen' || concept === 'hotel') && (
                   <div className="space-y-1">
                     <Label className="text-xs">Target Fasum (%)</Label>
                     <Input type="number" value={fasumPct} min={0} max={40}
                       onChange={e => setFasumPct(+e.target.value || 0)} />
                   </div>
+                  )}
                 </div>
               </div>
+              {concept === 'perumahan' && (
               <div>
                 <label className="flex items-center gap-2 text-xs font-semibold text-navy cursor-pointer">
                   <input
@@ -250,6 +341,7 @@ export default function SiteplanPage() {
                   </div>
                 )}
               </div>
+              )}
             </CardContent>
           </Card>
 
@@ -323,7 +415,8 @@ export default function SiteplanPage() {
                         const s = result.stats.byType[t]
                         if (!s || s.area < 0.5) return null
                         const count = t === 'kavling' ? result.stats.counts.kavling
-                          : t === 'komersial' ? result.stats.counts.komersial : '—'
+                          : t === 'komersial' ? result.stats.counts.komersial
+                          : t === 'tower' ? result.stats.counts.tower : '—'
                         return (
                           <tr key={t} className="border-b border-slate-100">
                             <td className="py-1.5 pr-6">
@@ -349,7 +442,7 @@ export default function SiteplanPage() {
                       </tr>
                       <tr>
                         <td colSpan={4} className="pt-1 font-bold text-navy">
-                          Efisiensi Lahan (kavling + komersial): {result.stats.efficiencyPct.toFixed(1)}%
+                          Efisiensi Lahan (area terjual/terbangun): {result.stats.efficiencyPct.toFixed(1)}%
                         </td>
                       </tr>
                     </tfoot>
