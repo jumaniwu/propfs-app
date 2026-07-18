@@ -251,3 +251,83 @@ export function rectFullyInside(rect: Rect, poly: Point[], eps = 0.01): boolean 
   }
   return true
 }
+
+/* ---------------- Offset & containment umum (engine v2) ---------------- */
+
+/**
+ * Offset polygon CCW ke DALAM sejauh d (miter sederhana).
+ * Mengembalikan null bila hasil tidak valid (terlalu besar d / self-intersect).
+ */
+export function offsetPolygonInward(ptsIn: Point[], d: number): Point[] | null {
+  const pts = ensureCCW(ptsIn)
+  const n = pts.length
+  const lines: Array<{ p: Point; dir: Point }> = []
+  for (let i = 0; i < n; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % n]
+    const len = dist(a, b)
+    if (len < 1e-9) return null
+    const ux = (b[0] - a[0]) / len
+    const uy = (b[1] - a[1]) / len
+    // normal kiri (interior CCW) = (-uy, ux)
+    const off: Point = [a[0] - uy * d, a[1] + ux * d]
+    lines.push({ p: off, dir: [ux, uy] })
+  }
+  const out: Point[] = []
+  for (let i = 0; i < n; i++) {
+    const l1 = lines[(i + n - 1) % n]
+    const l2 = lines[i]
+    const cross = l1.dir[0] * l2.dir[1] - l1.dir[1] * l2.dir[0]
+    if (Math.abs(cross) < 1e-9) {
+      out.push(l2.p) // hampir kolinear
+      continue
+    }
+    const dx = l2.p[0] - l1.p[0]
+    const dy = l2.p[1] - l1.p[1]
+    const t = (dx * l2.dir[1] - dy * l2.dir[0]) / cross
+    out.push([l1.p[0] + l1.dir[0] * t, l1.p[1] + l1.dir[1] * t])
+  }
+  if (!isSimplePolygon(out)) return null
+  // hasil harus tetap CCW (offset berlebihan membalik orientasi)
+  if (signedArea(out) <= 0) return null
+  const a0 = polygonArea(pts)
+  const a1 = polygonArea(out)
+  if (a1 <= 0 || a1 >= a0) return null
+  // semua titik hasil harus di dalam polygon asal
+  for (const p of out) if (!pointInPolygon(p, pts)) return null
+  return out
+}
+
+/**
+ * Uji ketat polygon (quad/segi-n cembung kecil) sepenuhnya di dalam boundary,
+ * dengan inset eps ke arah centroid — versi umum dari rectFullyInside.
+ */
+export function polyFullyInside(quad: Point[], boundary: Point[], eps = 0.01): boolean {
+  const c = centroid(quad)
+  const shrunk = quad.map(p => {
+    const dx = c[0] - p[0]
+    const dy = c[1] - p[1]
+    const len = Math.hypot(dx, dy) || 1
+    return [p[0] + (dx / len) * eps, p[1] + (dy / len) * eps] as Point
+  })
+  for (const p of shrunk) if (!pointInPolygon(p, boundary)) return false
+  const m = shrunk.length
+  for (let i = 0; i < m; i++) {
+    const a = shrunk[i]
+    const b = shrunk[(i + 1) % m]
+    for (let j = 0, n = boundary.length; j < n; j++) {
+      if (segIntersects(a, b, boundary[j], boundary[(j + 1) % n])) return false
+    }
+  }
+  return true
+}
+
+/** Apakah dua polygon cembung kecil saling tumpang tindih (uji tepi + centroid). */
+export function polysOverlap(a: Point[], b: Point[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    for (let j = 0; j < b.length; j++) {
+      if (segIntersects(a[i], a[(i + 1) % a.length], b[j], b[(j + 1) % b.length])) return true
+    }
+  }
+  return pointInPolygon(centroid(a), b) || pointInPolygon(centroid(b), a)
+}

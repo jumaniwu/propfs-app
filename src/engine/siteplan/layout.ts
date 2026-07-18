@@ -8,6 +8,7 @@ import {
   type Point, type Rect, type BBox,
   ensureCCW, isSimplePolygon, longestEdgeAngle, centroid, rotatePoints,
   bbox, dist, polygonArea, clipPolyToRect, rectFullyInside, rectToPoly,
+  offsetPolygonInward, polyFullyInside, polysOverlap,
 } from './geometry.ts'
 
 export type ParcelType = 'kavling' | 'jalan' | 'rth' | 'fasum' | 'komersial' | 'tower' | 'parkir' | 'plaza'
@@ -54,6 +55,14 @@ export interface SiteplanParams {
    * sisi i = titik i → titik i+1. Kosong = otomatis (sisi terpanjang).
    */
   frontageEdge?: number | null
+  /** Pola jaringan jalan: 'loop' = boulevard + jalan keliling ikut bentuk lahan (default), 'grid' = pola lama. */
+  roadStyle?: 'grid' | 'loop'
+  /** Posisi gerbang di sisi jalan utama, 0..1 sepanjang sisi frontage (default 0.5). */
+  gateT?: number
+  /** Lebar buffer hijau keliling batas lahan (m), default 3. */
+  perimeterBuffer?: number
+  /** Mix tipe rumah: beberapa lebar kavling dengan proporsi % (kedalaman seragam lot.d). */
+  lotTypes?: Array<{ name: string; w: number; pct: number }>
 }
 
 export interface SiteplanStats {
@@ -106,6 +115,9 @@ export function defaultSiteplanParams(): SiteplanParams {
     concept: 'perumahan',
     tower: { w: 20, d: 30, count: 1 },
     plaza: { w: 30, d: 20 },
+    roadStyle: 'loop',
+    gateT: 0.5,
+    perimeterBuffer: 3,
   }
 }
 
@@ -159,16 +171,33 @@ function computeFrame(boundary: Point[], frontageEdge?: number | null) {
 
 /* ---------------- Band horizontal ---------------- */
 
-function buildBands(bb: BBox, params: SiteplanParams, firstRowDepth: number | null): Band[] {
+function buildBands(
+  bb: BBox, params: SiteplanParams, firstRowDepth: number | null,
+  opts?: { startWithRow?: boolean; allSecondary?: boolean },
+): Band[] {
   const bands: Band[] = []
   const d = params.lot.d
   let y = bb.minY
   let pair = 0
   let first = true
+  // gaya loop: baris pertama langsung menghadap ring road di bawahnya
+  if (opts?.startWithRow) {
+    const rowD = firstRowDepth ?? d
+    if (y + rowD <= bb.maxY) {
+      bands.push({ kind: 'row', y1: y, y2: y + rowD, rowFacing: 'down', pairIndex: pair, first: true })
+      y += rowD
+      first = false
+      if (y + d <= bb.maxY) {
+        bands.push({ kind: 'row', y1: y, y2: y + d, rowFacing: 'up', pairIndex: pair })
+        y += d
+      }
+      pair++
+    }
+  }
   for (;;) {
     const rowD = first && firstRowDepth ? firstRowDepth : d
     // jalan di depan pasangan baris: frontage utama lebar penuh, sisanya jalan lingkungan
-    const road = first ? params.road.main : params.road.secondary
+    const road = first && !opts?.allSecondary ? params.road.main : params.road.secondary
     bands.push({ kind: 'road', y1: y, y2: y + road, pairIndex: pair })
     y += road
     if (y + rowD > bb.maxY) break
@@ -260,15 +289,19 @@ function pushRemnant(remnants: Point[][], rotBoundary: Point[], rect: Rect): voi
 
 function sliceRow(
   band: Band, intervals: Interval[], rotBoundary: Point[],
-  dims: { w: number; d: number },
+  dims: { w: number; d: number; widths?: number[] },
 ): { cells: Cell[]; remnants: Point[][] } {
   let cells: Cell[] = []
   const remnants: Point[][] = []
+  const seq = dims.widths && dims.widths.length ? dims.widths : [dims.w]
+  let wi = 0
   for (const [a, b] of intervals) {
     let x = a
     let runCells: Cell[] = []
-    while (x + dims.w <= b + 1e-9) {
-      const rect: Rect = { x1: x, y1: band.y1, x2: x + dims.w, y2: band.y2 }
+    for (;;) {
+      const w = seq[wi % seq.length]
+      if (x + w > b + 1e-9) break
+      const rect: Rect = { x1: x, y1: band.y1, x2: x + w, y2: band.y2 }
       if (rectFullyInside(rect, rotBoundary)) {
         runCells.push({ rect, band })
       } else {
@@ -279,7 +312,8 @@ function sliceRow(
           runCells = []
         }
       }
-      x += dims.w
+      x += w
+      wi++
     }
     if (x < b) pushRemnant(remnants, rotBoundary, { x1: x, y1: band.y1, x2: b, y2: band.y2 })
     if (runCells.length) {
@@ -361,7 +395,7 @@ type ProtoParcel = Pick<Parcel, 'type' | 'polygon' | 'label'>
 /** Alokasi fasum lalu RTH dari sel kavling; remnant otomatis jadi RTH. */
 function allocateFasumRth(
   cells: Cell[], remnants: Point[][], totalArea: number,
-  params: SiteplanParams, warnings: string[],
+  params: SiteplanParams, warnings: string[], anchor: Point | null = null,
 ): { fasum: ProtoParcel[]; rth: ProtoParcel[] } {
   const fasumParcels: ProtoParcel[] = []
   const rthPolys = remnants.slice()
@@ -379,11 +413,12 @@ function allocateFasumRth(
     }
     center[0] /= cells.length
     center[1] /= cells.length
+    const target = anchor ?? center
     let seedIdx = 0
     let bestD = Infinity
-    for (let s = 0; s < cells.length; s++) {
-      const d = dist(cellCenter(cells[s]), center)
-      if (d < bestD) { bestD = d; seedIdx = s }
+    for (let sIdx = 0; sIdx < cells.length; sIdx++) {
+      const d = dist(cellCenter(cells[sIdx]), target)
+      if (d < bestD) { bestD = d; seedIdx = sIdx }
     }
     let needed = Math.max(1, Math.ceil(fasumTarget / cellArea(cells[seedIdx])))
     needed = Math.min(needed, cells.length - MIN_KAVLING_KEEP)
@@ -461,6 +496,202 @@ function roadArea(rotBoundary: Point[], roadBands: Band[], crossRoads: Strip[], 
 
 /* ---------------- Pipeline utama ---------------- */
 
+/* ---------------- Gaya jalan LOOP (kerangka arsitek) ---------------- */
+
+interface PerimLot { poly: Point[]; w: number; d: number }
+
+interface LoopSkeleton {
+  /** region inti (di dalam ring road) untuk pipeline grid */
+  inner: Point[]
+  jalan: Point[][]
+  rth: Point[][]
+  housing: PerimLot[]
+  ruko: PerimLot[]
+  roadAreaExtra: number
+  gate: Point
+}
+
+/** Deret lebar kavling dari mix tipe (interleave proporsional). */
+function buildWidthSeq(params: SiteplanParams): number[] {
+  const types = params.lotTypes?.filter(t => t.w >= 3 && t.pct > 0) ?? []
+  if (types.length === 0) return [params.lot.w]
+  const total = types.reduce((sum, t) => sum + t.pct, 0)
+  const rem = types.map(t => Math.max(1, Math.round((t.pct / total) * 10)))
+  const seq: number[] = []
+  while (rem.some(c => c > 0)) {
+    for (let i = 0; i < types.length; i++) {
+      if (rem[i] > 0) { seq.push(types[i].w); rem[i]-- }
+    }
+  }
+  return seq
+}
+
+/**
+ * Kerangka desain ala arsitek: buffer hijau keliling, gerbang + boulevard
+ * bermedian dari jalan utama, jalan kolektor keliling (ring) mengikuti
+ * bentuk lahan, kavling premium menghadap ring, ruko di frontage dekat
+ * gerbang. Mengembalikan null bila bentuk/luas lahan tidak memungkinkan.
+ */
+function buildLoopSkeleton(
+  rotB: Point[], params: SiteplanParams, widths: number[],
+  opts: { rukoOn: boolean; housingOn: boolean },
+): LoopSkeleton | null {
+  const buffer = Math.max(1, params.perimeterBuffer ?? 3)
+  const com = params.commercial
+  const perimDepth = Math.max(params.lot.d, opts.rukoOn ? com.d : 0)
+  const ringW = params.road.secondary
+  const eff = offsetPolygonInward(rotB, buffer)
+  const ringOuter = offsetPolygonInward(rotB, buffer + perimDepth)
+  const ringInner = offsetPolygonInward(rotB, buffer + perimDepth + ringW)
+  if (!eff || !ringOuter || !ringInner) return null
+  // inti harus cukup untuk minimal ~2 baris kavling
+  if (polygonArea(ringInner) < params.lot.w * params.lot.d * 8) return null
+
+  const n = rotB.length
+  // sisi frontage = sisi dengan titik tengah paling bawah pada frame kerja
+  let frontIdx = 0
+  let bestY = Infinity
+  for (let i = 0; i < n; i++) {
+    const my = (rotB[i][1] + rotB[(i + 1) % n][1]) / 2
+    if (my < bestY) { bestY = my; frontIdx = i }
+  }
+  const gateT = Math.min(0.9, Math.max(0.1, params.gateT ?? 0.5))
+  const fa = eff[frontIdx]
+  const fb = eff[(frontIdx + 1) % n]
+  const gx = fa[0] + (fb[0] - fa[0]) * gateT
+  const bbAll = bbox(rotB)
+  const bw = params.road.main
+  const yRing = bbox(ringInner).minY + 1
+
+  const jalan: Point[][] = []
+  const rth: Point[][] = []
+  let roadAreaExtra = 0
+
+  // boulevard masuk dari gerbang menembus buffer + baris perimeter + ring
+  const bvdRect: Rect = { x1: gx - bw / 2, y1: bbAll.minY, x2: gx + bw / 2, y2: yRing }
+  const bvd = clipPolyToRect(rotB, bvdRect)
+  const bvdPoly = rectToPoly(bvdRect)
+  if (bvd.length < 3) return null
+  jalan.push(bvd)
+  roadAreaExtra += polygonArea(bvd)
+  // median hijau boulevard (bila boulevard cukup lebar)
+  if (bw >= 9) {
+    const med = clipPolyToRect(rotB, { x1: gx - 0.75, y1: bbAll.minY + buffer + 4, x2: gx + 0.75, y2: yRing - 5 })
+    if (med.length >= 3) {
+      rth.push(med)
+      roadAreaExtra -= polygonArea(med)
+    }
+  }
+
+  // ring road + buffer keliling (per sisi, quad demi quad)
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    const ringQuad: Point[] = [ringOuter[i], ringOuter[j], ringInner[j], ringInner[i]]
+    jalan.push(ringQuad)
+    roadAreaExtra += polygonArea(ringQuad)
+    const bufQuad: Point[] = [rotB[i], rotB[j], eff[j], eff[i]]
+    if (i === frontIdx) {
+      // sisakan celah gerbang pada buffer frontage
+      const bq = bbox(bufQuad)
+      const left = clipPolyToRect(bufQuad, { x1: bq.minX, y1: bq.minY, x2: gx - bw / 2, y2: bq.maxY })
+      const right = clipPolyToRect(bufQuad, { x1: gx + bw / 2, y1: bq.minY, x2: bq.maxX, y2: bq.maxY })
+      if (left.length >= 3) rth.push(left)
+      if (right.length >= 3) rth.push(right)
+    } else {
+      rth.push(bufQuad)
+    }
+  }
+  // koreksi perkiraan overlap boulevard dengan ring bawah
+  roadAreaExtra -= bw * ringW
+
+  // kavling premium & ruko menghadap ring, per sisi polygon efektif
+  const housing: PerimLot[] = []
+  const ruko: PerimLot[] = []
+  const placed: Point[][] = []
+  let rukoLeft = opts.rukoOn ? com.maxCount : 0
+  const shrinkQuad = (q: Point[], e: number): Point[] => {
+    const c = centroid(q)
+    return q.map(pt => {
+      const dx = c[0] - pt[0]
+      const dy = c[1] - pt[1]
+      const len = Math.hypot(dx, dy) || 1
+      return [pt[0] + (dx / len) * e, pt[1] + (dy / len) * e] as Point
+    })
+  }
+  for (let i = 0; i < n; i++) {
+    const isFront = i === frontIdx
+    if (!isFront && !opts.housingOn) continue
+    if (isFront && !opts.rukoOn && !opts.housingOn) continue
+    const a = eff[i]
+    const b = eff[(i + 1) % n]
+    const len = dist(a, b)
+    const u: Point = [(b[0] - a[0]) / len, (b[1] - a[1]) / len]
+    const nrm: Point = [-u[1], u[0]] // interior di kiri arah sisi (CCW)
+    const cornerM = perimDepth * 0.8
+    let sPos = cornerM
+    let wi = 0
+    while (sPos + 3 < len - cornerM) {
+      const useRuko = isFront && rukoLeft > 0
+      if (isFront && !useRuko && !opts.housingOn) break
+      const w = useRuko ? com.w : widths[wi % widths.length]
+      const d = useRuko ? com.d : perimDepth
+      if (sPos + w > len - cornerM) break
+      const o1: Point = [a[0] + u[0] * sPos, a[1] + u[1] * sPos]
+      const o2: Point = [a[0] + u[0] * (sPos + w), a[1] + u[1] * (sPos + w)]
+      const i2: Point = [o2[0] + nrm[0] * d, o2[1] + nrm[1] * d]
+      const i1: Point = [o1[0] + nrm[0] * d, o1[1] + nrm[1] * d]
+      const quad: Point[] = [o1, o2, i2, i1]
+      const probe = shrinkQuad(quad, 0.05)
+      const ok = polyFullyInside(quad, rotB, 0.005) &&
+        !polysOverlap(probe, bvdPoly) &&
+        !placed.some(pq => polysOverlap(probe, pq))
+      if (ok) {
+        placed.push(quad)
+        if (useRuko) { ruko.push({ poly: quad, w, d }); rukoLeft-- }
+        else housing.push({ poly: quad, w, d })
+      }
+      sPos += w
+      if (!useRuko) wi++
+    }
+  }
+
+  // taman sudut: isi wedge kosong di ujung tiap sisi (margin sudut) sebagai RTH
+  const cornerPlaced: Point[][] = []
+  for (let i = 0; i < n; i++) {
+    const a = eff[i]
+    const b = eff[(i + 1) % n]
+    const len = dist(a, b)
+    const u: Point = [(b[0] - a[0]) / len, (b[1] - a[1]) / len]
+    const nrm: Point = [-u[1], u[0]]
+    const cornerM = Math.min(perimDepth * 0.8, len / 2 - 0.5)
+    if (cornerM < 1) continue
+    for (const [s0, s1] of [[0, cornerM], [len - cornerM, len]] as Array<[number, number]>) {
+      const o1: Point = [a[0] + u[0] * s0, a[1] + u[1] * s0]
+      const o2: Point = [a[0] + u[0] * s1, a[1] + u[1] * s1]
+      const i2: Point = [o2[0] + nrm[0] * perimDepth, o2[1] + nrm[1] * perimDepth]
+      const i1: Point = [o1[0] + nrm[0] * perimDepth, o1[1] + nrm[1] * perimDepth]
+      const quad: Point[] = [o1, o2, i2, i1]
+      const probe = shrinkQuad(quad, 0.08)
+      if (!polyFullyInside(quad, rotB, 0.005)) continue
+      if (polysOverlap(probe, bvdPoly)) continue
+      if (placed.some(pq => polysOverlap(probe, pq))) continue
+      if (cornerPlaced.some(pq => polysOverlap(probe, pq))) continue
+      cornerPlaced.push(quad)
+      rth.push(quad)
+    }
+  }
+
+  return {
+    inner: ringInner,
+    jalan,
+    rth,
+    housing,
+    ruko,
+    roadAreaExtra,
+    gate: [gx, bbAll.minY + buffer],
+  }
+}
+
 export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanParams): SiteplanResult {
   const warnings: string[] = []
 
@@ -510,6 +741,28 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   }
 
   const com = params.commercial
+
+  // ===== Gaya jalan: loop keliling (ala arsitek) vs grid =====
+  const styleWanted: 'grid' | 'loop' = isTower ? 'grid' : (params.roadStyle ?? 'loop')
+  const lotWidths = buildWidthSeq(params)
+  let loop: LoopSkeleton | null = null
+  let gRegion = rotB
+  let gbb = bb
+  if (styleWanted === 'loop') {
+    const rukoOn = concept === 'mixed' ? mix!.ruko : (com.enabled && concept !== 'ruko')
+    const housingOn = concept === 'mixed' ? mix!.rumah : true
+    loop = buildLoopSkeleton(rotB, params, lotWidths, { rukoOn, housingOn })
+    if (loop) {
+      gRegion = loop.inner
+      gbb = bbox(loop.inner)
+      // ruko sudah ditempatkan di frontage perimeter; inti fokus hunian/blok besar
+      com.enabled = false
+      if (mix) mix.ruko = false
+    } else {
+      warnings.push('Bentuk/luas lahan tidak memungkinkan jalan keliling — memakai pola grid.')
+    }
+  }
+
   // mixed: kedalaman baris frontage = komponen terdalam yang dipilih
   let firstRowDepth: number | null = null
   if (isTower) {
@@ -524,10 +777,11 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   } else if (com.enabled && com.d > params.lot.d) {
     firstRowDepth = com.d
   }
-  const bands = buildBands(bb, params, firstRowDepth)
+  const bands = buildBands(gbb, params, firstRowDepth,
+    loop ? { startWithRow: true, allSecondary: true } : undefined)
   // konsep tower: sirkulasi cukup jalan horizontal, tanpa jalan lingkungan vertikal
-  const crossRoads = isTower ? [] : crossRoadXs(bb, params)
-  const intervals = freeIntervals(bb, crossRoads)
+  const crossRoads = isTower ? [] : crossRoadXs(gbb, params)
+  const intervals = freeIntervals(gbb, crossRoads)
 
   const parcels: Array<Omit<Parcel, 'id' | 'areaM2'> & Partial<Pick<Parcel, 'id' | 'areaM2'>>> = []
 
@@ -545,18 +799,19 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   // --- Jalan ---
   const roadBands = bands.filter(b => b.kind === 'road')
   for (const band of roadBands) {
-    const piece = clipPolyToRect(rotB, { x1: bb.minX, y1: band.y1, x2: bb.maxX, y2: band.y2 })
+    const piece = clipPolyToRect(gRegion, { x1: gbb.minX, y1: band.y1, x2: gbb.maxX, y2: band.y2 })
     if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) {
       addParcel({ type: 'jalan', polygon: piece, label: null })
     }
   }
   for (const s of crossRoads) {
-    const piece = clipPolyToRect(rotB, { x1: s.x1, y1: bb.minY, x2: s.x2, y2: bb.maxY })
+    const piece = clipPolyToRect(gRegion, { x1: s.x1, y1: gbb.minY, x2: s.x2, y2: gbb.maxY })
     if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) {
       addParcel({ type: 'jalan', polygon: piece, label: null })
     }
   }
-  const jalanArea = roadArea(rotB, roadBands, crossRoads, bb)
+  const jalanArea = roadArea(gRegion, roadBands, crossRoads, gbb) + (loop?.roadAreaExtra ?? 0)
+  if (loop) for (const poly of loop.jalan) addParcel({ type: 'jalan', polygon: poly, label: null })
 
   // --- Baris kavling & ruko (atau tower + parkir) ---
   const rowBands = bands.filter(b => b.kind === 'row')
@@ -573,7 +828,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
       if (band.first) {
         // tower berjajar di tengah frontage; kurangi jumlah bila tidak muat
         const gap = params.road.secondary
-        const cx = (bb.minX + bb.maxX) / 2
+        const cx = (gbb.minX + gbb.maxX) / 2
         let placed: Rect[] = []
         for (let n = tw.count; n >= 1 && placed.length === 0; n--) {
           const total = n * tw.w + (n - 1) * gap
@@ -581,7 +836,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
           for (let i = 0; i < n; i++) {
             const x1 = cx - total / 2 + i * (tw.w + gap)
             const rect: Rect = { x1, y1: band.y1, x2: x1 + tw.w, y2: band.y2 }
-            if (rectFullyInside(rect, rotB)) candidate.push(rect)
+            if (rectFullyInside(rect, gRegion)) candidate.push(rect)
           }
           if (candidate.length === n) placed = candidate
         }
@@ -598,12 +853,12 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
         })
         const rest = subtractIntervals(intervals, placed.map(r => [r.x1, r.x2] as Interval))
         for (const iv of rest) {
-          const piece = clipPolyToRect(rotB, { x1: iv[0], y1: band.y1, x2: iv[1], y2: band.y2 })
+          const piece = clipPolyToRect(gRegion, { x1: iv[0], y1: band.y1, x2: iv[1], y2: band.y2 })
           if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
         }
       } else {
         for (const iv of intervals) {
-          const piece = clipPolyToRect(rotB, { x1: iv[0], y1: band.y1, x2: iv[1], y2: band.y2 })
+          const piece = clipPolyToRect(gRegion, { x1: iv[0], y1: band.y1, x2: iv[1], y2: band.y2 })
           if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
         }
       }
@@ -614,7 +869,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   } else rowBands.forEach((band, bi) => {
     const pushParkirStrip = (x1: number, y1: number, x2: number, y2: number) => {
       if (y2 - y1 <= 0.01 || x2 - x1 <= 0.01) return
-      const piece = clipPolyToRect(rotB, { x1, y1, x2, y2 })
+      const piece = clipPolyToRect(gRegion, { x1, y1, x2, y2 })
       if (piece.length >= 3 && polygonArea(piece) > MIN_PARCEL_AREA) parkirPolys.push(piece)
     }
 
@@ -636,7 +891,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
         // tiap blok mencari posisi muat terdekat dari tengah frontage (greedy),
         // sehingga di lahan miring/tidak beraturan blok tetap terpasang semua
         const gap = params.road.secondary
-        const cx = (bb.minX + bb.maxX) / 2
+        const cx = (gbb.minX + gbb.maxX) / 2
         const step = Math.max(2, params.lot.w / 2)
         const placedRects: Rect[] = []
         let placedCount = 0
@@ -646,8 +901,8 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
             for (const sign of k === 0 ? [1] : [-1, 1]) {
               const x1 = cx - b.w / 2 + sign * k * step
               const rect: Rect = { x1, y1: band.y1, x2: x1 + b.w, y2: Math.min(band.y1 + b.d, band.y2) }
-              if (rect.x1 < bb.minX || rect.x2 > bb.maxX) continue
-              if (!rectFullyInside(rect, rotB)) continue
+              if (rect.x1 < gbb.minX || rect.x2 > gbb.maxX) continue
+              if (!rectFullyInside(rect, gRegion)) continue
               if (placedRects.some(r => rect.x1 < r.x2 + gap && rect.x2 > r.x1 - gap)) continue
               placedRect = rect
               break
@@ -669,13 +924,13 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
       if (mix.ruko) {
         const rukoDepth = Math.min(com.d, band.y2 - band.y1)
         const rukoBand: Band = { ...band, y2: band.y1 + rukoDepth }
-        const res = sliceRow(rukoBand, bandIntervals, rotB, { w: com.w, d: rukoDepth })
+        const res = sliceRow(rukoBand, bandIntervals, gRegion, { w: com.w, d: rukoDepth })
         const take = Math.min(com.maxCount, res.cells.length)
         comCells = res.cells.slice(0, take)
         for (const iv of bandIntervals) pushParkirStrip(iv[0], rukoBand.y2, iv[1], band.y2)
         const restIntervals = subtractIntervals(bandIntervals, comCells.map(c => [c.rect.x1, c.rect.x2] as Interval))
         if (mix.rumah) {
-          const res2 = sliceRow(rukoBand, restIntervals, rotB, { w: params.lot.w, d: rukoDepth })
+          const res2 = sliceRow(rukoBand, restIntervals, gRegion, { w: params.lot.w, d: rukoDepth, widths: lotWidths })
           for (const c of res2.cells) { c.bandIndex = bi; allCells.push(c) }
           allRemnants = allRemnants.concat(res2.remnants)
         } else {
@@ -684,7 +939,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
       } else if (mix.rumah) {
         const rowDepth = Math.min(params.lot.d, band.y2 - band.y1)
         const rowBand: Band = { ...band, y2: band.y1 + rowDepth }
-        const r = sliceRow(rowBand, bandIntervals, rotB, { w: params.lot.w, d: rowDepth })
+        const r = sliceRow(rowBand, bandIntervals, gRegion, { w: params.lot.w, d: rowDepth, widths: lotWidths })
         for (const c of r.cells) { c.bandIndex = bi; allCells.push(c) }
         allRemnants = allRemnants.concat(r.remnants)
         for (const iv of bandIntervals) pushParkirStrip(iv[0], rowBand.y2, iv[1], band.y2)
@@ -697,42 +952,59 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
       for (const iv of intervals) pushParkirStrip(iv[0], band.y1, iv[1], band.y2)
     } else if (com.enabled && band.first && comCells.length < com.maxCount) {
       // baris frontage (perumahan + opsi ruko): iris ruko dulu, sisanya kavling
-      const res = sliceRow(band, intervals, rotB, { w: com.w, d: band.y2 - band.y1 })
+      const res = sliceRow(band, intervals, gRegion, { w: com.w, d: band.y2 - band.y1 })
       const take = Math.min(com.maxCount, res.cells.length)
       comCells = res.cells.slice(0, take)
       const occupied: Interval[] = comCells.map(c => [c.rect.x1, c.rect.x2])
       const restIntervals = subtractIntervals(intervals, occupied)
-      const res2 = sliceRow(band, restIntervals, rotB, { w: params.lot.w, d: band.y2 - band.y1 })
+      const res2 = sliceRow(band, restIntervals, gRegion, { w: params.lot.w, d: band.y2 - band.y1, widths: lotWidths })
       for (const c of res2.cells) { c.bandIndex = bi; allCells.push(c) }
       allRemnants = allRemnants.concat(res2.remnants)
     } else {
-      const r = sliceRow(band, intervals, rotB, { w: params.lot.w, d: band.y2 - band.y1 })
+      const r = sliceRow(band, intervals, gRegion, { w: params.lot.w, d: band.y2 - band.y1, widths: lotWidths })
       for (const c of r.cells) { c.bandIndex = bi; allCells.push(c) }
       allRemnants = allRemnants.concat(r.remnants)
     }
   })
 
+  // blok besar wajib hadir: bila tidak muat di inti loop, ulang dengan pola grid
+  const wantTower = (isTower || (mix?.tower ?? false)) && (params.tower?.count ?? 0) > 0
+  const wantPlaza = mix?.plaza ?? false
+  if (loop && ((wantTower && towerParcels.length === 0) || (wantPlaza && plazaParcels.length === 0))) {
+    const retry = generateSiteplan(boundaryPts, { ...inputParams, roadStyle: 'grid' })
+    retry.warnings.push('Blok tower/plaza tidak muat di inti jalan keliling — otomatis memakai pola grid.')
+    return retry
+  }
+
   // sisa lahan di atas band terakhir (tidak muat satu baris pun) → remnant/RTH
-  const topY = bands.length ? bands[bands.length - 1].y2 : bb.minY
-  if (bb.maxY - topY > 0.01) {
+  const topY = bands.length ? bands[bands.length - 1].y2 : gbb.minY
+  if (gbb.maxY - topY > 0.01) {
     for (const iv of intervals) {
-      pushRemnant(allRemnants, rotB, { x1: iv[0], y1: topY, x2: iv[1], y2: bb.maxY })
+      pushRemnant(allRemnants, gRegion, { x1: iv[0], y1: topY, x2: iv[1], y2: gbb.maxY })
     }
   }
 
   // batas jumlah rumah (target unit dari kebutuhan/AI): kelebihan → RTH
   const lotMax = params.lot.maxCount ?? 0
-  if (lotMax > 0 && allCells.length > lotMax) {
-    while (allCells.length > lotMax) {
+  if (lotMax > 0) {
+    if (loop && loop.housing.length > lotMax) {
+      for (const q of loop.housing.splice(lotMax)) allRemnants.push(q.poly)
+    }
+    const coreAllowed = Math.max(0, lotMax - (loop?.housing.length ?? 0))
+    while (allCells.length > coreAllowed) {
       const c = allCells.pop()!
       allRemnants.push(rectToPoly(c.rect))
     }
   }
 
   if (!isTower && allCells.length === 0 && comCells.length === 0 &&
-      towerParcels.length === 0 && plazaParcels.length === 0) {
+      towerParcels.length === 0 && plazaParcels.length === 0 &&
+      (loop ? loop.housing.length === 0 && loop.ruko.length === 0 : true)) {
     throw new Error('Tidak ada kavling yang muat di dalam batas lahan. Coba kecilkan ukuran kavling atau lebar jalan.')
   }
+
+  // buffer keliling & median boulevard dihitung sebagai RTH
+  if (loop) allRemnants = allRemnants.concat(loop.rth)
 
   // --- Fasum & RTH ---
   let alloc: { fasum: ProtoParcel[]; rth: ProtoParcel[] }
@@ -751,7 +1023,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     }
     alloc = { fasum: [], rth: rthPolys.map(poly => ({ type: 'rth', polygon: poly, label: 'RTH' })) }
   } else {
-    alloc = allocateFasumRth(allCells, allRemnants, totalArea, params, warnings)
+    alloc = allocateFasumRth(allCells, allRemnants, totalArea, params, warnings, loop?.gate ?? null)
   }
 
   // --- Penomoran ---
@@ -789,6 +1061,21 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
     addParcel({
       type: 'komersial', polygon: rectToPoly(c.rect), label: c.label!, block: 'R',
       w: +(c.rect.x2 - c.rect.x1).toFixed(2), d: +(c.rect.y2 - c.rect.y1).toFixed(2),
+    })
+  }
+  if (loop) {
+    loop.housing.forEach((q, i) => {
+      addParcel({
+        type: rowLotType, polygon: q.poly, label: `P-${String(i + 1).padStart(2, '0')}`,
+        block: 'P', w: q.w, d: q.d,
+      })
+    })
+    loop.ruko.forEach((q, i) => {
+      addParcel({
+        type: 'komersial', polygon: q.poly,
+        label: `R-${String(comCells.length + i + 1).padStart(2, '0')}`,
+        block: 'R', w: q.w, d: q.d,
+      })
     })
   }
   for (const p of towerParcels) addParcel(p)
@@ -838,7 +1125,7 @@ export function generateSiteplan(boundaryPts: Point[], inputParams: SiteplanPara
   }
 
   const sumPct = (Object.keys(stats.byType) as ParcelType[]).reduce((s, t) => s + stats.byType[t].pct, 0)
-  if (sumPct < 96 || sumPct > 104) {
+  if (sumPct < (loop ? 86 : 96) || sumPct > 106) {
     warnings.push(`Cek internal: total persentase penggunaan lahan ${sumPct.toFixed(1)}% (ada sisa lahan yang tidak teralokasi).`)
   }
 

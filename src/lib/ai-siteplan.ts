@@ -19,6 +19,8 @@ export interface AIKonsepResult {
   concept: SiteplanConcept
   /** deskripsi posisi jalan utama relatif terhadap lahan (arah mata angin/sisi) */
   jalanUtama: string
+  /** index sisi polygon (CCW, 0-based) yang menghadap jalan utama — bila polygon lahan diberikan */
+  jalanUtamaEdge: number | null
   zones: AIZone[]
   /** saran parameter (opsional, hanya yang disebut AI) */
   params: Partial<{
@@ -149,10 +151,13 @@ export function aiVisionAvailable(): boolean {
 }
 
 /** Analisis gambar draft konsep → rekomendasi terstruktur. */
-export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> {
+export async function analyzeConceptSketch(file: File, boundary?: [number, number][] | null): Promise<AIKonsepResult> {
   // hook mock untuk pengujian E2E tanpa jaringan
-  const mock = (window as { __aiSiteplanMock?: (f: File) => Promise<AIKonsepResult> }).__aiSiteplanMock
-  if (mock) return mock(file)
+  const mock = (window as { __aiSiteplanMock?: (f: File, b?: [number, number][] | null) => Promise<AIKonsepResult> }).__aiSiteplanMock
+  if (mock) {
+    const m = await mock(file, boundary)
+    return { ...m, jalanUtamaEdge: m.jalanUtamaEdge ?? null }
+  }
 
   const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
   if (!geminiKey) {
@@ -160,8 +165,14 @@ export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> 
   }
 
   const image = await fileToBase64(file)
+  let prompt = PROMPT
+  if (boundary && boundary.length >= 3) {
+    prompt += `\n\nPOLYGON LAHAN USER (meter, urutan CCW): ${JSON.stringify(boundary.map(p => [Math.round(p[0]), Math.round(p[1])]))}.
+Sisi i menghubungkan titik i ke titik i+1 (0-based, sisi terakhir kembali ke titik 0).
+Cocokkan bentuk polygon ini dengan bentuk lahan pada foto, lalu tambahkan field "jalanUtamaEdge": index sisi yang menghadap jalan raya utama.`
+  }
   const raw = await callGeminiVision(geminiKey, [
-    { text: PROMPT },
+    { text: prompt },
     { inline_data: { mime_type: image.mime, data: image.data } },
   ])
   const parsed = extractJson(raw) as Partial<AIKonsepResult> & { concept?: string }
@@ -170,8 +181,13 @@ export async function analyzeConceptSketch(file: File): Promise<AIKonsepResult> 
     ? (parsed.concept as SiteplanConcept)
     : 'mixed'
 
+  const edgeRaw = (parsed as { jalanUtamaEdge?: unknown }).jalanUtamaEdge
+  const edgeNum = typeof edgeRaw === 'number' && Number.isInteger(edgeRaw) &&
+    boundary && edgeRaw >= 0 && edgeRaw < boundary.length ? edgeRaw : null
+
   return {
     concept,
+    jalanUtamaEdge: edgeNum,
     jalanUtama: String(parsed.jalanUtama ?? '').trim() || 'Tidak teridentifikasi — tandai manual dengan mengeklik sisi lahan.',
     zones: Array.isArray(parsed.zones)
       ? parsed.zones.map(z => ({ type: String(z.type ?? '-'), posisi: String(z.posisi ?? '-') }))
