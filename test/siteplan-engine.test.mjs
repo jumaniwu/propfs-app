@@ -272,5 +272,22 @@ for (const layer of ['BOUNDARY', 'JALAN', 'KAVLING', 'RTH', 'FASUM', 'KOMERSIAL'
   assert(dxf.includes('\n' + layer + '\n'), 'layer ' + layer)
 }
 
+/* ---------- Parser DXF (viewer) ---------- */
+const { parseDxf } = await import('../src/lib/dxf-view.ts')
+section('parseDxf')
+const dxfOut = buildDxf(generateSiteplan(SITEPLAN_PRESETS[0].coords, defaultSiteplanParams()))
+const dxfParsed = parseDxf(dxfOut)
+assert(dxfParsed.segments.length > 100, 'segmen terbaca dari DXF sendiri (' + dxfParsed.segments.length + ')')
+assert(dxfParsed.texts.length > 10, 'label TEXT terbaca (' + dxfParsed.texts.length + ')')
+assert(dxfParsed.bounds !== null, 'bounds terhitung')
+// LINE + LWPOLYLINE + CIRCLE sederhana
+const mini = ['0','SECTION','2','ENTITIES',
+  '0','LINE','10','0','20','0','11','10','21','0',
+  '0','LWPOLYLINE','90','3','70','1','10','0','20','0','10','5','20','5','10','0','20','5',
+  '0','CIRCLE','10','2','20','2','40','1',
+  '0','ENDSEC','0','EOF'].join('\n')
+const miniParsed = parseDxf(mini)
+assert(miniParsed.segments.length === 1 + 3 + 24, 'LINE+LWPOLYLINE tertutup+CIRCLE (' + miniParsed.segments.length + ')')
+
 console.log('\nHasil:', passed, 'lulus,', failed, 'gagal')
 process.exit(failed ? 1 : 0)
