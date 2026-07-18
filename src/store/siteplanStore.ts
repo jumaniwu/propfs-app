@@ -22,6 +22,12 @@ export interface SiteplanFormState {
   mixPlaza?: boolean
   plazaW?: number
   plazaD?: number
+  roadStyle?: 'loop' | 'grid'
+  gatePct?: number
+  bufferM?: number
+  lotW2?: number
+  lotW2Pct?: number
+  lotMax?: number
 }
 
 export interface SavedSiteplan {

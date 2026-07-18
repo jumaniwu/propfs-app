@@ -79,6 +79,14 @@ export default function SiteplanPage() {
   const [floorRuko, setFloorRuko] = useState(2)
   const [floorTower, setFloorTower] = useState(12)
   const [sketchDataUrl, setSketchDataUrl] = useState<string | null>(null)
+  const [roadStyle, setRoadStyle] = useState<'loop' | 'grid'>('loop')
+  const [gatePct, setGatePct] = useState(50)
+  const [bufferM, setBufferM] = useState(3)
+  const [lotW2, setLotW2] = useState(0) // 0 = tipe kedua nonaktif
+  const [lotW2Pct, setLotW2Pct] = useState(30)
+  const [alternatives, setAlternatives] = useState<Array<{
+    key: 'loop' | 'grid'; label: string; result: SiteplanResult
+  }>>([])
 
   const parsed = useMemo(() => parseManualCoords(coordsText), [coordsText])
   const parsedArea = parsed.points.length >= 3 ? polygonArea(parsed.points) : 0
@@ -138,7 +146,7 @@ export default function SiteplanPage() {
       coordsText,
       concept,
       frontageEdge,
-      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled, mixRumah, mixRuko, mixPlaza, plazaW, plazaD },
+      form: { lotW, lotD, roadMain, roadSec, blockMaxLen, rthPct, fasumPct, comEnabled, comW, comD, comMax, towerW, towerD, towerCount, mixTowerEnabled, mixRumah, mixRuko, mixPlaza, plazaW, plazaD, roadStyle, gatePct, bufferM, lotW2, lotW2Pct, lotMax },
       summary: { totalAreaM2: result.stats.totalAreaM2, units, efficiencyPct: result.stats.efficiencyPct },
     })
     toast({ title: 'Desain tersimpan', description: 'Buka kembali dari daftar "Desain Tersimpan".' })
@@ -158,12 +166,15 @@ export default function SiteplanPage() {
     setMixTowerEnabled(f.mixTowerEnabled ?? false)
     setMixRumah(f.mixRumah ?? true); setMixRuko(f.mixRuko ?? true); setMixPlaza(f.mixPlaza ?? false)
     setPlazaW(f.plazaW ?? 30); setPlazaD(f.plazaD ?? 20)
+    setRoadStyle(f.roadStyle ?? 'grid'); setGatePct(f.gatePct ?? 50)
+    setBufferM(f.bufferM ?? 3); setLotW2(f.lotW2 ?? 0); setLotW2Pct(f.lotW2Pct ?? 30)
+    setLotMax(f.lotMax ?? 0)
     // generate ulang langsung dari data tersimpan (state belum tentu ter-apply)
     setGenError('')
     try {
       const pts = parseManualCoords(d.coordsText).points
       const res = generateSiteplan(pts, {
-        lot: { w: f.lotW, d: f.lotD },
+        lot: { w: f.lotW, d: f.lotD, maxCount: (f.lotMax ?? 0) > 0 ? f.lotMax : undefined },
         road: { main: f.roadMain, secondary: f.roadSec },
         rthPct: f.rthPct, fasumPct: f.fasumPct,
         commercial: { enabled: f.comEnabled, w: f.comW, d: f.comD, maxCount: f.comMax },
@@ -171,6 +182,15 @@ export default function SiteplanPage() {
         concept: d.concept,
         tower: { w: f.towerW, d: f.towerD, count: f.towerCount },
         plaza: { w: f.plazaW ?? 30, d: f.plazaD ?? 20 },
+        roadStyle: f.roadStyle ?? 'grid',
+        gateT: Math.min(0.9, Math.max(0.1, (f.gatePct ?? 50) / 100)),
+        perimeterBuffer: f.bufferM ?? 3,
+        lotTypes: (f.lotW2 ?? 0) >= 3 && (f.lotW2Pct ?? 0) > 0
+          ? [
+              { name: `T${f.lotW}`, w: f.lotW, pct: 100 - (f.lotW2Pct ?? 30) },
+              { name: `T${f.lotW2}`, w: f.lotW2!, pct: f.lotW2Pct ?? 30 },
+            ]
+          : undefined,
         mix: d.concept === 'mixed'
           ? {
               rumah: f.mixRumah ?? true,
@@ -181,14 +201,8 @@ export default function SiteplanPage() {
           : undefined,
         frontageEdge: d.frontageEdge,
       })
-      setResult(res)
-      requestAnimationFrame(() => {
-        const r = rendererRef.current
-        if (!r) return
-        r.resize()
-        r.setData(res)
-        r.fitToView()
-      })
+      setAlternatives([])
+      showResult(res)
     } catch (e) {
       setGenError(e instanceof Error ? e.message : String(e))
     }
@@ -203,9 +217,10 @@ export default function SiteplanPage() {
       reader.onload = () => setSketchDataUrl(String(reader.result))
       reader.readAsDataURL(file)
 
-      const res = await analyzeConceptSketch(file)
+      const res = await analyzeConceptSketch(file, boundaryCCW)
       setAiResult(res)
       setConcept(res.concept)
+      if (res.jalanUtamaEdge != null) setFrontageEdge(res.jalanUtamaEdge)
       if (res.units.rumah) setLotMax(res.units.rumah)
       if (res.units.ruko) setComMax(res.units.ruko)
       if (res.floors.rumah) setFloorRumah(res.floors.rumah)
@@ -230,6 +245,44 @@ export default function SiteplanPage() {
     }
   }
 
+  function buildParams(styleOverride?: 'loop' | 'grid') {
+    return {
+      lot: { w: lotW, d: lotD, maxCount: lotMax > 0 ? lotMax : undefined },
+      road: { main: roadMain, secondary: roadSec },
+      rthPct, fasumPct,
+      commercial: { enabled: comEnabled, w: comW, d: comD, maxCount: comMax },
+      blockMaxLen,
+      concept,
+      tower: { w: towerW, d: towerD, count: towerCount },
+      plaza: { w: plazaW, d: plazaD },
+      mix: concept === 'mixed'
+        ? { rumah: mixRumah, ruko: mixRuko, tower: mixTowerEnabled, plaza: mixPlaza }
+        : undefined,
+      frontageEdge,
+      roadStyle: styleOverride ?? roadStyle,
+      gateT: Math.min(0.9, Math.max(0.1, gatePct / 100)),
+      perimeterBuffer: bufferM,
+      lotTypes: lotW2 >= 3 && lotW2Pct > 0
+        ? [
+            { name: `T${lotW}`, w: lotW, pct: 100 - lotW2Pct },
+            { name: `T${lotW2}`, w: lotW2, pct: lotW2Pct },
+          ]
+        : undefined,
+    }
+  }
+
+  function showResult(res: SiteplanResult) {
+    setResult(res)
+    // canvas baru terukur setelah panel ringkasan dirender → fit pada frame berikutnya
+    requestAnimationFrame(() => {
+      const r = rendererRef.current
+      if (!r) return
+      r.resize()
+      r.setData(res)
+      r.fitToView()
+    })
+  }
+
   function handleGenerate() {
     setGenError('')
     if (parsed.errors.length) {
@@ -240,33 +293,27 @@ export default function SiteplanPage() {
       setGenError('Masukkan minimal 3 titik koordinat.')
       return
     }
-    try {
-      const res = generateSiteplan(parsed.points, {
-        lot: { w: lotW, d: lotD, maxCount: lotMax > 0 ? lotMax : undefined },
-        road: { main: roadMain, secondary: roadSec },
-        rthPct, fasumPct,
-        commercial: { enabled: comEnabled, w: comW, d: comD, maxCount: comMax },
-        blockMaxLen,
-        concept,
-        tower: { w: towerW, d: towerD, count: towerCount },
-        plaza: { w: plazaW, d: plazaD },
-        mix: concept === 'mixed'
-          ? { rumah: mixRumah, ruko: mixRuko, tower: mixTowerEnabled, plaza: mixPlaza }
-          : undefined,
-        frontageEdge,
-      })
-      setResult(res)
-      // canvas baru terukur setelah panel ringkasan dirender → fit pada frame berikutnya
-      requestAnimationFrame(() => {
-        const r = rendererRef.current
-        if (!r) return
-        r.resize()
-        r.setData(res)
-        r.fitToView()
-      })
-    } catch (e) {
-      setGenError(e instanceof Error ? e.message : String(e))
+    // dua alternatif desain: loop keliling vs grid — user tinggal memilih
+    const alts: Array<{ key: 'loop' | 'grid'; label: string; result: SiteplanResult }> = []
+    let firstError = ''
+    for (const key of ['loop', 'grid'] as const) {
+      try {
+        alts.push({
+          key,
+          label: key === 'loop' ? 'Loop Keliling' : 'Grid',
+          result: generateSiteplan(parsed.points, buildParams(key)),
+        })
+      } catch (e) {
+        if (!firstError) firstError = e instanceof Error ? e.message : String(e)
+      }
     }
+    if (alts.length === 0) {
+      setGenError(firstError || 'Gagal membuat siteplan.')
+      return
+    }
+    setAlternatives(alts)
+    const preferred = alts.find(a => a.key === roadStyle) ?? alts[0]
+    showResult(preferred.result)
   }
 
   const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'tower', 'plaza', 'parkir', 'jalan', 'fasum', 'rth']
@@ -468,6 +515,16 @@ export default function SiteplanPage() {
                     <NumInput value={lotMax} onValue={setLotMax} min={0} placeholder="0 = bebas" />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Tipe 2 — Lebar (m, 0=off)</Label>
+                    <NumInput value={lotW2} onValue={setLotW2} min={0} step={0.5} placeholder="mis. 7" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Proporsi Tipe 2 (%)</Label>
+                    <NumInput value={lotW2Pct} onValue={setLotW2Pct} min={5} max={90} />
+                  </div>
+                </div>
               </div>
               )}
 
@@ -556,7 +613,17 @@ export default function SiteplanPage() {
               </div>
               )}
               <div>
-                <p className="text-xs font-semibold text-navy mb-2">Jalan</p>
+                <p className="text-xs font-semibold text-navy mb-2">Jalan &amp; Gerbang</p>
+                <div className="space-y-1 mb-3">
+                  <Label className="text-xs">Pola Jaringan Jalan</Label>
+                  <Select value={roadStyle} onValueChange={v => setRoadStyle(v as 'loop' | 'grid')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="loop">Loop keliling + boulevard (ala arsitek)</SelectItem>
+                      <SelectItem value="grid">Grid lurus</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Jalan Utama (m)</Label>
@@ -571,6 +638,18 @@ export default function SiteplanPage() {
                     <Label className="text-xs">Panjang Blok Maks. (m)</Label>
                     <NumInput value={blockMaxLen} onValue={setBlockMaxLen} min={20} step={5} />
                   </div>
+                  )}
+                  {roadStyle === 'loop' && (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Posisi Gerbang (%)</Label>
+                      <NumInput value={gatePct} onValue={setGatePct} min={10} max={90} step={5} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Buffer Hijau Keliling (m)</Label>
+                      <NumInput value={bufferM} onValue={setBufferM} min={1} max={10} step={0.5} />
+                    </div>
+                  </>
                   )}
                 </div>
               </div>
@@ -736,6 +815,28 @@ export default function SiteplanPage() {
               </div>
             )}
           </div>
+
+          {result && alternatives.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-navy">Alternatif Desain:</span>
+              {alternatives.map(a => {
+                const active = a.result === result
+                const units = a.result.stats.counts.kavling + a.result.stats.counts.komersial + a.result.stats.counts.tower
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    onClick={() => showResult(a.result)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      active ? 'bg-navy text-white border-navy' : 'bg-white text-navy border-border hover:bg-slate-50'
+                    }`}
+                  >
+                    {a.label} · {units} unit · efisiensi {a.result.stats.efficiencyPct.toFixed(0)}%
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {result && (
             <Card>

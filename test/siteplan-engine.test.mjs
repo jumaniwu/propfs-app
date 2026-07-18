@@ -199,6 +199,44 @@ const pfx = defaultSiteplanParams()
 pfx.frontageEdge = 99
 assert(generateSiteplan(rectLand, pfx).parcels.length > 0, 'frontageEdge tidak valid → fallback otomatis')
 
+section('Gaya jalan LOOP (engine v2)')
+const pLoop = defaultSiteplanParams()
+pLoop.commercial = { enabled: true, w: 5, d: 15, maxCount: 10 }
+const rLoop = generateSiteplan(SITEPLAN_PRESETS[0].coords, pLoop)
+assert(rLoop.params.roadStyle === 'loop', 'default gaya loop')
+const perimLots = rLoop.parcels.filter(p => p.type === 'kavling' && p.block === 'P')
+assert(perimLots.length > 10, 'kavling perimeter menghadap ring (' + perimLots.length + ')')
+assert(rLoop.stats.counts.komersial > 0, 'ruko frontage ada (' + rLoop.stats.counts.komersial + ')')
+{
+  let inside = true
+  for (const p of rLoop.parcels.filter(x => x.type === 'kavling' || x.type === 'komersial')) {
+    const c = Geom.centroid(p.polygon)
+    for (const v of p.polygon) {
+      const sh = [v[0] + (c[0] - v[0]) * 0.02, v[1] + (c[1] - v[1]) * 0.02]
+      if (!Geom.pointInPolygon(sh, rLoop.boundary)) inside = false
+    }
+  }
+  assert(inside, 'loop: semua kavling/ruko dalam batas lahan')
+  const sumPctLoop = Object.values(rLoop.stats.byType).reduce((a, t) => a + t.pct, 0)
+  assert(sumPctLoop > 85 && sumPctLoop < 108, 'loop: total persentase wajar (' + sumPctLoop.toFixed(1) + '%)')
+}
+// gaya grid eksplisit masih bekerja seperti lama
+const pGrid = defaultSiteplanParams()
+pGrid.roadStyle = 'grid'
+const rGrid = generateSiteplan(SITEPLAN_PRESETS[0].coords, pGrid)
+assert(rGrid.parcels.filter(p => p.type === 'kavling' && p.block === 'P').length === 0, 'grid: tanpa kavling perimeter')
+
+section('Mix tipe rumah (lotTypes)')
+const pMixT = defaultSiteplanParams()
+pMixT.roadStyle = 'grid'
+pMixT.lotTypes = [
+  { name: 'T6', w: 6, pct: 60 },
+  { name: 'T8', w: 8, pct: 40 },
+]
+const rMixT = generateSiteplan(SITEPLAN_PRESETS[0].coords, pMixT)
+const widthsSeen = new Set(rMixT.parcels.filter(p => p.type === 'kavling').map(p => p.w))
+assert(widthsSeen.has(6) && widthsSeen.has(8), 'dua lebar tipe hadir: ' + [...widthsSeen].join(','))
+
 section('Layout: validasi input')
 let threw = false
 try { generateSiteplan([[0, 0], [1, 0]], defaultSiteplanParams()) } catch { threw = true }
