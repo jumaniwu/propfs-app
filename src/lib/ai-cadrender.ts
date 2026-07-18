@@ -97,7 +97,7 @@ const ANALYZE_PROMPT = `Anda adalah arsitek visualisator profesional Indonesia.
 Gambar terlampir adalah DENAH SITEPLAN hasil desain (dari AutoCAD/PDF).
 
 Tugas:
-1. "deskripsi": jelaskan singkat apa yang terlihat pada denah (zona, blok bangunan, jalan, area hijau, bentuk lahan).
+1. "deskripsi": jelaskan singkat apa yang terlihat pada denah. WAJIB sebutkan BENTUK BATAS LAHAN secara eksplisit (mis. segitiga, persegi panjang, trapesium, huruf L), lalu zona/blok bangunan (termasuk warna zonanya bila ada), jalan, dan area hijau.
 2. "questions": susun daftar pertanyaan yang PERLU dijawab user agar Anda bisa membuat render 3D fotorealistis yang akurat dari denah ini.
    - Tanyakan hal yang TIDAK terlihat dari denah 2D: jenis/fungsi tiap zona bangunan yang Anda temukan, jumlah lantai per jenis, gaya arsitektur, material/warna dominan, sisi jalan utama, suasana.
    - Maksimal 8 pertanyaan, spesifik terhadap denah ini (sebut zona yang Anda lihat).
@@ -160,10 +160,15 @@ export async function renderCadViews(
     const angle = angles[i]
     onProgress?.(i, angles.length, CAD_ANGLE_LABELS[angle])
     const prompt = `Anda adalah visualisator arsitektur profesional.
-GAMBAR terlampir adalah DENAH SITEPLAN final (dari AutoCAD). Geometrinya PASTI: bentuk lahan, tata letak blok bangunan, jaringan jalan, dan area hijau harus diikuti persis.
+GAMBAR terlampir adalah DENAH SITEPLAN FINAL dari AutoCAD — ini GROUND TRUTH tata letak. Warna pada denah menandai zona bangunan yang berbeda.
 
-TUGAS: buat SATU render 3D FOTOREALISTIS kawasan berdasarkan denah tersebut.
-LARANGAN KERAS: jangan menambah/mengurangi/memindahkan bangunan atau jalan; jangan mengubah bentuk lahan; ikuti proporsi denah.
+TUGAS: bayangkan denah ini DIEKSTRUSI ke 3D lalu difoto drone — buat SATU render FOTOREALISTIS dari hasil ekstrusi itu, BUKAN kawasan baru yang "mirip".
+
+ATURAN MUTLAK (pelanggaran = gagal):
+1. BENTUK BATAS LAHAN identik dengan denah. Jika lahan berbentuk segitiga, kawasan pada render HARUS segitiga — jangan diubah menjadi persegi/bentuk lain.
+2. Jumlah, posisi, orientasi, dan proporsi SETIAP blok/deret bangunan sama persis dengan denah — dilarang menambah, mengurangi, atau memindahkan blok.
+3. Jaringan jalan, parkir, dan area hijau berada di posisi yang sama dengan denah.
+4. Sebelum menghasilkan gambar, verifikasi: garis luar kawasan pada render harus bisa di-overlay pas di atas garis luar denah.
 
 DENAH MENURUT ANALISIS:
 ${analysis.deskripsi}

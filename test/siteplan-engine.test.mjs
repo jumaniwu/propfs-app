@@ -273,7 +273,7 @@ for (const layer of ['BOUNDARY', 'JALAN', 'KAVLING', 'RTH', 'FASUM', 'KOMERSIAL'
 }
 
 /* ---------- Parser DXF (viewer) ---------- */
-const { parseDxf } = await import('../src/lib/dxf-view.ts')
+const { parseDxf, aciToCss } = await import('../src/lib/dxf-view.ts')
 section('parseDxf')
 const dxfOut = buildDxf(generateSiteplan(SITEPLAN_PRESETS[0].coords, defaultSiteplanParams()))
 const dxfParsed = parseDxf(dxfOut)
@@ -288,6 +288,38 @@ const mini = ['0','SECTION','2','ENTITIES',
   '0','ENDSEC','0','EOF'].join('\n')
 const miniParsed = parseDxf(mini)
 assert(miniParsed.segments.length === 1 + 3 + 24, 'LINE+LWPOLYLINE tertutup+CIRCLE (' + miniParsed.segments.length + ')')
+assert(miniParsed.fills.length === 0,
+  'LWPOLYLINE tertutup tanpa warna eksplisit TIDAK di-fill (' + miniParsed.fills.length + ')')
+// DXF hasil export engine sendiri: parcels ByLayer → zona berwarna ikut terbaca
+assert(dxfParsed.fills.length > 50, 'zona fill dari layer berwarna DXF sendiri (' + dxfParsed.fills.length + ')')
+
+// Zona berwarna: warna entitas (62), warna layer (ByLayer), SOLID, HATCH
+const colored = ['0','SECTION','2','TABLES',
+  '0','TABLE','2','LAYER',
+  '0','LAYER','2','ZONA','62','3',
+  '0','ENDTAB','0','ENDSEC',
+  '0','SECTION','2','ENTITIES',
+  // closed LWPOLYLINE warna entitas oranye (ACI 30)
+  '0','LWPOLYLINE','62','30','90','3','70','1','10','0','20','0','10','10','20','0','10','5','20','8',
+  // closed LWPOLYLINE ByLayer di layer ZONA (hijau, ACI 3)
+  '0','LWPOLYLINE','8','ZONA','90','4','70','1','10','20','20','0','10','30','20','0','10','30','20','8','10','20','20','8',
+  // SOLID biru (ACI 5), urutan sudut 1,2,4,3
+  '0','SOLID','62','5','10','0','20','20','11','10','21','20','12','0','22','30','13','10','23','30',
+  // HATCH merah (ACI 1) dengan satu path polyline segitiga
+  '0','HATCH','62','1','91','1','92','7','72','0','73','1','93','3',
+  '10','40','20','0','10','50','20','0','10','45','20','8','75','1',
+  // POLYLINE/VERTEX tertutup warna entitas kuning (ACI 2)
+  '0','POLYLINE','62','2','70','1','66','1',
+  '0','VERTEX','10','60','20','0','0','VERTEX','10','70','20','0','0','VERTEX','10','65','20','8','0','SEQEND',
+  '0','ENDSEC','0','EOF'].join('\n')
+const cp = parseDxf(colored)
+assert(cp.fills.length === 5, 'lima zona fill terbaca (' + cp.fills.length + ')')
+const acis = cp.fills.map(f => f.aci).sort((a, b) => a - b)
+assert(JSON.stringify(acis) === JSON.stringify([1, 2, 3, 5, 30]),
+  'warna zona: entitas/ByLayer/SOLID/HATCH/POLYLINE (' + JSON.stringify(acis) + ')')
+assert(aciToCss(3) === '#00FF00' && aciToCss(5) === '#0000FF', 'tabel ACI dasar')
+assert(/^rgb\(/.test(aciToCss(30)), 'ACI 10-249 via rumus hue (' + aciToCss(30) + ')')
+assert(cp.bounds && cp.bounds.maxX === 70 && cp.bounds.maxY === 30, 'bounds mencakup fill')
 
 console.log('\nHasil:', passed, 'lulus,', failed, 'gagal')
 process.exit(failed ? 1 : 0)

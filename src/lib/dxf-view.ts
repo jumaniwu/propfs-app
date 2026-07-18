@@ -1,23 +1,54 @@
 /**
- * Penampil DXF minimal: parse entitas garis dari file DXF ASCII (AutoCAD)
- * lalu gambar ke canvas sebagai denah garis — cukup untuk pratinjau dan
+ * Penampil DXF minimal: parse entitas dari file DXF ASCII (AutoCAD)
+ * lalu gambar ke canvas sebagai denah — cukup untuk pratinjau dan
  * untuk dibaca AI vision. Mendukung LINE, LWPOLYLINE, POLYLINE/VERTEX,
- * CIRCLE, ARC, dan TEXT. Parser murni (tanpa DOM) agar bisa diuji di Node.
+ * CIRCLE, ARC, TEXT/MTEXT, plus zona berwarna dari polyline tertutup,
+ * HATCH, dan SOLID (warna entitas ACI / warna layer).
+ * Parser murni (tanpa DOM) agar bisa diuji di Node.
  */
 
 export interface DxfSegment { x1: number; y1: number; x2: number; y2: number }
 export interface DxfText { x: number; y: number; h: number; str: string }
+export interface DxfFill { pts: [number, number][]; aci: number }
 
 export interface DxfParsed {
   segments: DxfSegment[]
   texts: DxfText[]
+  fills: DxfFill[]
   bounds: { minX: number; minY: number; maxX: number; maxY: number } | null
+}
+
+const ACI_BASE: Record<number, string> = {
+  1: '#FF0000', 2: '#FFFF00', 3: '#00FF00', 4: '#00FFFF',
+  5: '#0000FF', 6: '#FF00FF', 7: '#2b2b2b', 8: '#808080', 9: '#c0c0c0',
+}
+
+/** Warna ACI AutoCAD → CSS (1-9 tabel baku; 10-249 rumus hue standar). */
+export function aciToCss(aci: number): string {
+  if (ACI_BASE[aci]) return ACI_BASE[aci]
+  if (aci >= 250 && aci <= 255) {
+    const g = 51 + (aci - 250) * 40
+    return `rgb(${g},${g},${g})`
+  }
+  if (aci < 10 || aci > 249) return '#999999'
+  const hue = Math.floor((aci - 10) / 10) * 15
+  const j = (aci - 10) % 10
+  const v = [255, 204, 153, 127, 76][Math.floor(j / 2)]
+  const s = j % 2 === 0 ? 1 : 0.5
+  const c = v * s
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+  const m = v - c
+  const seg = Math.floor(hue / 60) % 6
+  const rgb = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][seg]
+  return `rgb(${Math.round(rgb[0] + m)},${Math.round(rgb[1] + m)},${Math.round(rgb[2] + m)})`
 }
 
 export function parseDxf(text: string): DxfParsed {
   const lines = text.split(/\r?\n/)
   const segments: DxfSegment[] = []
   const texts: DxfText[] = []
+  const fills: DxfFill[] = []
+  const layerColors: Record<string, number> = {}
 
   type Ent = Record<string, number | string> & { verts?: [number, number][] }
   let cur: Ent | null = null
@@ -25,11 +56,26 @@ export function parseDxf(text: string): DxfParsed {
   let inPolyline = false
   let polyVerts: [number, number][] = []
   let polyClosed = false
+  let polyAci = 0
+  // HATCH: kumpulkan path batas (kode 10/20 antara 91 dan 75/98)
+  let hatchPaths: [number, number][][] = []
+  let hatchInBoundary = false
+
+  const resolveAci = (e: Ent): number => {
+    const c = Number(e['62'])
+    if (isFinite(c) && c > 0 && c < 256) return c
+    const layer = String(e['8'] ?? '')
+    const lc = layerColors[layer]
+    return isFinite(lc) && lc > 0 ? lc : 7
+  }
 
   const finish = () => {
     if (!cur) return
     const num = (k: string) => Number(cur![k])
-    if (curType === 'LINE' && isFinite(num('10')) && isFinite(num('11'))) {
+    if (curType === 'LAYER' && typeof cur['2'] === 'string') {
+      const c = Math.abs(Number(cur['62']))
+      if (isFinite(c) && c > 0) layerColors[String(cur['2'])] = c
+    } else if (curType === 'LINE' && isFinite(num('10')) && isFinite(num('11'))) {
       segments.push({ x1: num('10'), y1: num('20'), x2: num('11'), y2: num('21') })
     } else if (curType === 'LWPOLYLINE' && cur.verts && cur.verts.length >= 2) {
       const v = cur.verts
@@ -37,7 +83,31 @@ export function parseDxf(text: string): DxfParsed {
       for (let i = 0; i < v.length - 1; i++) {
         segments.push({ x1: v[i][0], y1: v[i][1], x2: v[i + 1][0], y2: v[i + 1][1] })
       }
-      if (closed) segments.push({ x1: v[v.length - 1][0], y1: v[v.length - 1][1], x2: v[0][0], y2: v[0][1] })
+      if (closed) {
+        segments.push({ x1: v[v.length - 1][0], y1: v[v.length - 1][1], x2: v[0][0], y2: v[0][1] })
+        // hanya zona berwarna eksplisit yang di-fill; warna default (7) = garis biasa
+        const aci = resolveAci(cur)
+        if (v.length >= 3 && aci !== 7) fills.push({ pts: v.map(p => [p[0], p[1]]), aci })
+      }
+    } else if (curType === 'SOLID' && isFinite(num('10'))) {
+      // urutan sudut SOLID: 1,2,4,3
+      const pts: [number, number][] = [[num('10'), num('20')], [num('11'), num('21')]]
+      if (isFinite(num('13'))) pts.push([num('13'), num('23')])
+      if (isFinite(num('12'))) pts.push([num('12'), num('22')])
+      if (pts.length >= 3 && pts.every(p => p.every(isFinite))) {
+        fills.push({ pts, aci: resolveAci(cur) })
+        for (let i = 0; i < pts.length; i++) {
+          const q = pts[(i + 1) % pts.length]
+          segments.push({ x1: pts[i][0], y1: pts[i][1], x2: q[0], y2: q[1] })
+        }
+      }
+    } else if (curType === 'HATCH') {
+      const aci = resolveAci(cur)
+      for (const path of hatchPaths) {
+        if (path.length >= 3 && path.every(p => p.every(isFinite))) fills.push({ pts: path, aci })
+      }
+      hatchPaths = []
+      hatchInBoundary = false
     } else if (curType === 'CIRCLE' && isFinite(num('40'))) {
       const cx = num('10'); const cy = num('20'); const r = num('40')
       for (let i = 0; i < 24; i++) {
@@ -74,6 +144,7 @@ export function parseDxf(text: string): DxfParsed {
           if (isFinite(x) && isFinite(y)) polyVerts.push([x, y])
           cur = null; curType = ''
         } else {
+          if (curType === 'POLYLINE' && cur) polyAci = resolveAci(cur)
           finish()
         }
         cur = {}
@@ -94,10 +165,12 @@ export function parseDxf(text: string): DxfParsed {
             x1: polyVerts[polyVerts.length - 1][0], y1: polyVerts[polyVerts.length - 1][1],
             x2: polyVerts[0][0], y2: polyVerts[0][1],
           })
+          if (polyVerts.length >= 3 && polyAci > 0 && polyAci !== 7) fills.push({ pts: polyVerts.slice(), aci: polyAci })
         }
         inPolyline = false
         polyVerts = []
         polyClosed = false
+        polyAci = 0
         continue
       }
       // entitas baru
@@ -112,6 +185,7 @@ export function parseDxf(text: string): DxfParsed {
         inPolyline = true
         polyVerts = []
         polyClosed = false
+        polyAci = 0
         cur = {}
         curType = 'POLYLINE'
       } else {
@@ -131,24 +205,53 @@ export function parseDxf(text: string): DxfParsed {
       else if (cur.verts.length) cur.verts[cur.verts.length - 1][1] = Number(value)
       continue
     }
+    if (curType === 'HATCH') {
+      if (code === '91') { hatchInBoundary = true; hatchPaths = []; continue }
+      if (code === '92') { hatchPaths.push([]); continue }
+      if (code === '75' || code === '98') { hatchInBoundary = false }
+      if (hatchInBoundary && (code === '10' || code === '20')) {
+        if (!hatchPaths.length) hatchPaths.push([])
+        const path = hatchPaths[hatchPaths.length - 1]
+        if (code === '10') path.push([Number(value), NaN])
+        else if (path.length) path[path.length - 1][1] = Number(value)
+        continue
+      }
+    }
     if (!(code in cur)) cur[code] = isNaN(Number(value)) ? value : Number(value)
   }
   finish()
 
   const clean = segments.filter(s => [s.x1, s.y1, s.x2, s.y2].every(isFinite))
+  const cleanFills = fills.filter(f => f.pts.length >= 3 && f.pts.every(p => p.every(isFinite)))
   let bounds: DxfParsed['bounds'] = null
-  if (clean.length) {
+  if (clean.length || cleanFills.length) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     for (const s of clean) {
       minX = Math.min(minX, s.x1, s.x2); maxX = Math.max(maxX, s.x1, s.x2)
       minY = Math.min(minY, s.y1, s.y2); maxY = Math.max(maxY, s.y1, s.y2)
     }
+    for (const f of cleanFills) {
+      for (const p of f.pts) {
+        minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0])
+        minY = Math.min(minY, p[1]); maxY = Math.max(maxY, p[1])
+      }
+    }
     bounds = { minX, minY, maxX, maxY }
   }
-  return { segments: clean, texts, bounds }
+  return { segments: clean, texts, fills: cleanFills, bounds }
 }
 
-/** Gambar hasil parse ke canvas putih bergaris hitam (gaya cetak CAD). */
+function fillArea(f: DxfFill): number {
+  let s = 0
+  for (let i = 0; i < f.pts.length; i++) {
+    const [x1, y1] = f.pts[i]
+    const [x2, y2] = f.pts[(i + 1) % f.pts.length]
+    s += x1 * y2 - x2 * y1
+  }
+  return Math.abs(s / 2)
+}
+
+/** Gambar hasil parse ke canvas putih: zona berwarna + garis gelap (gaya cetak CAD). */
 export function drawDxfToCanvas(parsed: DxfParsed, longSide = 1600): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   const b = parsed.bounds
@@ -175,6 +278,20 @@ export function drawDxfToCanvas(parsed: DxfParsed, longSide = 1600): HTMLCanvasE
   const ctx = canvas.getContext('2d')!
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+  // zona berwarna: gambar yang besar dulu agar zona kecil tetap terlihat
+  const ordered = [...parsed.fills].sort((a, b2) => fillArea(b2) - fillArea(a))
+  ctx.globalAlpha = 0.55
+  for (const f of ordered) {
+    ctx.fillStyle = aciToCss(f.aci)
+    ctx.beginPath()
+    ctx.moveTo(px(f.pts[0][0]), py(f.pts[0][1]))
+    for (let i = 1; i < f.pts.length; i++) ctx.lineTo(px(f.pts[i][0]), py(f.pts[i][1]))
+    ctx.closePath()
+    ctx.fill()
+  }
+  ctx.globalAlpha = 1
+
   ctx.strokeStyle = '#1a2530'
   ctx.lineWidth = 1
   ctx.beginPath()
