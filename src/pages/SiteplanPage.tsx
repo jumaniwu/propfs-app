@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
 import RenderMasterplanDialog from '@/components/siteplan/RenderMasterplanDialog'
+import CadRenderDialog from '@/components/siteplan/CadRenderDialog'
 import NumInput from '@/components/siteplan/NumInput'
 import { SiteplanRenderer, PARCEL_COLORS, PARCEL_TYPE_LABELS } from '@/components/siteplan/SiteplanRenderer.ts'
 import { downloadPng, downloadPdf } from '@/components/siteplan/exportImage.ts'
@@ -325,6 +326,16 @@ export default function SiteplanPage() {
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 p-4 max-w-[1800px] w-full mx-auto">
         {/* ============ SIDEBAR ============ */}
         <div className="space-y-4 lg:overflow-y-auto lg:max-h-[calc(100vh-120px)] pr-1">
+          <Card className="border-gold">
+            <CardContent className="pt-4 space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Sudah punya siteplan dari arsitek? Upload file AutoCAD (DXF), PDF, atau gambar —
+                AI membaca denah, menanyakan konsep (jenis bangunan, lantai, gaya), lalu me-render.
+              </p>
+              <CadRenderDialog />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
