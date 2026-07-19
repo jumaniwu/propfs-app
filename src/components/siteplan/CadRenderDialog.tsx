@@ -18,7 +18,7 @@ import NumInput from '@/components/siteplan/NumInput'
 import { parseDxf, drawDxfToCanvas } from '@/lib/dxf-view.ts'
 import { pdfToCanvases } from '@/lib/pdf-utils.ts'
 import {
-  analyzeCadPlan, renderCadViews, fallbackQuestions, CAD_ANGLE_LABELS,
+  analyzeCadPlan, renderCadViews, fallbackQuestions, CAD_ANGLE_LABELS, RESTYLE_OPTIONS,
   type CadAnalysis, type CadAngle, type CadRenderedView,
 } from '@/lib/ai-cadrender.ts'
 
@@ -38,6 +38,7 @@ export default function CadRenderDialog() {
   const [answers, setAnswers] = useState<Record<string, string | number>>({})
   const [angles, setAngles] = useState<CadAngle[]>(['depan', 'sudut'])
   const [views, setViews] = useState<CadRenderedView[]>([])
+  const [restyle, setRestyle] = useState(RESTYLE_OPTIONS[0])
   const [error, setError] = useState('')
 
   function reset() {
@@ -111,7 +112,7 @@ export default function CadRenderDialog() {
     }
   }
 
-  async function handleRender() {
+  async function handleRender(styleOverride?: string) {
     if (!planUrl || !analysis || angles.length === 0) return
     setPhase('rendering')
     setError('')
@@ -121,7 +122,7 @@ export default function CadRenderDialog() {
       const res = await renderCadViews(planUrl, analysis, answers, ordered, (done, total, label) => {
         setProgress(Math.max(6, (done / total) * 100))
         setStatus(done < total ? `Me-render ${label}… (${done + 1}/${total})` : 'Selesai')
-      })
+      }, styleOverride ? { styleOverride } : undefined)
       setViews(res)
       setPhase('done')
     } catch (e) {
@@ -252,7 +253,7 @@ export default function CadRenderDialog() {
                   <Button
                     className="w-full h-11 font-bold bg-navy hover:bg-steel gap-2"
                     disabled={angles.length === 0}
-                    onClick={handleRender}
+                    onClick={() => handleRender()}
                   >
                     <Wand2 className="h-4 w-4" /> Mulai Render ({angles.length} sudut)
                   </Button>
@@ -273,6 +274,20 @@ export default function CadRenderDialog() {
                       <img src={v.dataUrl} alt={v.label} className="w-full rounded-lg border border-border" />
                     </div>
                   ))}
+                  <div className="rounded-lg border border-border p-3 space-y-2 bg-slate-50/60">
+                    <Label className="text-xs font-bold text-navy">Coba gaya arsitektur lain</Label>
+                    <div className="flex gap-2">
+                      <Select value={restyle} onValueChange={setRestyle}>
+                        <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {RESTYLE_OPTIONS.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Button className="gap-2 bg-navy hover:bg-steel" onClick={() => handleRender(restyle)}>
+                        <Wand2 className="h-4 w-4" /> Render Ulang Gaya Ini
+                      </Button>
+                    </div>
+                  </div>
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={() => setPhase('questions')}>
                       Ubah Jawaban & Render Ulang
