@@ -138,53 +138,66 @@ const CAD_ANGLE_PROMPTS: Record<CadAngle, string> = {
   atas: 'Kamera tegak lurus dari atas (top-down) seperti foto satelit resolusi tinggi.',
 }
 
-/** Render bird-eye dari denah + jawaban konsep user. */
+/** Pilihan gaya untuk render ulang cepat dari layar hasil. */
+export const RESTYLE_OPTIONS = [
+  'Modern Minimalis', 'Tropis Kontemporer', 'Klasik Eropa',
+  'Industrial', 'Mediterania', 'Skandinavia', 'Futuristik',
+]
+
+/** Render bird-eye dari denah + jawaban konsep user.
+ * Render pertama menjadi REFERENSI untuk sudut berikutnya agar desain
+ * bangunan konsisten antar sudut (hanya kamera yang berubah). */
 export async function renderCadViews(
   planDataUrl: string,
   analysis: CadAnalysis,
   answers: Record<string, string | number>,
   angles: CadAngle[],
   onProgress?: (done: number, total: number, label: string) => void,
+  opts?: { styleOverride?: string },
 ): Promise<CadRenderedView[]> {
   const mock = (window as {
-    __aiCadRenderMock?: (angles: CadAngle[]) => Promise<CadRenderedView[]>
+    __aiCadRenderMock?: (angles: CadAngle[], opts?: { styleOverride?: string }) => Promise<CadRenderedView[]>
   }).__aiCadRenderMock
-  if (mock) return mock(angles)
+  if (mock) return mock(angles, opts)
 
   const answerLines = analysis.questions
     .map(q => `- ${q.question}: ${answers[q.id] ?? q.default ?? '-'}`)
     .join('\n')
+  const styleLine = opts?.styleOverride
+    ? `\nGAYA ARSITEKTUR YANG DIMINTA SEKARANG: ${opts.styleOverride} — gaya ini MENGGANTIKAN jawaban gaya pada kuesioner.\n`
+    : ''
 
   const views: CadRenderedView[] = []
   for (let i = 0; i < angles.length; i++) {
     const angle = angles[i]
     onProgress?.(i, angles.length, CAD_ANGLE_LABELS[angle])
+    const hasRef = views.length > 0
     const prompt = `Anda adalah visualisator arsitektur profesional.
-GAMBAR terlampir adalah DENAH SITEPLAN FINAL dari AutoCAD — ini GROUND TRUTH tata letak. Warna pada denah menandai zona bangunan yang berbeda.
+LAMPIRAN 1 adalah DENAH SITEPLAN FINAL dari AutoCAD — ini GROUND TRUTH tata letak. Warna pada denah menandai zona bangunan yang berbeda.${hasRef ? `
+LAMPIRAN 2 adalah RENDER RESMI proyek YANG SAMA dari sudut kamera lain — ini GROUND TRUTH desain bangunan.` : ''}
 
 TUGAS: bayangkan denah ini DIEKSTRUSI ke 3D lalu difoto drone — buat SATU render FOTOREALISTIS dari hasil ekstrusi itu, BUKAN kawasan baru yang "mirip".
 
 ATURAN MUTLAK (pelanggaran = gagal):
 1. BENTUK BATAS LAHAN identik dengan denah. Jika lahan berbentuk segitiga, kawasan pada render HARUS segitiga — jangan diubah menjadi persegi/bentuk lain.
-2. Jumlah, posisi, orientasi, dan proporsi SETIAP blok/deret bangunan sama persis dengan denah — dilarang menambah, mengurangi, atau memindahkan blok.
+2. Jumlah, posisi, orientasi, dan proporsi SETIAP blok/deret bangunan sama persis dengan denah — dilarang menambah, mengurangi, atau memindahkan blok. Bangunan tinggi (tower/apartemen) HARUS berdiri tepat di zona yang ditandai untuknya pada denah — perhatikan posisinya relatif terhadap tiap sisi jalan, jangan digeser ke tengah atau ke sisi lain.
 3. Jaringan jalan, parkir, dan area hijau berada di posisi yang sama dengan denah.
-4. Sebelum menghasilkan gambar, verifikasi: garis luar kawasan pada render harus bisa di-overlay pas di atas garis luar denah.
+4. Sebelum menghasilkan gambar, verifikasi: garis luar kawasan pada render harus bisa di-overlay pas di atas garis luar denah.${hasRef ? `
+5. KONSISTENSI: desain arsitektur, jumlah lantai, material/fasad, warna, dan lanskap HARUS SAMA PERSIS dengan LAMPIRAN 2 — ini proyek yang sama, hanya sudut kamera yang berbeda.` : ''}
 
 DENAH MENURUT ANALISIS:
 ${analysis.deskripsi}
 
 KONSEP DARI USER (jawaban kuesioner):
 ${answerLines}
-
+${styleLine}
 SUDUT PANDANG:
 ${CAD_ANGLE_PROMPTS[angle]}
 
 - Fotorealistis kualitas presentasi developer properti, rasio 16:9 landscape.`
-    const { image } = await callGemini(
-      GEMINI_IMAGE_MODELS,
-      [{ text: prompt }, dataUrlToPart(planDataUrl)],
-      true,
-    )
+    const parts: Part[] = [{ text: prompt }, dataUrlToPart(planDataUrl)]
+    if (hasRef) parts.push(dataUrlToPart(views[0].dataUrl))
+    const { image } = await callGemini(GEMINI_IMAGE_MODELS, parts, true)
     if (!image) throw new Error('Model tidak mengembalikan gambar.')
     views.push({ angle, label: CAD_ANGLE_LABELS[angle], dataUrl: image })
     onProgress?.(i + 1, angles.length, CAD_ANGLE_LABELS[angle])
