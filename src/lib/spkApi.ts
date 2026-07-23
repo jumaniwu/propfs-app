@@ -18,6 +18,9 @@ export interface SpkLingkupItem {
 
 export interface SpkTermin { nama: string; pct: number }
 
+/** Pasal / isi dokumen kontrak yang bisa diedit pengguna. */
+export interface SpkPasal { judul: string; isi: string }
+
 export interface SpkDoc {
   id: string
   nomor: string
@@ -34,9 +37,23 @@ export interface SpkDoc {
   catatan: string
   status: 'draft' | 'terkirim' | 'ditandatangani'
   sign_token: string
+  // ── Pihak Kedua (Pelaksana/Vendor) ──
   signature_data?: string | null
   signed_name?: string | null
   signed_at?: string | null
+  // ── Pihak Pertama (Pemberi Kerja) ──
+  pemberi_nama?: string
+  pemberi_jabatan?: string
+  pemberi_signature?: string | null
+  pemberi_signed_name?: string | null
+  pemberi_signed_at?: string | null
+  // ── Isi dokumen (pasal) yang bisa diedit ──
+  pasal?: SpkPasal[]
+  // ── Peran pihak kedua: 'Pelaksana' (vendor) atau 'Konsumen' (pemilik/pembeli) ──
+  pihak_kedua_peran?: string
+  // ── Lampiran RAB / Surat Penawaran Harga (data URL PDF/gambar) ──
+  lampiran_nama?: string | null
+  lampiran_data?: string | null
   created_at?: string
 }
 
@@ -57,7 +74,10 @@ export interface OpnameDoc {
 export interface SpkApi {
   listSpk(): Promise<SpkDoc[]>
   createSpk(doc: Omit<SpkDoc, 'id' | 'sign_token' | 'status'>): Promise<SpkDoc>
+  updateSpk(id: string, patch: Partial<Omit<SpkDoc, 'id' | 'sign_token'>>): Promise<void>
   updateSpkStatus(id: string, status: SpkDoc['status']): Promise<void>
+  /** Pemberi kerja (Pihak Pertama) menandatangani dari dalam aplikasi (login). */
+  signSpkAsPemberi(id: string, signatureDataUrl: string, name: string): Promise<void>
   deleteSpk(id: string): Promise<void>
   getSpkByToken(token: string): Promise<Omit<SpkDoc, 'id' | 'sign_token' | 'vendor_email' | 'vendor_wa'> | null>
   signSpkByToken(token: string, signatureDataUrl: string, name: string): Promise<boolean>
@@ -105,8 +125,20 @@ const realApi: SpkApi = {
     if (error) throw new Error(error.message)
     return data as SpkDoc
   },
+  async updateSpk(id, patch) {
+    const { error } = await withTimeout(supabase.from('spk_docs').update(patch).eq('id', id))
+    if (error) throw new Error(error.message)
+  },
   async updateSpkStatus(id, status) {
     const { error } = await supabase.from('spk_docs').update({ status }).eq('id', id)
+    if (error) throw new Error(error.message)
+  },
+  async signSpkAsPemberi(id, signatureDataUrl, name) {
+    const { error } = await withTimeout(supabase.from('spk_docs').update({
+      pemberi_signature: signatureDataUrl,
+      pemberi_signed_name: name,
+      pemberi_signed_at: new Date().toISOString(),
+    }).eq('id', id))
     if (error) throw new Error(error.message)
   },
   async deleteSpk(id) {
@@ -201,4 +233,82 @@ export function nomorSpkOtomatis(count: number): string {
   const d = new Date()
   const mm = String(d.getMonth() + 1).padStart(2, '0')
   return `SPK/${String(count + 1).padStart(3, '0')}/${mm}/${d.getFullYear()}`
+}
+
+const rupiah = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
+
+/** Terbilang sederhana bahasa Indonesia (untuk nilai kontrak pada pasal). */
+export function terbilang(n: number): string {
+  n = Math.floor(Math.abs(n))
+  if (n === 0) return 'nol'
+  const satuan = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan', 'sepuluh', 'sebelas']
+  const bagi = (x: number): string => {
+    if (x < 12) return satuan[x]
+    if (x < 20) return satuan[x - 10] + ' belas'
+    if (x < 100) return satuan[Math.floor(x / 10)] + ' puluh' + (x % 10 ? ' ' + satuan[x % 10] : '')
+    if (x < 200) return 'seratus' + (x - 100 ? ' ' + bagi(x - 100) : '')
+    if (x < 1000) return satuan[Math.floor(x / 100)] + ' ratus' + (x % 100 ? ' ' + bagi(x % 100) : '')
+    if (x < 2000) return 'seribu' + (x - 1000 ? ' ' + bagi(x - 1000) : '')
+    if (x < 1_000_000) return bagi(Math.floor(x / 1000)) + ' ribu' + (x % 1000 ? ' ' + bagi(x % 1000) : '')
+    if (x < 1_000_000_000) return bagi(Math.floor(x / 1_000_000)) + ' juta' + (x % 1_000_000 ? ' ' + bagi(x % 1_000_000) : '')
+    return bagi(Math.floor(x / 1_000_000_000)) + ' miliar' + (x % 1_000_000_000 ? ' ' + bagi(x % 1_000_000_000) : '')
+  }
+  return bagi(n).replace(/\s+/g, ' ').trim()
+}
+
+export interface PasalContext {
+  pemberi: string
+  vendor: string
+  proyek: string
+  nilai: number
+  termin: SpkTermin[]
+  durasi: number
+  denda: number
+  tglMulai: string | null
+}
+
+/** Template pasal standar ala kontrak kerja kontraktor — bisa diedit user. */
+export function defaultPasal(ctx: PasalContext): SpkPasal[] {
+  const terminStr = ctx.termin.length
+    ? ctx.termin.map((t, i) => `${i + 1}. ${t.nama}: ${t.pct}% (${rupiah((ctx.nilai * t.pct) / 100)})`).join('\n')
+    : 'Dibayarkan sesuai kesepakatan para pihak.'
+  const nilaiStr = `${rupiah(ctx.nilai)} (${terbilang(ctx.nilai)} rupiah)`
+  return [
+    {
+      judul: 'PASAL 1 — LINGKUP PEKERJAAN',
+      isi: `PIHAK PERTAMA memberikan pekerjaan kepada PIHAK KEDUA, dan PIHAK KEDUA menerima pekerjaan${ctx.proyek ? ` pada proyek "${ctx.proyek}"` : ''} sesuai rincian lingkup pekerjaan (Rincian Pekerjaan) yang menjadi bagian tidak terpisahkan dari Surat Perintah Kerja ini. PIHAK KEDUA wajib melaksanakan pekerjaan sesuai gambar kerja, spesifikasi teknis, dan standar mutu yang berlaku.`,
+    },
+    {
+      judul: 'PASAL 2 — NILAI PEKERJAAN & CARA PEMBAYARAN',
+      isi: `Nilai pekerjaan disepakati sebesar ${nilaiStr} bersifat lumpsum/fixed price kecuali disepakati lain. Pembayaran dilakukan secara bertahap (termin):\n${terminStr}\nPembayaran dilakukan setelah pekerjaan pada tiap termin diperiksa dan disetujui PIHAK PERTAMA.`,
+    },
+    {
+      judul: 'PASAL 3 — JANGKA WAKTU PELAKSANAAN',
+      isi: `Pekerjaan dilaksanakan selama ${ctx.durasi} (${terbilang(ctx.durasi)}) hari kalender terhitung sejak ${ctx.tglMulai || 'tanggal yang ditetapkan PIHAK PERTAMA'}. Perpanjangan waktu hanya dapat diberikan atas persetujuan tertulis PIHAK PERTAMA.`,
+    },
+    {
+      judul: 'PASAL 4 — DENDA KETERLAMBATAN',
+      isi: `Apabila PIHAK KEDUA terlambat menyelesaikan pekerjaan, dikenakan denda sebesar ${ctx.denda}‰ (${terbilang(ctx.denda)} permil) dari nilai kontrak untuk setiap hari keterlambatan, dengan denda maksimum 5% (lima persen) dari nilai kontrak.`,
+    },
+    {
+      judul: 'PASAL 5 — KEWAJIBAN PIHAK KEDUA (PELAKSANA)',
+      isi: `PIHAK KEDUA wajib: (a) menyediakan tenaga kerja, peralatan, dan material sesuai lingkup; (b) menjaga mutu, keselamatan kerja (K3), dan kebersihan lokasi; (c) memperbaiki cacat/kekurangan pekerjaan atas biaya sendiri selama masa pemeliharaan; (d) bertanggung jawab atas kerusakan yang timbul akibat kelalaiannya.`,
+    },
+    {
+      judul: 'PASAL 6 — KEWAJIBAN PIHAK PERTAMA (PEMBERI KERJA)',
+      isi: `PIHAK PERTAMA wajib: (a) menyediakan lokasi kerja dan akses yang diperlukan; (b) melakukan pembayaran sesuai termin yang disepakati; (c) memberikan keputusan/persetujuan yang menjadi kewenangannya secara tepat waktu.`,
+    },
+    {
+      judul: 'PASAL 7 — KEADAAN KAHAR (FORCE MAJEURE)',
+      isi: `Keterlambatan atau kegagalan pelaksanaan akibat keadaan kahar (bencana alam, kebijakan pemerintah, kerusuhan, dan sebab lain di luar kendali para pihak) bukan merupakan kelalaian, sepanjang diberitahukan secara tertulis paling lambat 7 (tujuh) hari sejak kejadian.`,
+    },
+    {
+      judul: 'PASAL 8 — PENYELESAIAN PERSELISIHAN',
+      isi: `Segala perselisihan diselesaikan secara musyawarah untuk mufakat. Apabila tidak tercapai, para pihak sepakat menyelesaikannya melalui jalur hukum yang berlaku di wilayah hukum Republik Indonesia.`,
+    },
+    {
+      judul: 'PASAL 9 — PENUTUP',
+      isi: `Surat Perintah Kerja ini dibuat dan ditandatangani secara digital oleh para pihak, berlaku sebagai perjanjian yang sah dan mengikat sejak ditandatangani. Hal-hal yang belum diatur akan disepakati kemudian sebagai adendum yang menjadi bagian tidak terpisahkan.`,
+    },
+  ]
 }

@@ -25,7 +25,7 @@ import {
   hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname,
   type PemasukanEntry, type OpnameItem,
 } from '@/lib/akuntan'
-import { spkApi, opnameFillLink, type OpnameDoc } from '@/lib/spkApi'
+import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
@@ -481,9 +481,32 @@ function SubOpname({ opnames, loading, error, onReload, projectName }: {
   ])
   const [saving, setSaving] = useState(false)
   const [detail, setDetail] = useState<OpnameDoc | null>(null)
+  const [spkList, setSpkList] = useState<SpkDoc[]>([])
+  const [fromSpk, setFromSpk] = useState<string>('')
+
+  // muat daftar SPK vendor untuk sumber item opname saat dialog dibuka
+  useEffect(() => {
+    if (!open) return
+    spkApi().listSpk()
+      .then(list => setSpkList(list.filter(s => (s.pihak_kedua_peran || 'Pelaksana') !== 'Konsumen')))
+      .catch(() => setSpkList([]))
+  }, [open])
 
   const setItem = (idx: number, patch: Partial<OpnameItem>) =>
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
+
+  /** Ambil item opname dari rincian pekerjaan sebuah SPK vendor. */
+  function pakaiSpk(id: string) {
+    setFromSpk(id)
+    const spk = spkList.find(s => s.id === id)
+    if (!spk) return
+    if (!judul.trim()) setJudul(`Opname — ${spk.vendor_name}${spk.nomor ? ` (${spk.nomor})` : ''}`)
+    const its = spk.lingkup.map(l => ({
+      uraian: l.uraian, satuan: l.satuan || 'ls',
+      vol_rencana: l.volume || 0, vol_realisasi: 0,
+    }))
+    if (its.length) setItems(its)
+  }
 
   async function handleCreate() {
     const valid = items.filter(i => i.uraian.trim() && i.vol_rencana > 0)
@@ -498,7 +521,7 @@ function SubOpname({ opnames, loading, error, onReload, projectName }: {
         items: valid,
       })
       setOpen(false)
-      setJudul(''); setPetugas('')
+      setJudul(''); setPetugas(''); setFromSpk('')
       setItems([{ uraian: '', satuan: 'm2', vol_rencana: 0, vol_realisasi: 0 }])
       onReload()
       const link = opnameFillLink(doc.fill_token)
@@ -606,9 +629,35 @@ function SubOpname({ opnames, loading, error, onReload, projectName }: {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {/* Ambil item dari SPK vendor */}
+            <div className="rounded-xl border border-gold/40 bg-gold-lt/20 p-3 space-y-1.5">
+              <Label className="text-xs font-bold text-navy">Ambil dari SPK Vendor</Label>
+              {spkList.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground italic">
+                  Belum ada SPK vendor. Buat SPK di tab SPK dulu, item pekerjaannya bisa ditarik ke sini otomatis.
+                </p>
+              ) : (
+                <>
+                  <Select value={fromSpk} onValueChange={pakaiSpk}>
+                    <SelectTrigger><SelectValue placeholder="Pilih SPK — item pekerjaan terisi otomatis" /></SelectTrigger>
+                    <SelectContent>
+                      {spkList.map(s => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.nomor} · {s.vendor_name} ({s.lingkup.length} item)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Rincian pekerjaan dari SPK menjadi item opname; tinggal isi volume realisasi di lapangan.
+                  </p>
+                </>
+              )}
+            </div>
+
             <div className="grid sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">Judul Opname</Label>
+                <Label className="text-xs">Judul Opname <span className="text-red-600">*</span></Label>
                 <Input value={judul} onChange={e => setJudul(e.target.value)} placeholder="mis. Opname Minggu ke-3 Blok A" />
               </div>
               <div className="space-y-1">
@@ -617,7 +666,7 @@ function SubOpname({ opnames, loading, error, onReload, projectName }: {
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs">Item Pekerjaan</Label>
+              <Label className="text-xs">Item Pekerjaan <span className="text-red-600">*</span></Label>
               {items.map((it, i) => (
                 <div key={i} className="grid grid-cols-[1fr_72px_88px_32px] gap-2 items-center">
                   <Input value={it.uraian} onChange={e => setItem(i, { uraian: e.target.value })}
