@@ -5,7 +5,6 @@
 // window.__spkApiMock dipakai test E2E untuk memotong jaringan.
 // ============================================================
 
-import { supabase } from './supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { OpnameItem } from './akuntan'
 
@@ -102,112 +101,163 @@ function uid(): string {
   return u.id
 }
 
-/** Jaring pengaman: jangan biarkan tombol berputar selamanya. */
-function withTimeout<T>(p: PromiseLike<T>, ms = 20000): Promise<T> {
-  return Promise.race([
-    Promise.resolve(p),
-    new Promise<T>((_, rej) =>
-      setTimeout(() => rej(new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')), ms)),
-  ])
+// ── REST langsung (bypass session-machinery supabase-js) ────────────────────
+// supabase-js v2 bisa MENGGANTUNG query bila auto-refresh token stall / lock
+// antar-tab. Untuk operasi baca-tulis SPK/Opname kita panggil REST langsung
+// dengan token dari storage + AbortController, sehingga tidak mungkin macet.
+function supaConf() {
+  const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env
+  const url = env.VITE_SUPABASE_URL || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
+  const key = env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD'
+  return { url, key }
+}
+
+/** Ambil access token JWT user dari storage supabase (tanpa panggilan jaringan). */
+function storedAccessToken(url: string): string | null {
+  try {
+    const ref = url.replace(/^https?:\/\//, '').split('.')[0]
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
+  } catch { return null }
+}
+
+async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
+  const { url, key } = supaConf()
+  const token = storedAccessToken(url)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(`${url}/rest/v1/${path}`, {
+      ...init,
+      signal: ctrl.signal,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${token ?? key}`,
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')
+    }
+    throw e
+  } finally { clearTimeout(timer) }
+}
+
+async function restGet<T>(path: string): Promise<T> {
+  const res = await restFetch(path)
+  if (!res.ok) throw new Error(`Gagal memuat data (HTTP ${res.status}). ${res.status === 401 ? 'Sesi login mungkin kedaluwarsa — muat ulang halaman.' : ''}`)
+  return await res.json() as T
+}
+
+async function restInsert<T>(table: string, body: unknown): Promise<T> {
+  const res = await restFetch(table, { method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Gagal menyimpan (HTTP ${res.status}).`)
+  const rows = await res.json() as T[]
+  return rows[0]
+}
+
+async function restPatch(table: string, filter: string, body: unknown): Promise<void> {
+  const res = await restFetch(`${table}?${filter}`, { method: 'PATCH', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Gagal memperbarui (HTTP ${res.status}).`)
+}
+
+async function restDelete(table: string, filter: string): Promise<void> {
+  const res = await restFetch(`${table}?${filter}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Gagal menghapus (HTTP ${res.status}).`)
 }
 
 const realApi: SpkApi = {
   async listSpk() {
-    const { data, error } = await withTimeout(supabase.from('spk_docs')
-      .select('*').order('created_at', { ascending: false }))
-    if (error) throw new Error(error.message)
-    return (data ?? []) as SpkDoc[]
+    return await restGet<SpkDoc[]>('spk_docs?select=*&order=created_at.desc')
   },
   async createSpk(doc) {
     const user_id = uid()
-    const { data, error } = await withTimeout(supabase.from('spk_docs')
-      .insert({ ...doc, user_id }).select('*').single())
-    if (error) throw new Error(error.message)
-    return data as SpkDoc
+    return await restInsert<SpkDoc>('spk_docs', { ...doc, user_id })
   },
   async updateSpk(id, patch) {
-    const { error } = await withTimeout(supabase.from('spk_docs').update(patch).eq('id', id))
-    if (error) throw new Error(error.message)
+    await restPatch('spk_docs', `id=eq.${id}`, patch)
   },
   async updateSpkStatus(id, status) {
-    const { error } = await supabase.from('spk_docs').update({ status }).eq('id', id)
-    if (error) throw new Error(error.message)
+    await restPatch('spk_docs', `id=eq.${id}`, { status })
   },
   async signSpkAsPemberi(id, signatureDataUrl, name) {
-    const { error } = await withTimeout(supabase.from('spk_docs').update({
+    await restPatch('spk_docs', `id=eq.${id}`, {
       pemberi_signature: signatureDataUrl,
       pemberi_signed_name: name,
       pemberi_signed_at: new Date().toISOString(),
-    }).eq('id', id))
-    if (error) throw new Error(error.message)
+    })
   },
   async deleteSpk(id) {
-    const { error } = await supabase.from('spk_docs').delete().eq('id', id)
-    if (error) throw new Error(error.message)
+    await restDelete('spk_docs', `id=eq.${id}`)
   },
   async getSpkByToken(token) {
-    const { data, error } = await supabase.rpc('spk_get_by_token', { p_token: token })
-    if (error) throw new Error(error.message)
+    // RPC publik via REST (tanpa session — token argumen di body)
+    const res = await restFetch('rpc/spk_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) })
+    if (!res.ok) throw new Error(`Gagal memuat SPK (HTTP ${res.status}).`)
+    const data = await res.json()
     const row = Array.isArray(data) ? data[0] : data
     return row ?? null
   },
   async signSpkByToken(token, signatureDataUrl, name) {
-    const { data, error } = await supabase.rpc('spk_sign_by_token', {
-      p_token: token, p_signature: signatureDataUrl, p_name: name,
+    const res = await restFetch('rpc/spk_sign_by_token', {
+      method: 'POST', body: JSON.stringify({ p_token: token, p_signature: signatureDataUrl, p_name: name }),
     })
-    if (error) throw new Error(error.message)
-    return data === true
+    if (!res.ok) throw new Error(`Gagal menyimpan tanda tangan (HTTP ${res.status}).`)
+    return (await res.json()) === true
   },
   async listOpname() {
-    const { data, error } = await withTimeout(supabase.from('opname_forms')
-      .select('*').order('created_at', { ascending: false }))
-    if (error) throw new Error(error.message)
-    return (data ?? []) as OpnameDoc[]
+    return await restGet<OpnameDoc[]>('opname_forms?select=*&order=created_at.desc')
   },
   async createOpname(doc) {
     const user_id = uid()
-    const { data, error } = await withTimeout(supabase.from('opname_forms')
-      .insert({ ...doc, user_id }).select('*').single())
-    if (error) throw new Error(error.message)
-    return data as OpnameDoc
+    return await restInsert<OpnameDoc>('opname_forms', { ...doc, user_id })
   },
   async approveOpname(id) {
-    const { error } = await supabase.from('opname_forms').update({ status: 'disetujui' }).eq('id', id)
-    if (error) throw new Error(error.message)
+    await restPatch('opname_forms', `id=eq.${id}`, { status: 'disetujui' })
   },
   async deleteOpname(id) {
-    const { error } = await supabase.from('opname_forms').delete().eq('id', id)
-    if (error) throw new Error(error.message)
+    await restDelete('opname_forms', `id=eq.${id}`)
   },
   async getOpnameByToken(token) {
-    const { data, error } = await supabase.rpc('opname_get_by_token', { p_token: token })
-    if (error) throw new Error(error.message)
+    const res = await restFetch('rpc/opname_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) })
+    if (!res.ok) throw new Error(`Gagal memuat form (HTTP ${res.status}).`)
+    const data = await res.json()
     const row = Array.isArray(data) ? data[0] : data
     return row ?? null
   },
   async fillOpnameByToken(token, items, by) {
-    const { data, error } = await supabase.rpc('opname_fill_by_token', {
-      p_token: token, p_items: items, p_by: by,
+    const res = await restFetch('rpc/opname_fill_by_token', {
+      method: 'POST', body: JSON.stringify({ p_token: token, p_items: items, p_by: by }),
     })
-    if (error) throw new Error(error.message)
-    return data === true
+    if (!res.ok) throw new Error(`Gagal mengirim opname (HTTP ${res.status}).`)
+    return (await res.json()) === true
   },
   async sendSpkEmail(spk, link) {
     if (!spk.vendor_email) throw new Error('Email vendor belum diisi.')
-    const { error } = await supabase.functions.invoke('send-email', {
-      body: {
-        type: 'spk_sign',
-        email_to: spk.vendor_email,
-        payload: {
-          vendor_name: spk.vendor_name,
-          nomor: spk.nomor,
-          project_name: spk.project_name,
-          nilai: spk.nilai_kontrak,
-          link,
-        },
-      },
-    })
-    if (error) throw new Error(error.message)
+    const { url, key } = supaConf()
+    const token = storedAccessToken(url)
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 15000)
+    try {
+      const res = await fetch(`${url}/functions/v1/send-email`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { apikey: key, Authorization: `Bearer ${token ?? key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'spk_sign',
+          email_to: spk.vendor_email,
+          payload: {
+            vendor_name: spk.vendor_name, nomor: spk.nomor,
+            project_name: spk.project_name, nilai: spk.nilai_kontrak, link,
+          },
+        }),
+      })
+      if (!res.ok) throw new Error(`Email gagal (HTTP ${res.status}).`)
+    } finally { clearTimeout(timer) }
   },
 }
 
