@@ -14,6 +14,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     // WAJIB: agar session persist setelah redirect dari email
     persistSession: true,
     autoRefreshToken: true,
+    // Navigator LockManager antar-tab sering deadlock di Chrome mobile
+    // (banyak tab terbuka) sehingga SEMUA query DB menggantung menunggu
+    // token. Lock diganti pass-through: setiap tab mengelola tokennya
+    // sendiri; refresh ganda aman karena Supabase punya grace period
+    // reuse refresh-token.
+    lock: async (_name, _acquireTimeout, fn) => await fn(),
   }
 })
 
