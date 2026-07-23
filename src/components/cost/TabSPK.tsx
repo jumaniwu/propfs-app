@@ -15,9 +15,6 @@ import { Input } from '@/components/ui/input'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { Paperclip, FileText, X } from 'lucide-react'
 import { useRef } from 'react'
 import NumInput from '@/components/siteplan/NumInput'
@@ -26,8 +23,8 @@ import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import {
-  spkApi, spkSignLink, waShareLink, nomorSpkOtomatis, defaultPasal,
-  type SpkDoc, type SpkLingkupItem, type SpkTermin, type SpkPasal,
+  spkApi, spkSignLink, waShareLink, nomorSpkOtomatis, pasalTemplate,
+  type SpkDoc, type SpkLingkupItem, type SpkTermin, type SpkPasal, type SpkJenis,
 } from '@/lib/spkApi'
 import { downloadSpkPdf } from '@/lib/spkPdf'
 
@@ -47,6 +44,7 @@ export default function TabSPK() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  const [jenis, setJenis] = useState<SpkJenis>('vendor')
   const [editDoc, setEditDoc] = useState<SpkDoc | null>(null)
   const [signPemberi, setSignPemberi] = useState<SpkDoc | null>(null)
 
@@ -62,7 +60,9 @@ export default function TabSPK() {
 
   const pesanWa = (spk: SpkDoc) => {
     const link = spkSignLink(spk.sign_token)
-    return `Selamat siang Bapak/Ibu *${spk.vendor_name}*.\n\nKami menerbitkan Surat Perintah Kerja:\n📄 ${spk.nomor}${spk.project_name ? `\n🏗️ ${spk.project_name}` : ''}\n💰 Nilai: ${fmt(spk.nilai_kontrak)}\n\nMohon baca & tanda tangani secara digital lewat link berikut (buka dari HP, tanda tangan pakai jari):\n👉 ${link}\n\nTerima kasih.`
+    const jenisDoc = (spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen'
+      ? 'Surat Perjanjian / Pemesanan' : 'Surat Perintah Kerja'
+    return `Selamat siang Bapak/Ibu *${spk.vendor_name}*.\n\nKami menerbitkan ${jenisDoc}:\n📄 ${spk.nomor}${spk.project_name ? `\n🏗️ ${spk.project_name}` : ''}\n💰 Nilai: ${fmt(spk.nilai_kontrak)}\n\nMohon baca & tanda tangani secara digital lewat link berikut (buka dari HP, tanda tangan pakai jari):\n👉 ${link}\n\nTerima kasih.`
   }
 
   async function tandaiTerkirim(spk: SpkDoc) {
@@ -101,21 +101,25 @@ export default function TabSPK() {
         <h2 className="text-xl md:text-2xl font-serif font-bold text-navy flex items-center gap-2">
           <FileSignature className="w-6 h-6" /> SPK — Surat Perintah Kerja
         </h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
           </Button>
           <Button size="sm" className="gap-1.5 bg-navy hover:bg-navy/90 font-bold"
-            onClick={() => { setEditDoc(null); setOpen(true) }}>
-            <Plus className="w-4 h-4" /> Buat SPK
+            onClick={() => { setEditDoc(null); setJenis('vendor'); setOpen(true) }}>
+            <Plus className="w-4 h-4" /> SPK Vendor
+          </Button>
+          <Button size="sm" className="gap-1.5 bg-gold hover:bg-gold/90 text-navy font-bold"
+            onClick={() => { setEditDoc(null); setJenis('konsumen'); setOpen(true) }}>
+            <Plus className="w-4 h-4" /> Kontrak Konsumen
           </Button>
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground max-w-2xl">
-        Susun SPK sebagai kontrak (pasal bisa diedit) → Anda selaku <b>Pemberi Kerja</b> tanda tangan →
-        kirim link ke vendor lewat WhatsApp/Email → vendor tanda tangan digital dari HP →
-        kontrak lengkap dua tanda tangan, PDF siap dicetak.
+        <b>SPK Vendor</b> = perintah kerja ke pelaksana/pemborong. <b>Kontrak Konsumen</b> = perjanjian
+        pemesanan/jual-beli ke pembeli/pemilik (wajib lampirkan RAB / Surat Penawaran Harga).
+        Anda tanda tangan selaku Pihak Pertama → kirim link → pihak kedua tanda tangan digital dari HP.
       </p>
 
       {error && (
@@ -141,7 +145,13 @@ export default function TabSPK() {
               <div key={spk.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="font-bold text-navy text-sm truncate">{spk.nomor}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="font-bold text-navy text-sm truncate">{spk.nomor}</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0 ${
+                        (spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen' ? 'bg-gold-lt text-navy' : 'bg-navy/10 text-navy'}`}>
+                        {(spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen' ? 'Konsumen' : 'Vendor'}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted-foreground truncate">👷 {spk.vendor_name}{spk.project_name && <> · 🏗️ {spk.project_name}</>}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 flex items-center gap-1 ${STATUS_BADGE[spk.status]}`}>
@@ -187,7 +197,11 @@ export default function TabSPK() {
                   </Button>
                   {!vendorSigned && (
                     <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-                      onClick={() => { setEditDoc(spk); setOpen(true) }}>
+                      onClick={() => {
+                        setEditDoc(spk)
+                        setJenis((spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen' ? 'konsumen' : 'vendor')
+                        setOpen(true)
+                      }}>
                       <Pencil className="w-3 h-3" /> Edit
                     </Button>
                   )}
@@ -210,6 +224,7 @@ export default function TabSPK() {
 
       <SpkFormDialog
         open={open}
+        jenis={jenis}
         onClose={() => { setOpen(false); setEditDoc(null) }}
         onSaved={() => { setOpen(false); setEditDoc(null); load() }}
         defaultProject={projectInfo?.projectName ?? ''}
@@ -229,8 +244,9 @@ export default function TabSPK() {
 }
 
 // ── Dialog Buat / Edit SPK ──────────────────────────────────────────────────
-function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi, count, editDoc }: {
+function SpkFormDialog({ open, jenis, onClose, onSaved, defaultProject, defaultPemberi, count, editDoc }: {
   open: boolean
+  jenis: SpkJenis
   onClose: () => void
   onSaved: () => void
   defaultProject: string
@@ -240,6 +256,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
 }) {
   const { toast } = useToast()
   const isEdit = !!editDoc
+  const isKonsumen = jenis === 'konsumen'
   const [vendor, setVendor] = useState('')
   const [wa, setWa] = useState('')
   const [email, setEmail] = useState('')
@@ -256,12 +273,10 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
   ])
   const [pasal, setPasal] = useState<SpkPasal[]>([])
   const [pasalTouched, setPasalTouched] = useState(false)
-  const [peran, setPeran] = useState('Pelaksana')
   const [lampiranNama, setLampiranNama] = useState<string | null>(null)
   const [lampiranData, setLampiranData] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const lampiranRef = useRef<HTMLInputElement>(null)
-  const isKonsumen = peran === 'Konsumen'
 
   // isi ulang form saat dibuka (mode buat) atau saat edit doc berubah
   useEffect(() => {
@@ -277,7 +292,6 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
       setTermin(editDoc.termin.length ? editDoc.termin : [{ nama: 'Termin 1', pct: 100 }])
       setPasal(editDoc.pasal?.length ? editDoc.pasal : [])
       setPasalTouched(!!editDoc.pasal?.length)
-      setPeran(editDoc.pihak_kedua_peran || 'Pelaksana')
       setLampiranNama(editDoc.lampiran_nama ?? null)
       setLampiranData(editDoc.lampiran_data ?? null)
     } else {
@@ -287,7 +301,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
       setLingkup([{ uraian: '', volume: 1, satuan: 'ls', harga: 0 }])
       setTermin([{ nama: 'DP / Uang Muka', pct: 30 }, { nama: 'Progres 50%', pct: 40 }, { nama: 'Pelunasan (BAST)', pct: 30 }])
       setPasal([]); setPasalTouched(false)
-      setPeran('Pelaksana'); setLampiranNama(null); setLampiranData(null)
+      setLampiranNama(null); setLampiranData(null)
     }
   }, [open, editDoc, defaultProject, defaultPemberi])
 
@@ -316,19 +330,17 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
   const validLingkup = lingkup.filter(l => l.uraian.trim() && l.harga > 0)
 
   const buatPasalStandar = () => {
-    setPasal(defaultPasal({
-      pemberi: pemberiNama, vendor, proyek, nilai,
-      termin, durasi, denda, tglMulai,
-    }))
+    setPasal(pasalTemplate({ pemberi: pemberiNama, vendor, proyek, nilai, termin, durasi, denda, tglMulai }, jenis))
     setPasalTouched(true)
   }
 
   /** Validasi field wajib — kembalikan pesan pertama yang kosong. */
   function validasi(): string | null {
-    if (!pemberiNama.trim()) return 'Nama Pemberi Kerja (Pihak Pertama) wajib diisi.'
+    if (!pemberiNama.trim()) return 'Nama Pemberi Kerja / Penjual (Pihak Pertama) wajib diisi.'
     if (!vendor.trim()) return `Nama ${isKonsumen ? 'Konsumen/Pemilik' : 'Pelaksana/Vendor'} (Pihak Kedua) wajib diisi.`
-    if (validLingkup.length === 0) return 'Isi minimal 1 baris Rincian Pekerjaan (uraian & harga).'
-    if (totalPct !== 100) return `Total termin pembayaran harus 100% (sekarang ${totalPct}%).`
+    if (validLingkup.length === 0) return `Isi minimal 1 baris ${isKonsumen ? 'Rincian & Harga' : 'Rincian Pekerjaan'} (uraian & harga).`
+    if (totalPct !== 100) return `Total ${isKonsumen ? 'jadwal pembayaran' : 'termin pembayaran'} harus 100% (sekarang ${totalPct}%).`
+    if (isKonsumen && !lampiranData) return 'Kontrak konsumen wajib melampirkan RAB / Surat Penawaran Harga.'
     return null
   }
 
@@ -339,7 +351,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
     // pasal: jika belum pernah disentuh, isi dgn template standar otomatis
     const finalPasal = pasalTouched && pasal.length
       ? pasal.filter(p => p.judul.trim() || p.isi.trim())
-      : defaultPasal({ pemberi: pemberiNama, vendor, proyek, nilai, termin, durasi, denda, tglMulai })
+      : pasalTemplate({ pemberi: pemberiNama, vendor, proyek, nilai, termin, durasi, denda, tglMulai }, jenis)
     const payload = {
       project_name: proyek.trim(),
       vendor_name: vendor.trim(),
@@ -355,7 +367,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
       pemberi_nama: pemberiNama.trim(),
       pemberi_jabatan: pemberiJabatan.trim(),
       pasal: finalPasal,
-      pihak_kedua_peran: peran,
+      pihak_kedua_peran: isKonsumen ? 'Konsumen' : 'Pelaksana',
       lampiran_nama: lampiranNama,
       lampiran_data: lampiranData,
     }
@@ -365,7 +377,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
         toast({ title: `✅ ${editDoc.nomor} diperbarui!` })
       } else {
         const doc = await spkApi().createSpk({ nomor: nomorSpkOtomatis(count), ...payload })
-        toast({ title: `✅ ${doc.nomor} dibuat!`, description: 'Tanda tangani sebagai Pemberi Kerja lalu kirim ke vendor.' })
+        toast({ title: `✅ ${doc.nomor} dibuat!`, description: `Tanda tangani sebagai Pihak Pertama lalu kirim ke ${isKonsumen ? 'konsumen' : 'vendor'}.` })
       }
       onSaved()
     } catch (e) {
@@ -379,27 +391,19 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
     <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
       <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `Edit ${editDoc?.nomor}` : 'Buat SPK Baru'}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? `Edit ${editDoc?.nomor}` : isKonsumen ? 'Buat Kontrak Konsumen' : 'Buat SPK Vendor'}
+          </DialogTitle>
           <DialogDescription>
             {isEdit
-              ? 'Ubah isi kontrak. Perubahan hanya bisa dilakukan sebelum vendor menandatangani.'
-              : <>Nomor otomatis: <b>{nomorSpkOtomatis(count)}</b> — kontrak dengan dua pihak & pasal yang bisa diedit.</>}
+              ? 'Ubah isi dokumen. Perubahan hanya bisa dilakukan sebelum pihak kedua menandatangani.'
+              : isKonsumen
+                ? <>Perjanjian pemesanan/jual-beli ke pembeli — <b>wajib lampirkan RAB / Surat Penawaran Harga</b>. Nomor: <b>{nomorSpkOtomatis(count)}</b></>
+                : <>Perintah kerja ke pelaksana/vendor. Nomor otomatis: <b>{nomorSpkOtomatis(count)}</b></>}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Jenis SPK / peran pihak kedua */}
-          <div className="space-y-1">
-            <Label className="text-xs">Ditujukan Kepada</Label>
-            <Select value={peran} onValueChange={setPeran}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Pelaksana">Pelaksana / Vendor / Pemborong (perintah kerja)</SelectItem>
-                <SelectItem value="Konsumen">Konsumen / Pemilik / Pembeli (kontrak + lampiran penawaran)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Para pihak */}
           <div className="rounded-xl border border-border p-3 space-y-3">
             <p className="text-xs font-bold text-navy uppercase tracking-wide">Para Pihak</p>
@@ -434,8 +438,11 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
             </div>
 
             {/* Lampiran RAB / Surat Penawaran Harga */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Lampiran RAB / Surat Penawaran Harga (PDF/gambar, maks 4MB)</Label>
+            <div className={`space-y-1.5 ${isKonsumen ? 'rounded-lg bg-gold-lt/30 border border-gold/40 p-2.5' : ''}`}>
+              <Label className="text-xs">
+                Lampiran RAB / Surat Penawaran Harga (PDF/gambar, maks 4MB)
+                {isKonsumen && <span className="text-red-600"> *</span>}
+              </Label>
               {lampiranNama ? (
                 <div className="flex items-center gap-2 bg-slate-50 border border-border rounded-lg px-3 py-2 text-xs">
                   <FileText className="w-4 h-4 text-navy shrink-0" />
@@ -453,9 +460,11 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
             </div>
           </div>
 
-          {/* Lingkup */}
+          {/* Lingkup / rincian */}
           <div className="space-y-2">
-            <Label className="text-xs font-bold uppercase tracking-wide">Rincian Pekerjaan <span className="text-red-600">*</span></Label>
+            <Label className="text-xs font-bold uppercase tracking-wide">
+              {isKonsumen ? 'Rincian & Harga (Unit/Spesifikasi)' : 'Rincian Pekerjaan'} <span className="text-red-600">*</span>
+            </Label>
             {lingkup.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_64px_64px_110px_32px] gap-2 items-center">
                 <Input value={l.uraian} onChange={e => setL(i, { uraian: e.target.value })}
@@ -497,7 +506,7 @@ function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi,
           {/* Termin */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs font-bold uppercase tracking-wide">Termin Pembayaran</Label>
+              <Label className="text-xs font-bold uppercase tracking-wide">{isKonsumen ? 'Jadwal Pembayaran' : 'Termin Pembayaran'}</Label>
               <span className={`text-[11px] font-bold ${totalPct === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
                 Total: {totalPct}% {totalPct !== 100 && '(harus 100%)'}
               </span>

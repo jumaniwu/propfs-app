@@ -1,11 +1,12 @@
 // Cetak SPK ke PDF A4 (jspdf) — kop kontrak, para pihak, rincian pekerjaan,
 // pasal-pasal, dan dua blok tanda tangan (Pihak Pertama & Pihak Kedua).
 import { jsPDF } from 'jspdf'
-import type { SpkDoc } from './spkApi'
+import { spkTitle, type SpkDoc } from './spkApi'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
 export function downloadSpkPdf(spk: SpkDoc): void {
+  const isKonsumen = (spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen'
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const M = 18
@@ -20,7 +21,7 @@ export function downloadSpkPdf(spk: SpkDoc): void {
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(15)
-  doc.text('SURAT PERINTAH KERJA', W / 2, 14, { align: 'center' })
+  doc.text(spkTitle(spk.pihak_kedua_peran), W / 2, 14, { align: 'center' })
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
   doc.text(`Nomor: ${spk.nomor}`, W / 2, 21, { align: 'center' })
@@ -31,7 +32,7 @@ export function downloadSpkPdf(spk: SpkDoc): void {
   const peran = spk.pihak_kedua_peran || 'Pelaksana'
   doc.setFontSize(9.5)
   doc.setFont('helvetica', 'normal')
-  const intro = `Pada hari ini dibuat dan ditandatangani Surat Perintah Kerja antara PIHAK PERTAMA ` +
+  const intro = `Pada hari ini dibuat dan ditandatangani ${isKonsumen ? 'Perjanjian ini' : 'Surat Perintah Kerja'} antara PIHAK PERTAMA ` +
     `(${spk.pemberi_nama || 'Pemberi Kerja'}${spk.pemberi_jabatan ? ', ' + spk.pemberi_jabatan : ''}) ` +
     `dengan PIHAK KEDUA selaku ${peran} (${spk.vendor_name})` +
     (spk.project_name ? ` untuk proyek "${spk.project_name}"` : '') + '.'
@@ -57,7 +58,7 @@ export function downloadSpkPdf(spk: SpkDoc): void {
 
   ensure(rowH * 3)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5)
-  doc.text('RINCIAN PEKERJAAN', M, y); y += 4
+  doc.text(isKonsumen ? 'RINCIAN & HARGA' : 'RINCIAN PEKERJAAN', M, y); y += 4
   const header = ['No', 'Uraian Pekerjaan', 'Volume', 'Satuan', 'Harga (Rp)']
   doc.setFillColor(13, 27, 42)
   doc.rect(M, y, totalW, rowH, 'F')
@@ -79,7 +80,7 @@ export function downloadSpkPdf(spk: SpkDoc): void {
   ensure(rowH)
   doc.setFillColor(240, 230, 206); doc.rect(M, y, totalW, rowH, 'F')
   doc.setFont('helvetica', 'bold')
-  doc.text('NILAI KONTRAK', xs[0] + 2, y + 4.8)
+  doc.text(isKonsumen ? 'TOTAL HARGA' : 'NILAI KONTRAK', xs[0] + 2, y + 4.8)
   doc.text(spk.nilai_kontrak.toLocaleString('id-ID'), xs[4] + cols[4] - 2, y + 4.8, { align: 'right' })
   y += rowH + 6
 

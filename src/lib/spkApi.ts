@@ -312,3 +312,69 @@ export function defaultPasal(ctx: PasalContext): SpkPasal[] {
     },
   ]
 }
+
+/** Template pasal untuk KONSUMEN/PEMILIK (perjanjian pemesanan/jual-beli
+ *  antara pengembang dan pembeli). Spesifikasi mengikat pada RAB/penawaran
+ *  yang WAJIB dilampirkan. Bisa diedit user. */
+export function defaultPasalKonsumen(ctx: PasalContext): SpkPasal[] {
+  const terminStr = ctx.termin.length
+    ? ctx.termin.map((t, i) => `${i + 1}. ${t.nama}: ${t.pct}% (${rupiah((ctx.nilai * t.pct) / 100)})`).join('\n')
+    : 'Dibayarkan sesuai kesepakatan para pihak.'
+  const nilaiStr = `${rupiah(ctx.nilai)} (${terbilang(ctx.nilai)} rupiah)`
+  return [
+    {
+      judul: 'PASAL 1 — OBJEK PERJANJIAN',
+      isi: `PIHAK PERTAMA (Penjual/Pengembang) menjual dan menyerahkan kepada PIHAK KEDUA (Pembeli/Pemilik), dan PIHAK KEDUA membeli${ctx.proyek ? ` unit/bangunan pada proyek "${ctx.proyek}"` : ' unit/bangunan'} beserta spesifikasi sebagaimana tercantum dalam Rincian & Spesifikasi serta RAB / Surat Penawaran Harga yang TERLAMPIR dan menjadi bagian tidak terpisahkan dari perjanjian ini.`,
+    },
+    {
+      judul: 'PASAL 2 — HARGA & CARA PEMBAYARAN',
+      isi: `Harga disepakati sebesar ${nilaiStr}. Pembayaran dilakukan menurut jadwal berikut:\n${terminStr}\nPembayaran dianggap sah setelah dana diterima PIHAK PERTAMA dan dikonfirmasi.`,
+    },
+    {
+      judul: 'PASAL 3 — SPESIFIKASI & LAMPIRAN',
+      isi: `Spesifikasi teknis, material, dan volume mengikuti RAB / Surat Penawaran Harga terlampir. Setiap perubahan spesifikasi (tambah/kurang) atas permintaan PIHAK KEDUA diperhitungkan sebagai pekerjaan tambah-kurang dan disepakati tertulis.`,
+    },
+    {
+      judul: 'PASAL 4 — JANGKA WAKTU & SERAH TERIMA',
+      isi: `PIHAK PERTAMA menyelesaikan dan menyerahkan objek dalam estimasi ${ctx.durasi} (${terbilang(ctx.durasi)}) hari kalender sejak ${ctx.tglMulai || 'perjanjian ditandatangani dan pembayaran tahap pertama diterima'}. Serah terima dituangkan dalam Berita Acara Serah Terima (BAST).`,
+    },
+    {
+      judul: 'PASAL 5 — KEWAJIBAN PIHAK PERTAMA (PENJUAL)',
+      isi: `PIHAK PERTAMA wajib: (a) membangun/menyediakan objek sesuai spesifikasi lampiran; (b) menyerahkan objek tepat waktu dalam kondisi baik; (c) memberikan masa pemeliharaan/garansi sesuai kesepakatan.`,
+    },
+    {
+      judul: 'PASAL 6 — KEWAJIBAN PIHAK KEDUA (PEMBELI)',
+      isi: `PIHAK KEDUA wajib: (a) melakukan pembayaran sesuai jadwal pada Pasal 2; (b) melakukan pemeriksaan pada saat serah terima; (c) melunasi seluruh kewajiban sebelum penyerahan hak/sertifikat.`,
+    },
+    {
+      judul: 'PASAL 7 — PEMBATALAN & SANKSI',
+      isi: `Apabila PIHAK KEDUA membatalkan secara sepihak, pembayaran yang telah masuk dapat diperhitungkan sebagai denda/biaya administrasi sesuai kesepakatan. Apabila PIHAK PERTAMA gagal menyerahkan objek, PIHAK PERTAMA mengembalikan pembayaran PIHAK KEDUA.`,
+    },
+    {
+      judul: 'PASAL 8 — KEADAAN KAHAR (FORCE MAJEURE)',
+      isi: `Keterlambatan akibat keadaan kahar (bencana alam, kebijakan pemerintah, dan sebab lain di luar kendali) bukan merupakan kelalaian, sepanjang diberitahukan secara tertulis paling lambat 7 (tujuh) hari sejak kejadian.`,
+    },
+    {
+      judul: 'PASAL 9 — PENYELESAIAN PERSELISIHAN',
+      isi: `Segala perselisihan diselesaikan secara musyawarah untuk mufakat. Apabila tidak tercapai, para pihak menyelesaikannya melalui jalur hukum yang berlaku di wilayah hukum Republik Indonesia.`,
+    },
+    {
+      judul: 'PASAL 10 — PENUTUP',
+      isi: `Perjanjian ini dibuat dan ditandatangani secara digital oleh para pihak, berlaku sah dan mengikat sejak ditandatangani. Hal yang belum diatur disepakati kemudian sebagai adendum yang menjadi bagian tidak terpisahkan.`,
+    },
+  ]
+}
+
+export type SpkJenis = 'vendor' | 'konsumen'
+
+/** Pilih template pasal sesuai jenis dokumen. */
+export function pasalTemplate(ctx: PasalContext, jenis: SpkJenis): SpkPasal[] {
+  return jenis === 'konsumen' ? defaultPasalKonsumen(ctx) : defaultPasal(ctx)
+}
+
+/** Judul dokumen menurut jenis / peran pihak kedua. */
+export function spkTitle(peran?: string): string {
+  return (peran || '').toLowerCase() === 'konsumen'
+    ? 'SURAT PERJANJIAN / PEMESANAN'
+    : 'SURAT PERINTAH KERJA'
+}
