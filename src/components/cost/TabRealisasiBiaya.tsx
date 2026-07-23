@@ -9,6 +9,7 @@ import { useCostStore } from '@/store/costStore'
 import { chatRealisasiWithGemini, RealisasiEntry, ChatMessage } from '@/lib/ai-realisasi'
 import { useToast } from '@/hooks/use-toast'
 import * as xlsx from 'xlsx'
+import { buildReportSheet } from '@/utils/excel'
 
 // ── Category Colors ───────────────────────────────────────────────────────────
 const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -249,78 +250,77 @@ export default function TabRealisasiBiaya() {
     }
   }
 
-  // ── Excel Export (2 sheet: Material + Upah) ──────────────────────────────
+  // ── Excel Export: laporan rapi (judul, tabel berformat, baris TOTAL/SUM) ──
   const exportToExcel = () => {
     if (realisasiEntries.length === 0) return
     const wb = xlsx.utils.book_new()
+    const projectName = activePlan?.projectId?.substring(0, 10) || 'Proyek'
+    const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+    const subtitle = `Proyek: ${projectName} · Dicetak: ${printed} · ${realisasiEntries.length} transaksi`
 
     // Sheet 1: Ringkasan
     const grandTotal = realisasiEntries.reduce((s, e) => s + e.jumlah, 0)
     const totalMaterial = realisasiEntries.filter(e => e.tipe === 'material').reduce((s, e) => s + e.jumlah, 0)
     const totalUpah = realisasiEntries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0)
-    const sumData = [
-      { 'Uraian': 'Total Pembelian Material', 'Jumlah (Rp)': totalMaterial },
-      { 'Uraian': 'Total Upah Tukang/Pekerja', 'Jumlah (Rp)': totalUpah },
-      { 'Uraian': 'Total Operasional & Lainnya', 'Jumlah (Rp)': grandTotal - totalMaterial - totalUpah },
-      { 'Uraian': 'GRAND TOTAL PENGELUARAN', 'Jumlah (Rp)': grandTotal },
-    ]
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(sumData), '📊 Ringkasan')
+    xlsx.utils.book_append_sheet(wb, buildReportSheet({
+      title: 'LAPORAN REALISASI BIAYA PROYEK — RINGKASAN',
+      subtitle,
+      headers: ['Uraian', 'Jumlah Transaksi', 'Jumlah (Rp)'],
+      rows: [
+        ['Pembelian Material', realisasiEntries.filter(e => e.tipe === 'material').length, totalMaterial],
+        ['Upah Tukang/Pekerja', realisasiEntries.filter(e => e.tipe === 'upah').length, totalUpah],
+        ['Operasional & Lainnya', realisasiEntries.filter(e => e.tipe !== 'material' && e.tipe !== 'upah').length, grandTotal - totalMaterial - totalUpah],
+      ],
+      sumCols: [1, 2],
+    }), 'Ringkasan')
 
     // Sheet 2: Pembelian Material
-    const matData = realisasiEntries
-      .filter(e => e.tipe === 'material')
-      .map(e => ({
-        'Tanggal': e.tanggal,
-        'Nama Material': e.namaMaterial || e.keterangan,
-        'Volume': e.volume || '',
-        'Satuan': e.satuan || '',
-        'Harga Satuan (Rp)': e.hargaSatuan || '',
-        'Supplier/Toko': e.namaSupplier || '-',
-        'No. Nota': e.nomorNota || '-',
-        'Kategori': e.kategori,
-        'Total (Rp)': e.jumlah,
-        'Metode Bayar': e.metodePembayaran || 'Cash',
-        'Status': e.status,
-        'Keterangan': e.keterangan,
-      }))
-    if (matData.length > 0) {
-      xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(matData), '📦 Pembelian Material')
+    const mat = realisasiEntries.filter(e => e.tipe === 'material')
+    if (mat.length > 0) {
+      xlsx.utils.book_append_sheet(wb, buildReportSheet({
+        title: 'LAPORAN PEMBELIAN MATERIAL',
+        subtitle,
+        headers: ['No', 'Tanggal', 'Nama Material', 'Volume', 'Satuan', 'Harga Satuan (Rp)',
+          'Total (Rp)', 'Supplier/Toko', 'No. Nota', 'Kategori', 'Metode Bayar', 'Status', 'Keterangan'],
+        rows: mat.map((e, i) => [
+          i + 1, e.tanggal, e.namaMaterial || e.keterangan, e.volume ?? '', e.satuan ?? '',
+          e.hargaSatuan ?? '', e.jumlah, e.namaSupplier || '-', e.nomorNota || '-',
+          e.kategori, e.metodePembayaran || 'Cash', e.status, e.keterangan,
+        ]),
+        sumCols: [6],
+      }), 'Pembelian Material')
     }
 
     // Sheet 3: Upah Tukang
-    const upahData = realisasiEntries
-      .filter(e => e.tipe === 'upah')
-      .map(e => ({
-        'Tanggal': e.tanggal,
-        'Nama Tukang/Mandor': e.namaTukang || e.keterangan,
-        'Jenis Pekerjaan': e.jenisKerja || '-',
-        'Jumlah Orang': e.jumlahOrang || '',
-        'Hari Kerja': e.hariKerja || '',
-        'Upah/Orang/Hari (Rp)': e.upahHarian || '',
-        'Total Upah (Rp)': e.jumlah,
-        'Metode Bayar': e.metodePembayaran || 'Cash',
-        'Status': e.status,
-        'Keterangan': e.keterangan,
-      }))
-    if (upahData.length > 0) {
-      xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(upahData), '👷 Upah Tukang')
+    const upah = realisasiEntries.filter(e => e.tipe === 'upah')
+    if (upah.length > 0) {
+      xlsx.utils.book_append_sheet(wb, buildReportSheet({
+        title: 'LAPORAN UPAH TUKANG / PEKERJA',
+        subtitle,
+        headers: ['No', 'Tanggal', 'Nama Tukang/Mandor', 'Jenis Pekerjaan', 'Jumlah Orang',
+          'Hari Kerja', 'Upah/Orang/Hari (Rp)', 'Total Upah (Rp)', 'Metode Bayar', 'Status', 'Keterangan'],
+        rows: upah.map((e, i) => [
+          i + 1, e.tanggal, e.namaTukang || e.keterangan, e.jenisKerja || '-', e.jumlahOrang ?? '',
+          e.hariKerja ?? '', e.upahHarian ?? '', e.jumlah, e.metodePembayaran || 'Cash', e.status, e.keterangan,
+        ]),
+        sumCols: [7],
+      }), 'Upah Tukang')
     }
 
     // Sheet 4: Semua Transaksi
-    const allData = realisasiEntries.map(e => ({
-      'Tanggal': e.tanggal,
-      'Tipe': e.tipe,
-      'Keterangan': e.keterangan,
-      'Kategori': e.kategori,
-      'Total (Rp)': e.jumlah,
-      'Status': e.status,
-    }))
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(allData), '📋 Semua Transaksi')
+    xlsx.utils.book_append_sheet(wb, buildReportSheet({
+      title: 'DAFTAR SEMUA TRANSAKSI',
+      subtitle,
+      headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Total (Rp)', 'Status'],
+      rows: realisasiEntries.map((e, i) => [
+        i + 1, e.tanggal, e.tipe, e.keterangan, e.kategori, e.jumlah, e.status,
+      ]),
+      sumCols: [5],
+    }), 'Semua Transaksi')
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
-    const projectName = activePlan?.projectId?.substring(0, 10) || 'Proyek'
     xlsx.writeFile(wb, `Laporan_Realisasi_${projectName}_${dateStr}.xlsx`)
-    toast({ title: '✅ Laporan Excel berhasil diunduh!', description: '4 sheet: Ringkasan, Material, Upah Tukang, & Semua Transaksi.' })
+    toast({ title: '✅ Laporan Excel berhasil diunduh!', description: 'Format laporan rapi: judul, tabel berformat, dan baris TOTAL (SUM) di tiap sheet.' })
   }
 
   // ── Computed ─────────────────────────────────────────────────────────────
@@ -336,7 +336,7 @@ export default function TabRealisasiBiaya() {
   const totalUpah = useMemo(() => entries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0), [entries])
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5" style={{ minHeight: '600px', maxHeight: '90vh' }}>
+    <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 lg:min-h-[600px] lg:max-h-[90vh]">
 
       {/* ── Mobile Toggle ── */}
       <div className="flex lg:hidden gap-2 mb-1">
@@ -362,7 +362,7 @@ export default function TabRealisasiBiaya() {
       </div>
 
       {/* ── KIRI: Chat ─────────────────────────────────────────────────────── */}
-      <div className={`flex-1 flex flex-col rounded-3xl overflow-hidden border border-border shadow-sm bg-white ${mobileView !== 'chat' ? 'hidden lg:flex' : 'flex'}`} style={{ minHeight: '500px' }}>
+      <div className={`flex-1 flex flex-col rounded-3xl overflow-hidden border border-border shadow-sm bg-white min-h-0 h-[75vh] lg:h-auto lg:min-h-[500px] ${mobileView !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-border">
           <div className="flex items-center gap-3">
@@ -380,7 +380,7 @@ export default function TabRealisasiBiaya() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5 bg-slate-50/60">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-5 bg-slate-50/60">
           {messages.map(msg => (
             <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} gap-3`}>
               {msg.role === 'assistant' && (
@@ -499,7 +499,7 @@ export default function TabRealisasiBiaya() {
       </div>
 
       {/* ── KANAN: Dashboard ─────────────────────────────────────────────── */}
-      <div className={`w-full lg:w-80 flex flex-col gap-4 ${mobileView !== 'dashboard' ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`w-full lg:w-80 flex flex-col gap-4 lg:min-h-0 ${mobileView !== 'dashboard' ? 'hidden lg:flex' : 'flex'}`}>
 
         {/* KPI Cards */}
         <div className="bg-navy rounded-3xl p-5 text-white">
@@ -542,7 +542,7 @@ export default function TabRealisasiBiaya() {
         </div>
 
         {/* Tabs + Transaction list */}
-        <div className="bg-white rounded-3xl border border-border flex-1 flex flex-col overflow-hidden">
+        <div className="bg-white rounded-3xl border border-border flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-navy" />
@@ -564,7 +564,8 @@ export default function TabRealisasiBiaya() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+          {/* Mobile: tinggi natural (scroll ikut halaman); desktop: scroll internal */}
+          <div className="px-4 pb-4 space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
             {filteredEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-center opacity-40">
                 <TrendingDown className="w-10 h-10 mb-2" />
