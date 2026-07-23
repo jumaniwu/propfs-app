@@ -1,8 +1,12 @@
-// Store Modul Akuntan: pemasukan & penyesuaian inventori (persist lokal,
-// mengikuti pola realisasiEntries pada costStore).
+// Store Modul Akuntan: pemasukan & penyesuaian inventori.
+// Persist lokal (cepat/offline) + sinkron ke Supabase (tabel akuntan_data)
+// agar data sama di semua perangkat.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PemasukanEntry, InventoryAdjustment } from '@/lib/akuntan'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from './authStore'
+import { unionById } from '@/lib/cloudSync'
 
 interface AkuntanStore {
   pemasukanEntries: PemasukanEntry[]
@@ -12,26 +16,82 @@ interface AkuntanStore {
   addAdjustment: (a: Omit<InventoryAdjustment, 'id'>) => void
   deleteAdjustment: (id: string) => void
   clearAkuntan: () => void
+  /** Tarik data cloud & gabungkan (dipanggil saat tab Akuntan dibuka). */
+  loadFromCloud: () => Promise<void>
+}
+
+function userId(): string | null {
+  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+}
+
+let pushTimer: ReturnType<typeof setTimeout> | null = null
+function pushCloud(state: Pick<AkuntanStore, 'pemasukanEntries' | 'inventoryAdjustments'>) {
+  if (pushTimer) clearTimeout(pushTimer)
+  pushTimer = setTimeout(() => {
+    void (async () => {
+      const user_id = userId()
+      if (!user_id) return
+      try {
+        await supabase.from('akuntan_data').upsert({
+          user_id,
+          data: {
+            pemasukanEntries: state.pemasukanEntries,
+            inventoryAdjustments: state.inventoryAdjustments,
+          },
+          updated_at: new Date().toISOString(),
+        })
+      } catch (e) { console.warn('[akuntan] sinkron cloud gagal:', e) }
+    })()
+  }, 800)
 }
 
 export const useAkuntanStore = create<AkuntanStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       pemasukanEntries: [],
       inventoryAdjustments: [],
-      addPemasukan: (p) => set(s => ({
-        pemasukanEntries: [...s.pemasukanEntries, { ...p, id: `pm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
-      })),
-      deletePemasukan: (id) => set(s => ({
-        pemasukanEntries: s.pemasukanEntries.filter(p => p.id !== id),
-      })),
-      addAdjustment: (a) => set(s => ({
-        inventoryAdjustments: [...s.inventoryAdjustments, { ...a, id: `ia-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
-      })),
-      deleteAdjustment: (id) => set(s => ({
-        inventoryAdjustments: s.inventoryAdjustments.filter(a => a.id !== id),
-      })),
-      clearAkuntan: () => set({ pemasukanEntries: [], inventoryAdjustments: [] }),
+      addPemasukan: (p) => {
+        set(s => ({
+          pemasukanEntries: [...s.pemasukanEntries, { ...p, id: `pm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
+        }))
+        pushCloud(get())
+      },
+      deletePemasukan: (id) => {
+        set(s => ({ pemasukanEntries: s.pemasukanEntries.filter(p => p.id !== id) }))
+        pushCloud(get())
+      },
+      addAdjustment: (a) => {
+        set(s => ({
+          inventoryAdjustments: [...s.inventoryAdjustments, { ...a, id: `ia-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
+        }))
+        pushCloud(get())
+      },
+      deleteAdjustment: (id) => {
+        set(s => ({ inventoryAdjustments: s.inventoryAdjustments.filter(a => a.id !== id) }))
+        pushCloud(get())
+      },
+      clearAkuntan: () => {
+        set({ pemasukanEntries: [], inventoryAdjustments: [] })
+        pushCloud(get())
+      },
+      loadFromCloud: async () => {
+        const user_id = userId()
+        if (!user_id) return
+        try {
+          const { data, error } = await supabase
+            .from('akuntan_data').select('data').eq('user_id', user_id).maybeSingle()
+          if (error) throw error
+          const cloud = (data?.data ?? {}) as Partial<Pick<AkuntanStore, 'pemasukanEntries' | 'inventoryAdjustments'>>
+          const merged = {
+            pemasukanEntries: unionById(get().pemasukanEntries, cloud.pemasukanEntries ?? [], p => p.id),
+            inventoryAdjustments: unionById(get().inventoryAdjustments, cloud.inventoryAdjustments ?? [], a => a.id),
+          }
+          set(merged)
+          pushCloud(merged)
+        } catch (e) {
+          console.warn('[akuntan] muat cloud gagal (tabel akuntan_data belum ada?):', e)
+        }
+      },
     }),
     { name: 'propfs-akuntan' },
   ),

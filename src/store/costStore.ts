@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
 import { useAuthStore } from './authStore'
+import { supabase } from '../lib/supabase'
+import { mergeNewest } from '../lib/cloudSync'
 
 export interface ProjectInfo {
   id: string
@@ -101,6 +103,30 @@ function saveLocalData(projects: SavedCostProject[]) {
   } catch { /* ignore */ }
 }
 
+// ── Sinkron cloud (Supabase) agar proyek terlihat di semua perangkat ────────
+function cloudUserId(): string | null {
+  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+}
+
+async function upsertCloudProject(p: SavedCostProject): Promise<void> {
+  const user_id = cloudUserId()
+  if (!user_id) return
+  try {
+    await supabase.from('cost_projects').upsert(
+      { user_id, id: p.info.id, data: p, updated_at: p.updatedAt },
+      { onConflict: 'user_id,id' },
+    )
+  } catch (e) { console.warn('[cost] gagal sinkron proyek ke cloud:', e) }
+}
+
+async function deleteCloudProject(id: string): Promise<void> {
+  const user_id = cloudUserId()
+  if (!user_id) return
+  try {
+    await supabase.from('cost_projects').delete().eq('user_id', user_id).eq('id', id)
+  } catch (e) { console.warn('[cost] gagal hapus proyek di cloud:', e) }
+}
+
 export const useCostStore = create<CostStore>((set, get) => ({
   savedProjects: [],  // Will be loaded after auth is ready (see loadProjects)
   
@@ -115,7 +141,30 @@ export const useCostStore = create<CostStore>((set, get) => ({
   isProcessingRealisasi: false,
 
   loadProjects: () => {
-    set({ savedProjects: loadLocalData() })
+    // tampilkan data lokal dulu (cepat/offline), lalu gabungkan dengan cloud
+    const local = loadLocalData()
+    set({ savedProjects: local })
+    void (async () => {
+      const user_id = cloudUserId()
+      if (!user_id) return
+      try {
+        const { data, error } = await supabase
+          .from('cost_projects').select('data').eq('user_id', user_id)
+        if (error) throw error
+        const cloud = (data ?? [])
+          .map(r => r.data as SavedCostProject)
+          .filter(p => p?.info?.id)
+        const { merged, toPush } = mergeNewest(
+          local, cloud, p => p.info.id, p => p.updatedAt ?? '1970-01-01',
+        )
+        set({ savedProjects: merged })
+        saveLocalData(merged)
+        // dorong proyek yang hanya ada / lebih baru di perangkat ini
+        for (const p of toPush) void upsertCloudProject(p)
+      } catch (e) {
+        console.warn('[cost] sinkron cloud gagal (tabel cost_projects belum ada?):', e)
+      }
+    })()
   },
 
   saveToStorage: () => {
@@ -136,6 +185,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
 
     set({ savedProjects: nextProjects })
     saveLocalData(nextProjects)
+    void upsertCloudProject(updatedProject)
   },
 
   initProject: (info) => {
@@ -173,6 +223,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
     const next = get().savedProjects.filter(p => p.info.id !== id)
     set({ savedProjects: next })
     saveLocalData(next)
+    void deleteCloudProject(id)
     
     if (get().projectInfo?.id === id) {
       get().clearProject()
