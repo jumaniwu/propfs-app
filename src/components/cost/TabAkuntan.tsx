@@ -42,6 +42,9 @@ export default function TabAkuntan() {
   } = useAkuntanStore()
 
   const [sub, setSub] = useState<SubTab>('labarugi')
+
+  // tarik data akuntan dari cloud sekali saat tab dibuka (sinkron antar perangkat)
+  useEffect(() => { void useAkuntanStore.getState().loadFromCloud() }, [])
   const [opnames, setOpnames] = useState<OpnameDoc[]>([])
   const [opnameLoading, setOpnameLoading] = useState(false)
   const [opnameError, setOpnameError] = useState('')

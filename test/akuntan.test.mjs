@@ -51,3 +51,26 @@ assert(pct === 75, 'progres opname dibatasi 100% per item (' + pct + ')')
 assert(progresOpname([]) === 0, 'opname kosong = 0')
 
 console.log('akuntan:', ok, 'assert lulus')
+
+// ── cloudSync: merge terbaru-menang & union ─────────────────────────────────
+const { mergeNewest, unionById } = await import('../src/lib/cloudSync.ts')
+{
+  const local = [
+    { id: 'A', at: '2026-07-23T10:00:00Z', src: 'local' },  // lebih baru dari cloud
+    { id: 'C', at: '2026-07-20T00:00:00Z', src: 'local' },  // hanya lokal
+  ]
+  const cloud = [
+    { id: 'A', at: '2026-07-22T00:00:00Z', src: 'cloud' },
+    { id: 'B', at: '2026-07-21T00:00:00Z', src: 'cloud' },  // hanya cloud
+  ]
+  const { merged, toPush } = mergeNewest(local, cloud, x => x.id, x => x.at)
+  assert(merged.length === 3, 'merge: union 3 proyek')
+  assert(merged.find(x => x.id === 'A').src === 'local', 'merge: versi terbaru menang')
+  assert(merged.find(x => x.id === 'B').src === 'cloud', 'merge: proyek cloud dipertahankan')
+  assert(merged[0].id === 'A', 'merge: urut terbaru dulu')
+  assert(toPush.length === 2 && toPush.every(x => x.src === 'local'), 'merge: yang perlu di-push = lokal baru/unik')
+
+  const u = unionById([{ id: '1', v: 'a' }], [{ id: '1', v: 'b' }, { id: '2', v: 'c' }], x => x.id)
+  assert(u.length === 2 && u.find(x => x.id === '1').v === 'a', 'union: lokal menang, unik ditambah')
+}
+console.log('cloudSync: lulus')
