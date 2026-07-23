@@ -92,3 +92,69 @@ export async function extractTextFromExcel(file: File): Promise<string> {
     reader.readAsArrayBuffer(file);
   });
 }
+
+// ── Laporan rapi (sheet bergaya laporan: judul, tabel, format angka, TOTAL) ──
+
+export interface ReportSheetSpec {
+  title: string;
+  subtitle: string;
+  headers: string[];
+  rows: Array<Array<string | number>>;
+  /** indeks kolom (0-based) yang dijumlahkan pada baris TOTAL dengan rumus SUM */
+  sumCols: number[];
+}
+
+/**
+ * Bangun worksheet bergaya laporan:
+ * baris 1 judul (merge), baris 2 subjudul (merge), baris 4 header tabel,
+ * lalu data, ditutup baris TOTAL berisi rumus =SUM(...) per kolom nilai.
+ * Semua sel angka diberi format ribuan #,##0 dan lebar kolom otomatis.
+ */
+export function buildReportSheet(spec: ReportSheetSpec): xlsx.WorkSheet {
+  const { title, subtitle, headers, rows, sumCols } = spec;
+  const totalRow: Array<string | number> = headers.map(() => '');
+  totalRow[0] = 'TOTAL';
+  const aoa: Array<Array<string | number>> = [[title], [subtitle], [], headers, ...rows, totalRow];
+  const ws = xlsx.utils.aoa_to_sheet(aoa);
+
+  const nCols = headers.length;
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(0, nCols - 1) } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: Math.max(0, nCols - 1) } },
+  ];
+
+  // baris (1-indexed): header=4, data=5..4+n, TOTAL=5+n
+  const dataFirst = 5;
+  const dataLast = 4 + rows.length;
+  const totalIdx = dataLast + 1;
+  for (const c of sumCols) {
+    const col = xlsx.utils.encode_col(c);
+    // nilai cache (v) wajib ada agar sel rumus ikut tertulis & langsung terbaca
+    const sum = rows.reduce((s, r) => s + (typeof r[c] === 'number' ? (r[c] as number) : 0), 0);
+    ws[`${col}${totalIdx}`] = rows.length
+      ? { t: 'n', v: sum, f: `SUM(${col}${dataFirst}:${col}${dataLast})`, z: '#,##0' }
+      : { t: 'n', v: 0, z: '#,##0' };
+  }
+
+  // format ribuan untuk semua sel angka pada area data
+  if (ws['!ref']) {
+    const range = xlsx.utils.decode_range(ws['!ref']);
+    for (let r = 4; r <= range.e.r; r++) {
+      for (let c = 0; c <= range.e.c; c++) {
+        const cell = ws[xlsx.utils.encode_cell({ r, c })];
+        if (cell && cell.t === 'n') cell.z = '#,##0';
+      }
+    }
+  }
+
+  // lebar kolom mengikuti isi terpanjang
+  const widths = headers.map(h => h.length);
+  for (const row of rows) {
+    row.forEach((v, c) => {
+      const len = String(v ?? '').length;
+      if (c < widths.length && len > widths[c]) widths[c] = Math.min(len, 42);
+    });
+  }
+  ws['!cols'] = widths.map(wch => ({ wch: wch + 3 }));
+  return ws;
+}
