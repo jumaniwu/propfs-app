@@ -227,7 +227,7 @@ export default function HomePage() {
     },
     {
       id: 'cost_control',
-      title: 'Cost Control & RAB',
+      title: 'Kontraktor AI',
       desc: 'Tracking anggaran RAB vs Realisasi lapangan dengan Kurva S.',
       icon: <BarChart3 className="h-7 w-7" />,
       path: '/cost-control',
