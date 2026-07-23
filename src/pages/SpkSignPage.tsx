@@ -5,7 +5,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2, CheckCircle2, FileSignature } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SignaturePad from '@/components/cost/SignaturePad'
-import { spkApi, type SpkDoc } from '@/lib/spkApi'
+import { spkApi, spkTitle, type SpkDoc } from '@/lib/spkApi'
 
 type SpkView = Omit<SpkDoc, 'id' | 'sign_token' | 'vendor_email' | 'vendor_wa'>
 
@@ -45,13 +45,14 @@ export default function SpkSignPage() {
   }
 
   const sudahTtd = done || spk?.status === 'ditandatangani'
+  const isKonsumen = (spk?.pihak_kedua_peran || '').toLowerCase() === 'konsumen'
 
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
       <div className="max-w-2xl mx-auto space-y-4">
         <div className="text-center">
           <p className="font-serif font-bold text-xl text-navy">PropFS · Kontraktor AI</p>
-          <p className="text-xs text-muted-foreground">Penandatanganan Surat Perintah Kerja Digital</p>
+          <p className="text-xs text-muted-foreground">Penandatanganan Dokumen Digital</p>
         </div>
 
         {loading && (
@@ -68,13 +69,15 @@ export default function SpkSignPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
             {/* Kop dokumen */}
             <div className="bg-navy text-white px-6 py-5 text-center">
-              <p className="font-serif font-bold text-lg tracking-wide">SURAT PERINTAH KERJA</p>
+              <p className="font-serif font-bold text-lg tracking-wide">{spkTitle(spk.pihak_kedua_peran)}</p>
               <p className="text-white/80 text-sm mt-0.5">Nomor: {spk.nomor}</p>
             </div>
 
             <div className="p-5 sm:p-7 space-y-5 text-sm">
               <p>
-                Dengan ini memberikan perintah kerja kepada <span className="font-bold">{spk.vendor_name}</span>
+                {isKonsumen
+                  ? <>Perjanjian pemesanan/jual-beli kepada <span className="font-bold">{spk.vendor_name}</span></>
+                  : <>Dengan ini memberikan perintah kerja kepada <span className="font-bold">{spk.vendor_name}</span></>}
                 {spk.project_name && <> untuk proyek <span className="font-bold">{spk.project_name}</span></>} dengan ketentuan berikut:
               </p>
 
@@ -115,7 +118,7 @@ export default function SpkSignPage() {
                       </tr>
                     ))}
                     <tr className="bg-gold-lt/50 font-bold">
-                      <td colSpan={4} className="px-3 py-2">NILAI KONTRAK</td>
+                      <td colSpan={4} className="px-3 py-2">{isKonsumen ? 'TOTAL HARGA' : 'NILAI KONTRAK'}</td>
                       <td className="px-3 py-2 text-right">{spk.nilai_kontrak.toLocaleString('id-ID')}</td>
                     </tr>
                   </tbody>
