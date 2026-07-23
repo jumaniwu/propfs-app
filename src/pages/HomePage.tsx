@@ -201,58 +201,42 @@ export default function HomePage() {
     handleIncomingInvoiceAndFetch()
   }, [profile?.id, location.search])
 
-  const isSuperAdmin = profile?.role === 'superadmin'
-
-  // Define modules
+  // Modul aplikasi (Admin Panel dipindah ke halaman Profil)
   const allFeatures = [
     {
       id: 'fs_module',
       title: 'Feasibility Study',
-      desc: 'Analisa kelayakan finansial proyek properti (NPV, IRR, Cashflow).',
-      icon: <Calculator className="h-7 w-7" />,
+      desc: 'Analisa kelayakan finansial (NPV, IRR, Cashflow).',
+      icon: <Calculator className="h-6 w-6" />,
       path: '/dashboard',
-      color: 'bg-slate-100 text-navy',
       visible: true,
       available: isFeatureEnabled('fs_module')
     },
     {
       id: 'siteplan',
       title: 'AI Architect',
-      desc: 'Desain siteplan otomatis dari titik koordinat: kavling, ruko, tower, jalan, fasum. AI membaca draft konsep. Export PNG, DXF, PDF.',
-      icon: <Map className="h-7 w-7" />,
+      desc: 'Siteplan otomatis & render dari file CAD/PDF.',
+      icon: <Map className="h-6 w-6" />,
       path: '/siteplan',
-      color: 'bg-slate-100 text-navy',
       visible: true,
       available: true
     },
     {
       id: 'cost_control',
       title: 'Kontraktor AI',
-      desc: 'Tracking anggaran RAB vs Realisasi lapangan dengan Kurva S.',
-      icon: <BarChart3 className="h-7 w-7" />,
+      desc: 'RAB vs realisasi, akuntan, SPK digital.',
+      icon: <BarChart3 className="h-6 w-6" />,
       path: '/cost-control',
-      color: 'bg-slate-100 text-navy',
       visible: true,
       available: isFeatureEnabled('cost_control')
     },
-    {
-      id: 'admin_panel',
-      title: 'Admin Panel',
-      desc: 'Manajemen user, langganan, dan pengaturan sistem.',
-      icon: <Settings className="h-7 w-7" />,
-      path: '/admin',
-      color: 'bg-slate-100 text-navy',
-      visible: isSuperAdmin,
-      available: true
-    }
   ]
 
   const features = allFeatures.filter(f => f.visible)
+  const pendingInvoice = invoices.find(i => i.status && i.status !== 'paid')
+  const currentPlan = getCurrentPlan()
 
-  async function handleLogout() {
-    await signOut()
-    window.location.href = '/'
-  }
+  void signOut
 
   return (
     <div className="min-h-screen bg-slate-50 selection:bg-gold/30 relative overflow-hidden">
@@ -268,252 +252,149 @@ export default function HomePage() {
       <div className="absolute bottom-0 right-0 w-[400px] h-[400px] bg-blue-100/50 rounded-full blur-[100px] translate-x-1/4 translate-y-1/4 pointer-events-none" />
 
       <Header />
-      
-      <main className="max-w-7xl mx-auto px-4 py-16 lg:py-24 relative z-10">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 mb-16">
-          <div className="space-y-3">
-            <h1 className="font-serif text-4xl md:text-5xl font-bold text-navy leading-tight">
-              Dashboard
-            </h1>
-            <p className="text-muted-foreground text-xl font-medium max-w-2xl">
-              Pusat kendali operasional dan analisa sistem {landingContent.branding.siteName}.
-            </p>
 
-            {/* Stats Bar */}
-            <div className="flex flex-wrap items-center gap-4 bg-white/60 backdrop-blur-sm border border-border/50 rounded-xl px-5 py-3 mt-4 w-fit shadow-sm">
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total proyek</span>
-                <span className="text-base font-bold text-navy">{projects.length}</span>
-              </div>
-              <div className="w-px h-8 bg-border/60 mx-2" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Sangat Layak</span>
-                <span className="text-base font-bold text-emerald-600">{sangatLayakCount} proyek</span>
-              </div>
-              <div className="w-px h-8 bg-border/60 mx-2" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bergabung sejak</span>
-                <span className="text-base font-bold text-navy">
-                  {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-'}
-                </span>
+      <main className="max-w-5xl mx-auto px-4 py-8 lg:py-12 relative z-10 space-y-8">
+        {/* ── Sapaan ── */}
+        <div className="space-y-1">
+          <p className="text-sm text-muted-foreground font-medium">Selamat datang kembali,</p>
+          <h1 className="font-serif text-3xl md:text-4xl font-bold text-navy leading-tight">
+            {profile?.full_name || 'Pengguna'} <span className="align-middle">👋</span>
+          </h1>
+          {profile?.company && <p className="text-sm text-muted-foreground">{profile.company}</p>}
+        </div>
+
+        {/* ── Peringatan invoice belum dibayar ── */}
+        {pendingInvoice && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">💳</div>
+              <div>
+                <p className="font-bold text-navy text-sm">Ada invoice menunggu pembayaran</p>
+                <p className="text-xs text-muted-foreground">
+                  No. {pendingInvoice.invoice_number} · Paket {(pendingInvoice.plan_id || '').toUpperCase()}
+                </p>
               </div>
             </div>
+            <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white font-bold shrink-0"
+              onClick={() => navigate(`/payment/${pendingInvoice.id}`)}>
+              Bayar sekarang
+            </Button>
           </div>
-          
-          <Button 
-            variant="outline" 
-            onClick={handleLogout} 
-            className="bg-transparent border-border text-navy hover:text-navy hover:bg-slate-100 font-bold gap-2 px-6 h-12 rounded-xl shrink-0"
-          >
-            <LogOut className="h-4 w-4" /> Keluar
-          </Button>
+        )}
+
+        {/* ── Statistik ringkas ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Proyek FS', value: projects.length, tone: 'text-navy' },
+            { label: 'Sangat Layak', value: sangatLayakCount, tone: 'text-emerald-600' },
+            { label: 'Proyek Kontraktor', value: costProjects.length, tone: 'text-navy' },
+            { label: 'Paket Aktif', value: currentPlan.toUpperCase(), tone: 'text-gold-dark' },
+          ].map(s => (
+            <div key={s.label} className="bg-white border border-border rounded-2xl p-4 shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{s.label}</p>
+              <p className={`text-2xl font-black mt-1 ${s.tone}`}>{s.value}</p>
+            </div>
+          ))}
         </div>
 
-        {/* ── ERP360 Style Company & Subscription Table ── */}
-        <div className="mb-16">
-          <h2 className="text-xl md:text-2xl font-black uppercase mb-4 text-navy">
-            {profile?.company || 'Nama Perusahaan'}
-          </h2>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-border overflow-x-auto">
-            <table className="w-full text-left text-sm min-w-[800px]">
-               <thead className="bg-[#8cc63f] text-white">
-                 <tr>
-                   <th className="px-4 py-3 border-r border-[#7ab332] w-24">Status</th>
-                   <th className="px-4 py-3 border-r border-[#7ab332]">Nama Produk</th>
-                   <th className="px-4 py-3 border-r border-[#7ab332] w-32">Paket</th>
-                   <th className="px-4 py-3 border-r border-[#7ab332] w-24">Proyek</th>
-                   <th className="px-4 py-3 w-40">Tanggal Join</th>
-                 </tr>
-               </thead>
-               <tbody>
-                  <tr>
-                    <td className={`px-4 py-5 border-r border-b font-medium align-top ${getCurrentPlan() !== 'free' ? 'text-emerald-600' : 'text-slate-500'}`}>
-                      {getCurrentPlan() !== 'free' ? 'Active' : 'Free / Trial'}
-                    </td>
-                    <td className="px-4 py-5 border-r border-b font-bold text-navy align-top">PropFS - Feasibility Study & Cost Control System</td>
-                    <td className="px-4 py-5 border-r border-b align-top text-xs font-bold text-navy">
-                      {getCurrentPlan().toUpperCase()}
-                      <br/>
-                      <button onClick={() => navigate('/pricing')} className="text-blue-600 font-medium hover:underline mt-1 font-normal flex items-center gap-1">↑ Upgrade Paket</button>
-                    </td>
-                    <td className="px-4 py-5 border-r border-b align-top font-bold text-navy">{projects.length}</td>
-                    <td className="px-4 py-5 border-b align-top text-xs text-muted-foreground whitespace-nowrap">
-                      {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}) : '-'}
-                    </td>
-                  </tr>
-                  
-                  {/* Invoices List Row */}
-                  <tr>
-                    <td colSpan={5} className="px-6 py-6 bg-slate-50 border-b">
-                      <div className="space-y-6">
-                        {invoices.length === 0 && (
-                           <div className="flex flex-col gap-1.5 border-l-4 border-emerald-500 pl-4 py-1">
-                             <div className="font-bold text-navy text-[13px]">Cycle #1 Paket {getCurrentPlan().toUpperCase()}</div>
-                             <div className="text-muted-foreground text-xs font-medium">Invoice (Free / Aktif)</div>
-                           </div>
-                        )}
-                        
-                        {/* Render chronological invoices reversed to look like a history log */}
-                        {[...invoices].reverse().map((inv, idx) => {
-                           const cycleNum = idx + 1;
-                           const isPaid = inv.status === 'paid'
-                           return (
-                             <div key={inv.id} className={`flex flex-col gap-1.5 border-l-4 pl-4 py-1 ${isPaid ? 'border-emerald-500' : 'border-amber-500'}`}>
-                               <div className="font-bold text-navy text-[13px] uppercase">
-                                 Cycle #{cycleNum} Paket {(inv as any).plan_id || 'PRO'}
-                               </div>
-                               {isPaid ? (
-                                 <div className="text-muted-foreground text-xs font-medium flex items-center gap-2">
-                                   <span className="text-emerald-600 flex items-center gap-1 font-bold">
-                                     <CheckCircle2 className="w-3.5 h-3.5" /> Lunas
-                                   </span>
-                                   ·
-                                   <span className="text-blue-600 hover:underline cursor-pointer" onClick={() => navigate('/profile')}>Invoice No: {inv.invoice_number}</span>
-                                 </div>
-                               ) : (
-                                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mt-1">
-                                    <span className="text-muted-foreground text-xs font-medium">
-                                      Invoice No: <span className="font-bold text-navy">{inv.invoice_number}</span> ({new Date(inv.created_at).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})})
-                                    </span>
-                                    <Button size="sm" className="h-7 px-4 text-xs bg-red-600 hover:bg-red-700 text-white font-bold rounded shadow-sm self-start sm:self-auto" onClick={() => navigate(`/payment/${inv.id}`)}>
-                                       Bayar sekarang
-                                    </Button>
-                                 </div>
-                               )}
-                             </div>
-                           )
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-               </tbody>
-            </table>
-          </div>
-        </div>
+        {/* ── CTA utama ── */}
+        <Button className="w-full h-14 bg-navy hover:bg-navy/90 text-gold text-base font-black rounded-2xl shadow-lg gap-2"
+          onClick={() => navigate('/input')}>
+          <Building2 className="h-5 w-5" /> Buat Proyek Baru
+        </Button>
 
-        {/* Feature Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-          {features.map((feature) => {
-            const isActiveCC = feature.id === 'cost_control' && activeCostProject
-            return (
-            <div 
-              key={feature.id}
-              onClick={() => feature.available && navigate(feature.path)}
-              className={`
-                group relative bg-white shadow-sm rounded-3xl p-8 
-                transition-all duration-300 overflow-hidden
-                ${feature.available 
-                  ? 'cursor-pointer hover:bg-slate-50 hover:shadow-xl hover:shadow-gold/5 hover:-translate-y-1' 
-                  : 'opacity-40 grayscale cursor-not-allowed border-dashed'
-                }
-                ${isActiveCC ? 'border-2 border-[#639922]' : 'border border-border hover:border-slate-300'}
-              `}
-            >
-              <div className="relative z-10 space-y-6">
-                <div className="flex items-start justify-between">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-110 bg-slate-100 text-navy">
+        {/* ── Modul ── */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Modul</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {features.map((feature) => {
+              const isActiveCC = feature.id === 'cost_control' && activeCostProject
+              return (
+                <div
+                  key={feature.id}
+                  onClick={() => feature.available && navigate(feature.path)}
+                  className={`
+                    group relative bg-white rounded-2xl p-5 border transition-all duration-200
+                    ${feature.available
+                      ? 'cursor-pointer hover:shadow-lg hover:-translate-y-0.5 border-border hover:border-gold/40'
+                      : 'opacity-40 grayscale cursor-not-allowed border-dashed'}
+                    ${isActiveCC ? 'ring-2 ring-[#639922]/40' : ''}
+                  `}
+                >
+                  <div className="w-11 h-11 rounded-xl bg-slate-100 text-navy flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
                     {feature.icon}
                   </div>
-                  {isActiveCC && (
-                    <div className="bg-[#639922]/10 text-[#639922] text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full">
-                      Sedang aktif
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="font-bold text-navy group-hover:text-gold transition-colors">{feature.title}</h3>
+                    {isActiveCC && <span className="text-[8px] font-bold uppercase bg-[#639922]/10 text-[#639922] px-1.5 py-0.5 rounded-full">aktif</span>}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{feature.desc}</p>
+                  <ArrowRight className="absolute bottom-4 right-4 w-4 h-4 text-navy/15 group-hover:text-navy/40 group-hover:translate-x-0.5 transition-all" />
                 </div>
-                
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-black tracking-tight text-navy group-hover:text-gold transition-colors">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm font-medium">
-                    {feature.desc}
-                  </p>
-                  {isActiveCC && (
-                    <p className="text-[#639922] text-[10px] font-medium pt-2">
-                      Lanjutkan: {activeCostProject.projectName} · {activeCostProject.location} →
-                    </p>
-                  )}
-                </div>
-              </div>
-              <ArrowRight className={`absolute bottom-6 right-6 w-5 h-5 transition-transform duration-200 ${feature.available ? 'text-navy/20 group-hover:text-navy/50 group-hover:translate-x-1' : 'text-slate-200'}`} />
-            </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
 
-        {/* Stats / Recent Activity Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 bg-white border border-border shadow-sm rounded-[40px] p-10">
-            <div className="flex items-center justify-between mb-10">
-              <h2 className="font-serif text-2xl font-bold text-navy flex items-center gap-3">
-                <TrendingUp className="h-6 w-6 text-gold" /> Aktivitas Proyek Terbaru
-              </h2>
-              <Button variant="ghost" className="text-gold hover:text-navy hover:bg-slate-100" onClick={() => navigate('/dashboard')}>Lihat Semua</Button>
+        {/* ── Aktivitas terbaru ── */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-gold" /> Aktivitas Terbaru
+            </h2>
+            {projects.length > 0 && (
+              <button className="text-xs font-semibold text-gold hover:underline" onClick={() => navigate('/dashboard')}>Lihat semua</button>
+            )}
+          </div>
+          <div className="space-y-2">
+            {[...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 4).map(p => (
+              <div
+                key={p.id}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-border hover:border-gold/40 hover:shadow-sm transition-all cursor-pointer"
+                onClick={() => navigate(`/result/${p.id}`)}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-gold/10 flex items-center justify-center shrink-0">
+                    <Building2 className="h-5 w-5 text-gold" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-navy text-sm truncate">{p.name}</div>
+                    <div className="text-[11px] text-muted-foreground">{new Date(p.updatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  </div>
+                </div>
+                <div className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0 ${p.results?.statusKelayakan === 'sangat_layak' ? 'bg-emerald-100 text-emerald-700' : 'bg-gold/20 text-gold-dark'}`}>
+                  {p.results?.statusKelayakan?.replace('_', ' ') || 'Draft'}
+                </div>
+              </div>
+            ))}
+            {projects.length === 0 && (
+              <div className="py-12 text-center text-sm text-muted-foreground italic bg-white rounded-2xl border border-border">
+                Belum ada proyek feasibility study.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Langganan ringkas + AI usage ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white border border-border rounded-2xl p-5 flex flex-col justify-between shadow-sm">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Langganan</p>
+              <p className="text-xl font-black text-navy mt-1">Paket {currentPlan.toUpperCase()}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {currentPlan !== 'free' ? 'Aktif' : 'Free / Trial'} · Bergabung {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+              </p>
             </div>
-            
-            <div className="space-y-4">
-              {[...projects].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 3).map(p => (
-                <div 
-                  key={p.id} 
-                  className="flex items-center justify-between p-5 rounded-[24px] bg-slate-50 hover:bg-slate-100 transition-all border border-transparent hover:border-border cursor-pointer group"
-                  onClick={() => navigate(`/result/${p.id}`)}
-                >
-                  <div className="flex items-center gap-5">
-                    <div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center group-hover:bg-gold/10 transition-colors">
-                      <Building2 className="h-6 w-6 text-gold" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-navy text-lg">{p.name}</div>
-                      <div className="text-xs text-muted-foreground font-medium">{new Date(p.updatedAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
-                    </div>
-                  </div>
-                  <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${p.results?.statusKelayakan === 'sangat_layak' ? 'bg-green-500/20 text-green-400' : 'bg-gold/20 text-gold'}`}>
-                    {p.results?.statusKelayakan?.replace('_', ' ') || 'Draft'}
-                  </div>
-                </div>
-              ))}
-              {projects.length === 0 && (
-                <div className="py-20 text-center text-muted-foreground font-medium italic">
-                  Belum ada proyek feasibility study.
-                </div>
+            <div className="flex items-center gap-2 mt-4">
+              {currentPlan !== 'pro' && (
+                <Button size="sm" variant="gold" className="font-bold" onClick={() => navigate('/pricing')}>↑ Upgrade Paket</Button>
               )}
+              <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={() => navigate('/profile')}>
+                Langganan &amp; invoice →
+              </button>
             </div>
           </div>
-
-          {/* Right column: Career summary + AI Usage */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-gradient-to-br from-gold to-gold-dark rounded-[40px] p-10 text-navy relative overflow-hidden flex flex-col justify-between shadow-lg shadow-gold/10 group">
-              <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:scale-125 transition-transform duration-1000">
-                <FilePieChart className="w-64 h-64" />
-              </div>
-              
-              <div>
-                <h3 className="font-serif text-3xl font-black mb-2 italic">Ringkasan Karir</h3>
-                <p className="text-navy/60 font-bold text-sm">Portfolio Properti Anda</p>
-              </div>
-
-              <div className="space-y-8 mt-12 relative z-10">
-                <div className="flex justify-between items-end border-b border-navy/10 pb-4">
-                  <div className="text-sm font-bold uppercase tracking-widest text-navy/60">Total Proyek</div>
-                  <div className="text-5xl font-serif font-black">{projects.length}</div>
-                </div>
-                <div className="flex justify-between items-end border-b border-navy/10 pb-4">
-                  <div className="text-sm font-bold uppercase tracking-widest text-navy/60">Success Rate</div>
-                  <div className="text-5xl font-serif font-black">
-                    {projects.length > 0 
-                      ? Math.round((projects.filter(p => p.results?.statusKelayakan === 'sangat_layak').length / projects.length) * 100) 
-                      : 0}%
-                  </div>
-                </div>
-              </div>
-
-              <Button className="w-full h-16 mt-12 bg-navy text-gold hover:bg-navy/90 text-lg font-black rounded-2xl shadow-xl relative z-10" onClick={() => navigate('/input')}>
-                BUAT PROYEK BARU
-              </Button>
-            </div>
-
-            {/* AI Usage Widget */}
-            <AIUsageWidget planId="pro" />
-          </div>
+          <AIUsageWidget planId="pro" />
         </div>
       </main>
     </div>

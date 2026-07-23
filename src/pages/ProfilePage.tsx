@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, User, Building2, Phone, Mail, LogOut, Lock, Eye, EyeOff, Gift, Copy } from 'lucide-react'
+import { ArrowLeft, User, Building2, Phone, Mail, LogOut, Lock, Eye, EyeOff, Gift, Copy, ShieldCheck, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -115,6 +115,23 @@ export default function ProfilePage() {
             <Button size="sm" variant="gold" onClick={() => navigate('/pricing')}>Upgrade</Button>
           )}
         </div>
+
+        {/* Admin Panel — khusus superadmin (dashboard backend) */}
+        {profile?.role === 'superadmin' && (
+          <button
+            onClick={() => navigate('/admin')}
+            className="w-full flex items-center gap-4 p-5 rounded-2xl bg-navy text-white hover:bg-navy/90 transition-colors text-left group"
+          >
+            <div className="w-11 h-11 rounded-xl bg-gold/20 text-gold flex items-center justify-center shrink-0">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold">Dashboard Admin</p>
+              <p className="text-xs text-white/60">Kelola user, langganan, invoice, & pengaturan sistem backend.</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-white/50 group-hover:translate-x-0.5 transition-transform shrink-0" />
+          </button>
+        )}
 
         {/* Edit form */}
         <form onSubmit={handleSave} className="bg-card border border-border rounded-2xl p-6 space-y-4">
