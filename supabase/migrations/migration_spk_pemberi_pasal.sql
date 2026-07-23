@@ -19,6 +19,8 @@ alter table public.spk_docs
 
 -- Perbarui RPC token publik agar halaman tanda tangan pihak kedua ikut
 -- menampilkan pasal, tanda tangan pemberi kerja, peran, dan lampiran.
+-- DROP dulu: Postgres tidak bisa mengganti tipe/kolom return via CREATE OR REPLACE.
+drop function if exists public.spk_get_by_token(text);
 create or replace function public.spk_get_by_token(p_token text)
 returns table (
   nomor text, project_name text, vendor_name text,
