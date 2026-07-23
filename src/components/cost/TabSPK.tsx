@@ -1,12 +1,13 @@
 // ============================================================
 // Tab SPK — Kontraktor AI
-// Buat Surat Perintah Kerja untuk vendor/pemborong, kirim link
-// tanda tangan digital via WhatsApp/Email, pantau status, cetak PDF.
+// Surat Perintah Kerja ala kontrak: pihak pertama (pemberi kerja) &
+// pihak kedua (pelaksana/vendor), pasal yang bisa diedit, tanda tangan
+// digital dua pihak, kirim link WhatsApp/Email, cetak PDF.
 // ============================================================
 import { useEffect, useState } from 'react'
 import {
   FileSignature, Plus, Trash2, Link2, Loader2, RefreshCw, Send,
-  Mail, FileDown, CheckCircle2, Clock,
+  Mail, FileDown, CheckCircle2, Clock, Pencil, PenLine, RotateCcw,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -14,12 +15,19 @@ import { Input } from '@/components/ui/input'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { Paperclip, FileText, X } from 'lucide-react'
+import { useRef } from 'react'
 import NumInput from '@/components/siteplan/NumInput'
+import SignaturePad from '@/components/cost/SignaturePad'
 import { useCostStore } from '@/store/costStore'
+import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import {
-  spkApi, spkSignLink, waShareLink, nomorSpkOtomatis,
-  type SpkDoc, type SpkLingkupItem, type SpkTermin,
+  spkApi, spkSignLink, waShareLink, nomorSpkOtomatis, defaultPasal,
+  type SpkDoc, type SpkLingkupItem, type SpkTermin, type SpkPasal,
 } from '@/lib/spkApi'
 import { downloadSpkPdf } from '@/lib/spkPdf'
 
@@ -34,10 +42,13 @@ const STATUS_BADGE: Record<SpkDoc['status'], string> = {
 export default function TabSPK() {
   const { toast } = useToast()
   const { projectInfo } = useCostStore()
+  const { profile } = useAuthStore()
   const [docs, setDocs] = useState<SpkDoc[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [open, setOpen] = useState(false)
+  const [editDoc, setEditDoc] = useState<SpkDoc | null>(null)
+  const [signPemberi, setSignPemberi] = useState<SpkDoc | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -74,7 +85,6 @@ export default function TabSPK() {
       toast({ title: '✅ Email terkirim!', description: `Link tanda tangan dikirim ke ${spk.vendor_email}.` })
       void tandaiTerkirim(spk)
     } catch (e) {
-      // fallback: buka aplikasi email dengan isi siap kirim
       const subject = `SPK ${spk.nomor} — mohon tanda tangan digital`
       window.open(`mailto:${spk.vendor_email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(pesanWa(spk))}`)
       toast({
@@ -95,20 +105,23 @@ export default function TabSPK() {
           <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
           </Button>
-          <Button size="sm" className="gap-1.5 bg-navy hover:bg-navy/90 font-bold" onClick={() => setOpen(true)}>
+          <Button size="sm" className="gap-1.5 bg-navy hover:bg-navy/90 font-bold"
+            onClick={() => { setEditDoc(null); setOpen(true) }}>
             <Plus className="w-4 h-4" /> Buat SPK
           </Button>
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground max-w-2xl">
-        Tunjuk vendor/pemborong → SPK dibuat otomatis → kirim link lewat WhatsApp/Email →
-        vendor tanda tangan digital dari HP (tanpa login) → status berubah <b>Ditandatangani</b> dan PDF siap dicetak.
+        Susun SPK sebagai kontrak (pasal bisa diedit) → Anda selaku <b>Pemberi Kerja</b> tanda tangan →
+        kirim link ke vendor lewat WhatsApp/Email → vendor tanda tangan digital dari HP →
+        kontrak lengkap dua tanda tangan, PDF siap dicetak.
       </p>
 
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
-          {error} — pastikan migrasi SQL <code>migration_kontraktor_spk_opname.sql</code> sudah dijalankan di Supabase.
+          {error} — pastikan migrasi SQL <code>migration_kontraktor_spk_opname.sql</code> &
+          <code>migration_spk_pemberi_pasal.sql</code> sudah dijalankan di Supabase.
         </p>
       )}
 
@@ -121,125 +134,242 @@ export default function TabSPK() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
-          {docs.map(spk => (
-            <div key={spk.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-bold text-navy text-sm truncate">{spk.nomor}</p>
-                  <p className="text-xs text-muted-foreground truncate">👷 {spk.vendor_name}{spk.project_name && <> · 🏗️ {spk.project_name}</>}</p>
+          {docs.map(spk => {
+            const vendorSigned = spk.status === 'ditandatangani' && !!spk.signed_name
+            const pemberiSigned = !!spk.pemberi_signed_at
+            return (
+              <div key={spk.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-navy text-sm truncate">{spk.nomor}</p>
+                    <p className="text-xs text-muted-foreground truncate">👷 {spk.vendor_name}{spk.project_name && <> · 🏗️ {spk.project_name}</>}</p>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 flex items-center gap-1 ${STATUS_BADGE[spk.status]}`}>
+                    {spk.status === 'ditandatangani' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                    {spk.status}
+                  </span>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 flex items-center gap-1 ${STATUS_BADGE[spk.status]}`}>
-                  {spk.status === 'ditandatangani' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                  {spk.status}
-                </span>
+                <p className="text-base font-black text-navy">{fmt(spk.nilai_kontrak)}</p>
+
+                {/* status dua tanda tangan */}
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  <div className={`rounded-lg px-2 py-1 ${pemberiSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
+                    {pemberiSigned ? '✅' : '○'} Pemberi Kerja
+                    {pemberiSigned && <div className="truncate font-semibold">{spk.pemberi_signed_name}</div>}
+                  </div>
+                  <div className={`rounded-lg px-2 py-1 ${vendorSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
+                    {vendorSigned ? '✅' : '○'} Pelaksana
+                    {vendorSigned && <div className="truncate font-semibold">{spk.signed_name}</div>}
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 flex-wrap">
+                  {!pemberiSigned && (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 border-gold text-navy"
+                      onClick={() => setSignPemberi(spk)}>
+                      <PenLine className="w-3 h-3" /> TTD Pemberi Kerja
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => kirimWa(spk)}>
+                    <Send className="w-3 h-3" /> WhatsApp
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    disabled={!spk.vendor_email} onClick={() => kirimEmail(spk)}>
+                    <Mail className="w-3 h-3" /> Email
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(spkSignLink(spk.sign_token))
+                      toast({ title: 'Link tanda tangan disalin!' })
+                      void tandaiTerkirim(spk)
+                    }}>
+                    <Link2 className="w-3 h-3" /> Salin Link
+                  </Button>
+                  {!vendorSigned && (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                      onClick={() => { setEditDoc(spk); setOpen(true) }}>
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => downloadSpkPdf(spk)}>
+                    <FileDown className="w-3 h-3" /> PDF
+                  </Button>
+                  <button
+                    onClick={async () => {
+                      if (window.confirm(`Hapus SPK ${spk.nomor}?`)) { await spkApi().deleteSpk(spk.id); load() }
+                    }}
+                    className="h-7 px-2 text-muted-foreground hover:text-red-600">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <p className="text-base font-black text-navy">{fmt(spk.nilai_kontrak)}</p>
-              {spk.status === 'ditandatangani' && spk.signed_name && (
-                <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-lg px-2 py-1">
-                  ✅ Ditandatangani {spk.signed_name} · {spk.signed_at ? new Date(spk.signed_at).toLocaleString('id-ID') : ''}
-                </p>
-              )}
-              <div className="flex gap-1.5 flex-wrap">
-                <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => kirimWa(spk)}>
-                  <Send className="w-3 h-3" /> WhatsApp
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-                  disabled={!spk.vendor_email} onClick={() => kirimEmail(spk)}>
-                  <Mail className="w-3 h-3" /> Email
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(spkSignLink(spk.sign_token))
-                    toast({ title: 'Link tanda tangan disalin!' })
-                    void tandaiTerkirim(spk)
-                  }}>
-                  <Link2 className="w-3 h-3" /> Salin Link
-                </Button>
-                <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => downloadSpkPdf(spk)}>
-                  <FileDown className="w-3 h-3" /> PDF
-                </Button>
-                <button
-                  onClick={async () => {
-                    if (window.confirm(`Hapus SPK ${spk.nomor}?`)) { await spkApi().deleteSpk(spk.id); load() }
-                  }}
-                  className="h-7 px-2 text-muted-foreground hover:text-red-600">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      <CreateSpkDialog
+      <SpkFormDialog
         open={open}
-        onClose={() => setOpen(false)}
-        onCreated={() => { setOpen(false); load() }}
+        onClose={() => { setOpen(false); setEditDoc(null) }}
+        onSaved={() => { setOpen(false); setEditDoc(null); load() }}
         defaultProject={projectInfo?.projectName ?? ''}
+        defaultPemberi={profile?.company || profile?.full_name || ''}
         count={docs.length}
+        editDoc={editDoc}
+      />
+
+      <SignPemberiDialog
+        spk={signPemberi}
+        defaultName={profile?.full_name || profile?.company || ''}
+        onClose={() => setSignPemberi(null)}
+        onSigned={() => { setSignPemberi(null); load() }}
       />
     </div>
   )
 }
 
-// ── Dialog Buat SPK ─────────────────────────────────────────────────────────
-function CreateSpkDialog({ open, onClose, onCreated, defaultProject, count }: {
+// ── Dialog Buat / Edit SPK ──────────────────────────────────────────────────
+function SpkFormDialog({ open, onClose, onSaved, defaultProject, defaultPemberi, count, editDoc }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void
+  onSaved: () => void
   defaultProject: string
+  defaultPemberi: string
   count: number
+  editDoc: SpkDoc | null
 }) {
   const { toast } = useToast()
+  const isEdit = !!editDoc
   const [vendor, setVendor] = useState('')
   const [wa, setWa] = useState('')
   const [email, setEmail] = useState('')
   const [proyek, setProyek] = useState(defaultProject)
+  const [pemberiNama, setPemberiNama] = useState(defaultPemberi)
+  const [pemberiJabatan, setPemberiJabatan] = useState('Direktur')
   const [tglMulai, setTglMulai] = useState(() => new Date().toISOString().slice(0, 10))
   const [durasi, setDurasi] = useState(30)
   const [denda, setDenda] = useState(1)
   const [catatan, setCatatan] = useState('')
-  const [lingkup, setLingkup] = useState<SpkLingkupItem[]>([
-    { uraian: '', volume: 1, satuan: 'ls', harga: 0 },
-  ])
+  const [lingkup, setLingkup] = useState<SpkLingkupItem[]>([{ uraian: '', volume: 1, satuan: 'ls', harga: 0 }])
   const [termin, setTermin] = useState<SpkTermin[]>([
-    { nama: 'DP', pct: 30 }, { nama: 'Progres 50%', pct: 40 }, { nama: 'Pelunasan (BAST)', pct: 30 },
+    { nama: 'DP / Uang Muka', pct: 30 }, { nama: 'Progres 50%', pct: 40 }, { nama: 'Pelunasan (BAST)', pct: 30 },
   ])
+  const [pasal, setPasal] = useState<SpkPasal[]>([])
+  const [pasalTouched, setPasalTouched] = useState(false)
+  const [peran, setPeran] = useState('Pelaksana')
+  const [lampiranNama, setLampiranNama] = useState<string | null>(null)
+  const [lampiranData, setLampiranData] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const lampiranRef = useRef<HTMLInputElement>(null)
+  const isKonsumen = peran === 'Konsumen'
 
-  useEffect(() => { setProyek(defaultProject) }, [defaultProject])
+  // isi ulang form saat dibuka (mode buat) atau saat edit doc berubah
+  useEffect(() => {
+    if (!open) return
+    if (editDoc) {
+      setVendor(editDoc.vendor_name); setWa(editDoc.vendor_wa); setEmail(editDoc.vendor_email)
+      setProyek(editDoc.project_name); setPemberiNama(editDoc.pemberi_nama ?? defaultPemberi)
+      setPemberiJabatan(editDoc.pemberi_jabatan || 'Direktur')
+      setTglMulai(editDoc.tgl_mulai ?? new Date().toISOString().slice(0, 10))
+      setDurasi(editDoc.durasi_hari || 30); setDenda(editDoc.denda_permil ?? 1)
+      setCatatan(editDoc.catatan ?? '')
+      setLingkup(editDoc.lingkup.length ? editDoc.lingkup : [{ uraian: '', volume: 1, satuan: 'ls', harga: 0 }])
+      setTermin(editDoc.termin.length ? editDoc.termin : [{ nama: 'Termin 1', pct: 100 }])
+      setPasal(editDoc.pasal?.length ? editDoc.pasal : [])
+      setPasalTouched(!!editDoc.pasal?.length)
+      setPeran(editDoc.pihak_kedua_peran || 'Pelaksana')
+      setLampiranNama(editDoc.lampiran_nama ?? null)
+      setLampiranData(editDoc.lampiran_data ?? null)
+    } else {
+      setVendor(''); setWa(''); setEmail(''); setProyek(defaultProject)
+      setPemberiNama(defaultPemberi); setPemberiJabatan('Direktur')
+      setTglMulai(new Date().toISOString().slice(0, 10)); setDurasi(30); setDenda(1); setCatatan('')
+      setLingkup([{ uraian: '', volume: 1, satuan: 'ls', harga: 0 }])
+      setTermin([{ nama: 'DP / Uang Muka', pct: 30 }, { nama: 'Progres 50%', pct: 40 }, { nama: 'Pelunasan (BAST)', pct: 30 }])
+      setPasal([]); setPasalTouched(false)
+      setPeran('Pelaksana'); setLampiranNama(null); setLampiranData(null)
+    }
+  }, [open, editDoc, defaultProject, defaultPemberi])
+
+  async function pickLampiran(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 4 * 1024 * 1024) {
+      toast({ title: 'Lampiran terlalu besar (maks 4MB)', description: 'Kompres PDF/gambar lalu unggah lagi.', variant: 'destructive' })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => { setLampiranData(String(reader.result)); setLampiranNama(f.name) }
+    reader.readAsDataURL(f)
+  }
 
   const setL = (i: number, patch: Partial<SpkLingkupItem>) =>
     setLingkup(prev => prev.map((it, j) => j === i ? { ...it, ...patch } : it))
   const setT = (i: number, patch: Partial<SpkTermin>) =>
     setTermin(prev => prev.map((it, j) => j === i ? { ...it, ...patch } : it))
+  const setP = (i: number, patch: Partial<SpkPasal>) =>
+    setPasal(prev => prev.map((it, j) => j === i ? { ...it, ...patch } : it))
 
   const nilai = lingkup.reduce((s, l) => s + l.volume * l.harga, 0)
   const totalPct = termin.reduce((s, t) => s + t.pct, 0)
   const validLingkup = lingkup.filter(l => l.uraian.trim() && l.harga > 0)
 
-  async function handleCreate() {
-    if (!vendor.trim() || validLingkup.length === 0) return
+  const buatPasalStandar = () => {
+    setPasal(defaultPasal({
+      pemberi: pemberiNama, vendor, proyek, nilai,
+      termin, durasi, denda, tglMulai,
+    }))
+    setPasalTouched(true)
+  }
+
+  /** Validasi field wajib — kembalikan pesan pertama yang kosong. */
+  function validasi(): string | null {
+    if (!pemberiNama.trim()) return 'Nama Pemberi Kerja (Pihak Pertama) wajib diisi.'
+    if (!vendor.trim()) return `Nama ${isKonsumen ? 'Konsumen/Pemilik' : 'Pelaksana/Vendor'} (Pihak Kedua) wajib diisi.`
+    if (validLingkup.length === 0) return 'Isi minimal 1 baris Rincian Pekerjaan (uraian & harga).'
+    if (totalPct !== 100) return `Total termin pembayaran harus 100% (sekarang ${totalPct}%).`
+    return null
+  }
+
+  async function handleSave() {
+    const err = validasi()
+    if (err) { toast({ title: 'Harap dilengkapi', description: err, variant: 'destructive' }); return }
     setSaving(true)
+    // pasal: jika belum pernah disentuh, isi dgn template standar otomatis
+    const finalPasal = pasalTouched && pasal.length
+      ? pasal.filter(p => p.judul.trim() || p.isi.trim())
+      : defaultPasal({ pemberi: pemberiNama, vendor, proyek, nilai, termin, durasi, denda, tglMulai })
+    const payload = {
+      project_name: proyek.trim(),
+      vendor_name: vendor.trim(),
+      vendor_email: email.trim(),
+      vendor_wa: wa.trim(),
+      lingkup: validLingkup,
+      nilai_kontrak: validLingkup.reduce((s, l) => s + l.volume * l.harga, 0),
+      termin,
+      tgl_mulai: tglMulai,
+      durasi_hari: durasi,
+      denda_permil: denda,
+      catatan: catatan.trim(),
+      pemberi_nama: pemberiNama.trim(),
+      pemberi_jabatan: pemberiJabatan.trim(),
+      pasal: finalPasal,
+      pihak_kedua_peran: peran,
+      lampiran_nama: lampiranNama,
+      lampiran_data: lampiranData,
+    }
     try {
-      const doc = await spkApi().createSpk({
-        nomor: nomorSpkOtomatis(count),
-        project_name: proyek.trim(),
-        vendor_name: vendor.trim(),
-        vendor_email: email.trim(),
-        vendor_wa: wa.trim(),
-        lingkup: validLingkup,
-        nilai_kontrak: validLingkup.reduce((s, l) => s + l.volume * l.harga, 0),
-        termin,
-        tgl_mulai: tglMulai,
-        durasi_hari: durasi,
-        denda_permil: denda,
-        catatan: catatan.trim(),
-      })
-      toast({ title: `✅ ${doc.nomor} dibuat!`, description: 'Kirim link tanda tangan lewat tombol WhatsApp/Email.' })
-      onCreated()
+      if (isEdit && editDoc) {
+        await spkApi().updateSpk(editDoc.id, payload)
+        toast({ title: `✅ ${editDoc.nomor} diperbarui!` })
+      } else {
+        const doc = await spkApi().createSpk({ nomor: nomorSpkOtomatis(count), ...payload })
+        toast({ title: `✅ ${doc.nomor} dibuat!`, description: 'Tanda tangani sebagai Pemberi Kerja lalu kirim ke vendor.' })
+      }
+      onSaved()
     } catch (e) {
-      toast({ title: 'Gagal membuat SPK', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+      toast({ title: isEdit ? 'Gagal menyimpan' : 'Gagal membuat SPK', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
     } finally {
       setSaving(false)
     }
@@ -247,36 +377,85 @@ function CreateSpkDialog({ open, onClose, onCreated, defaultProject, count }: {
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose() }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Buat SPK Baru</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${editDoc?.nomor}` : 'Buat SPK Baru'}</DialogTitle>
           <DialogDescription>
-            Nomor otomatis: <b>{nomorSpkOtomatis(count)}</b> — vendor menandatangani lewat link digital.
+            {isEdit
+              ? 'Ubah isi kontrak. Perubahan hanya bisa dilakukan sebelum vendor menandatangani.'
+              : <>Nomor otomatis: <b>{nomorSpkOtomatis(count)}</b> — kontrak dengan dua pihak & pasal yang bisa diedit.</>}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Nama Vendor / Pemborong *</Label>
-              <Input value={vendor} onChange={e => setVendor(e.target.value)} placeholder="mis. CV Karya Mandiri" />
+        <div className="space-y-5">
+          {/* Jenis SPK / peran pihak kedua */}
+          <div className="space-y-1">
+            <Label className="text-xs">Ditujukan Kepada</Label>
+            <Select value={peran} onValueChange={setPeran}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Pelaksana">Pelaksana / Vendor / Pemborong (perintah kerja)</SelectItem>
+                <SelectItem value="Konsumen">Konsumen / Pemilik / Pembeli (kontrak + lampiran penawaran)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Para pihak */}
+          <div className="rounded-xl border border-border p-3 space-y-3">
+            <p className="text-xs font-bold text-navy uppercase tracking-wide">Para Pihak</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Pemberi Kerja / Pihak Pertama <span className="text-red-600">*</span></Label>
+                <Input value={pemberiNama} onChange={e => setPemberiNama(e.target.value)} placeholder="mis. PT Jaya Makmur / Nama Anda" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Jabatan Pemberi Kerja</Label>
+                <Input value={pemberiJabatan} onChange={e => setPemberiJabatan(e.target.value)} placeholder="mis. Direktur / Owner" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">
+                  {isKonsumen ? 'Konsumen / Pemilik' : 'Pelaksana / Vendor'} — Pihak Kedua <span className="text-red-600">*</span>
+                </Label>
+                <Input value={vendor} onChange={e => setVendor(e.target.value)}
+                  placeholder={isKonsumen ? 'mis. Bapak Budi (pembeli)' : 'mis. CV Karya Mandiri'} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Proyek</Label>
+                <Input value={proyek} onChange={e => setProyek(e.target.value)} placeholder="Nama proyek" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">No. WhatsApp {isKonsumen ? 'Konsumen' : 'Vendor'}</Label>
+                <Input value={wa} onChange={e => setWa(e.target.value)} placeholder="08xxxxxxxxxx" inputMode="tel" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Email {isKonsumen ? 'Konsumen' : 'Vendor'}</Label>
+                <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="email@contoh.com" type="email" />
+              </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Proyek</Label>
-              <Input value={proyek} onChange={e => setProyek(e.target.value)} placeholder="Nama proyek" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">No. WhatsApp Vendor</Label>
-              <Input value={wa} onChange={e => setWa(e.target.value)} placeholder="08xxxxxxxxxx" inputMode="tel" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Email Vendor</Label>
-              <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="vendor@email.com" type="email" />
+
+            {/* Lampiran RAB / Surat Penawaran Harga */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Lampiran RAB / Surat Penawaran Harga (PDF/gambar, maks 4MB)</Label>
+              {lampiranNama ? (
+                <div className="flex items-center gap-2 bg-slate-50 border border-border rounded-lg px-3 py-2 text-xs">
+                  <FileText className="w-4 h-4 text-navy shrink-0" />
+                  <span className="truncate flex-1 font-medium">{lampiranNama}</span>
+                  <button onClick={() => { setLampiranNama(null); setLampiranData(null) }}
+                    className="text-muted-foreground hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs border-dashed"
+                  onClick={() => lampiranRef.current?.click()}>
+                  <Paperclip className="w-3.5 h-3.5" /> Lampirkan RAB / Penawaran
+                </Button>
+              )}
+              <input ref={lampiranRef} type="file" accept=".pdf,image/*" hidden onChange={pickLampiran} />
             </div>
           </div>
 
+          {/* Lingkup */}
           <div className="space-y-2">
-            <Label className="text-xs">Lingkup Pekerjaan *</Label>
+            <Label className="text-xs font-bold uppercase tracking-wide">Rincian Pekerjaan <span className="text-red-600">*</span></Label>
             {lingkup.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_64px_64px_110px_32px] gap-2 items-center">
                 <Input value={l.uraian} onChange={e => setL(i, { uraian: e.target.value })}
@@ -315,9 +494,10 @@ function CreateSpkDialog({ open, onClose, onCreated, defaultProject, count }: {
             </div>
           </div>
 
+          {/* Termin */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs">Termin Pembayaran</Label>
+              <Label className="text-xs font-bold uppercase tracking-wide">Termin Pembayaran</Label>
               <span className={`text-[11px] font-bold ${totalPct === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
                 Total: {totalPct}% {totalPct !== 100 && '(harus 100%)'}
               </span>
@@ -339,6 +519,47 @@ function CreateSpkDialog({ open, onClose, onCreated, defaultProject, count }: {
             </Button>
           </div>
 
+          {/* Pasal — isi dokumen yang bisa diedit */}
+          <div className="rounded-xl border border-gold/40 bg-gold-lt/20 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-xs font-bold text-navy uppercase tracking-wide">Isi Dokumen (Pasal)</p>
+                <p className="text-[11px] text-muted-foreground">Bisa diedit sesuai kebutuhan. Kosongkan untuk pakai template standar otomatis.</p>
+              </div>
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={buatPasalStandar}>
+                <RotateCcw className="w-3.5 h-3.5" /> Muat Template Standar
+              </Button>
+            </div>
+            {pasal.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground italic py-2">
+                Belum ada pasal — template kontrak standar (9 pasal) akan dipakai otomatis saat disimpan.
+                Klik "Muat Template Standar" untuk menampilkan & mengeditnya.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {pasal.map((p, i) => (
+                  <div key={i} className="rounded-lg bg-white border border-border p-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <Input value={p.judul} onChange={e => { setP(i, { judul: e.target.value }); setPasalTouched(true) }}
+                        className="text-xs font-bold h-8" placeholder={`PASAL ${i + 1} — JUDUL`} />
+                      <button onClick={() => { setPasal(prev => prev.filter((_, j) => j !== i)); setPasalTouched(true) }}
+                        className="text-muted-foreground hover:text-red-600 shrink-0">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <textarea value={p.isi} onChange={e => { setP(i, { isi: e.target.value }); setPasalTouched(true) }}
+                      rows={3}
+                      className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring" />
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs"
+                  onClick={() => { setPasal(prev => [...prev, { judul: `PASAL ${prev.length + 1} — `, isi: '' }]); setPasalTouched(true) }}>
+                  <Plus className="w-3.5 h-3.5" /> Tambah Pasal
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-1">
             <Label className="text-xs">Catatan Tambahan</Label>
             <Input value={catatan} onChange={e => setCatatan(e.target.value)} placeholder="mis. material disediakan pemberi kerja" />
@@ -348,9 +569,65 @@ function CreateSpkDialog({ open, onClose, onCreated, defaultProject, count }: {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Batal</Button>
           <Button className="bg-navy hover:bg-navy/90 font-bold gap-2"
-            disabled={saving || !vendor.trim() || validLingkup.length === 0 || totalPct !== 100}
-            onClick={handleCreate}>
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><FileSignature className="w-4 h-4" /> Buat SPK</>}
+            disabled={saving}
+            onClick={handleSave}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><FileSignature className="w-4 h-4" /> {isEdit ? 'Simpan Perubahan' : 'Buat SPK'}</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Dialog Tanda Tangan Pemberi Kerja ───────────────────────────────────────
+function SignPemberiDialog({ spk, defaultName, onClose, onSigned }: {
+  spk: SpkDoc | null
+  defaultName: string
+  onClose: () => void
+  onSigned: () => void
+}) {
+  const { toast } = useToast()
+  const [name, setName] = useState('')
+  const [signature, setSignature] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { if (spk) { setName(spk.pemberi_signed_name || defaultName); setSignature(null) } }, [spk, defaultName])
+
+  async function handleSign() {
+    if (!spk || !signature || name.trim().length < 2) return
+    setSaving(true)
+    try {
+      await spkApi().signSpkAsPemberi(spk.id, signature, name.trim())
+      toast({ title: '✅ Ditandatangani sebagai Pemberi Kerja!' })
+      onSigned()
+    } catch (e) {
+      toast({ title: 'Gagal tanda tangan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!spk} onOpenChange={o => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Tanda Tangan Pemberi Kerja</DialogTitle>
+          <DialogDescription>
+            {spk?.nomor} — Anda menandatangani sebagai Pihak Pertama (Pemberi Kerja).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Nama Penandatangan</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Nama lengkap" />
+          </div>
+          <SignaturePad onChange={setSignature} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Batal</Button>
+          <Button className="bg-navy hover:bg-navy/90 font-bold gap-2"
+            disabled={saving || !signature || name.trim().length < 2} onClick={handleSign}>
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><PenLine className="w-4 h-4" /> Tandatangani</>}
           </Button>
         </DialogFooter>
       </DialogContent>

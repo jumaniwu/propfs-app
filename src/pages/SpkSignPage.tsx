@@ -78,6 +78,20 @@ export default function SpkSignPage() {
                 {spk.project_name && <> untuk proyek <span className="font-bold">{spk.project_name}</span></>} dengan ketentuan berikut:
               </p>
 
+              {/* Lampiran RAB / Surat Penawaran Harga */}
+              {spk.lampiran_data && (
+                <a href={spk.lampiran_data} target="_blank" rel="noreferrer"
+                  download={spk.lampiran_nama ?? 'lampiran'}
+                  className="flex items-center gap-2 bg-blue-lt border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-dk hover:bg-blue-100 transition-colors">
+                  <span className="text-base">📎</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="font-bold block">Lampiran: RAB / Surat Penawaran Harga</span>
+                    <span className="truncate block">{spk.lampiran_nama || 'Buka lampiran'}</span>
+                  </span>
+                  <span className="font-semibold shrink-0">Buka ↗</span>
+                </a>
+              )}
+
               {/* Lingkup pekerjaan */}
               <div className="overflow-x-auto rounded-xl border border-border">
                 <table className="w-full text-xs">
@@ -130,16 +144,56 @@ export default function SpkSignPage() {
                 </p>
               )}
 
-              {/* Area tanda tangan */}
-              {sudahTtd ? (
-                <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 text-center space-y-2">
-                  <p className="flex items-center justify-center gap-2 font-bold text-emerald-700">
-                    <CheckCircle2 className="w-5 h-5" /> SPK TELAH DITANDATANGANI
-                  </p>
-                  {spk.signature_data && (
-                    <img src={spk.signature_data} alt="Tanda tangan" className="mx-auto max-h-28 bg-white rounded-lg border border-border" />
+              {/* Pasal-pasal kontrak */}
+              {spk.pasal && spk.pasal.length > 0 && (
+                <div className="space-y-2.5 pt-1">
+                  {spk.pasal.map((p, i) => (
+                    <div key={i} className="text-xs">
+                      <p className="font-bold text-navy">{p.judul}</p>
+                      <p className="text-slate-600 whitespace-pre-line leading-relaxed">{p.isi}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Dua tanda tangan: Pihak Pertama (Pemberi Kerja) & Pihak Kedua (Pelaksana) */}
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                {/* Pihak Pertama */}
+                <div className="rounded-xl border border-border p-3 text-center space-y-1.5">
+                  <p className="text-[11px] font-bold text-navy uppercase">Pihak Pertama</p>
+                  <p className="text-[10px] text-muted-foreground">{spk.pemberi_jabatan || 'Pemberi Kerja'}</p>
+                  {spk.pemberi_signature ? (
+                    <>
+                      <img src={spk.pemberi_signature} alt="TTD Pemberi Kerja" className="mx-auto max-h-20 bg-white rounded border border-border" />
+                      <p className="text-xs font-bold text-navy">{spk.pemberi_signed_name}</p>
+                    </>
+                  ) : (
+                    <div className="py-5 text-[10px] text-muted-foreground italic">Belum ditandatangani</div>
                   )}
-                  <p className="text-sm font-bold text-navy">{spk.signed_name}</p>
+                  <p className="text-xs font-semibold">{spk.pemberi_nama}</p>
+                </div>
+                {/* Pihak Kedua */}
+                <div className="rounded-xl border border-border p-3 text-center space-y-1.5">
+                  <p className="text-[11px] font-bold text-navy uppercase">Pihak Kedua</p>
+                  <p className="text-[10px] text-muted-foreground">{spk.pihak_kedua_peran || 'Pelaksana'}</p>
+                  {spk.signature_data ? (
+                    <>
+                      <img src={spk.signature_data} alt="TTD Pelaksana" className="mx-auto max-h-20 bg-white rounded border border-border" />
+                      <p className="text-xs font-bold text-navy">{spk.signed_name}</p>
+                    </>
+                  ) : (
+                    <div className="py-5 text-[10px] text-muted-foreground italic">Menunggu tanda tangan Anda</div>
+                  )}
+                  <p className="text-xs font-semibold">{spk.vendor_name}</p>
+                </div>
+              </div>
+
+              {/* Area tanda tangan vendor */}
+              {sudahTtd ? (
+                <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4 text-center space-y-1">
+                  <p className="flex items-center justify-center gap-2 font-bold text-emerald-700">
+                    <CheckCircle2 className="w-5 h-5" /> SPK TELAH ANDA TANDATANGANI
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {spk.signed_at ? new Date(spk.signed_at).toLocaleString('id-ID') : ''}
                   </p>
@@ -147,7 +201,7 @@ export default function SpkSignPage() {
               ) : (
                 <div className="rounded-xl border border-border p-4 space-y-3">
                   <p className="font-bold text-navy flex items-center gap-2">
-                    <FileSignature className="w-4 h-4" /> Tanda Tangan Persetujuan
+                    <FileSignature className="w-4 h-4" /> Tanda Tangan Anda ({spk.pihak_kedua_peran || 'Pelaksana'})
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Dengan menandatangani, Anda menyetujui seluruh ketentuan SPK di atas.
