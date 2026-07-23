@@ -6,6 +6,7 @@
 // ============================================================
 
 import { supabase } from './supabase'
+import { useAuthStore } from '@/store/authStore'
 import type { OpnameItem } from './akuntan'
 
 export interface SpkLingkupItem {
@@ -73,23 +74,34 @@ function getMock(): SpkApi | undefined {
   return (window as { __spkApiMock?: SpkApi }).__spkApiMock
 }
 
-async function uid(): Promise<string> {
-  const { data } = await supabase.auth.getUser()
-  if (!data.user) throw new Error('Harus login.')
-  return data.user.id
+function uid(): string {
+  // ambil dari authStore (sinkron) — supabase.auth.getUser() melakukan
+  // panggilan jaringan dan bisa menggantung (lock antar-tab)
+  const u = useAuthStore.getState().user
+  if (!u?.id) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+  return u.id
+}
+
+/** Jaring pengaman: jangan biarkan tombol berputar selamanya. */
+function withTimeout<T>(p: PromiseLike<T>, ms = 20000): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<T>((_, rej) =>
+      setTimeout(() => rej(new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')), ms)),
+  ])
 }
 
 const realApi: SpkApi = {
   async listSpk() {
-    const { data, error } = await supabase.from('spk_docs')
-      .select('*').order('created_at', { ascending: false })
+    const { data, error } = await withTimeout(supabase.from('spk_docs')
+      .select('*').order('created_at', { ascending: false }))
     if (error) throw new Error(error.message)
     return (data ?? []) as SpkDoc[]
   },
   async createSpk(doc) {
-    const user_id = await uid()
-    const { data, error } = await supabase.from('spk_docs')
-      .insert({ ...doc, user_id }).select('*').single()
+    const user_id = uid()
+    const { data, error } = await withTimeout(supabase.from('spk_docs')
+      .insert({ ...doc, user_id }).select('*').single())
     if (error) throw new Error(error.message)
     return data as SpkDoc
   },
@@ -115,15 +127,15 @@ const realApi: SpkApi = {
     return data === true
   },
   async listOpname() {
-    const { data, error } = await supabase.from('opname_forms')
-      .select('*').order('created_at', { ascending: false })
+    const { data, error } = await withTimeout(supabase.from('opname_forms')
+      .select('*').order('created_at', { ascending: false }))
     if (error) throw new Error(error.message)
     return (data ?? []) as OpnameDoc[]
   },
   async createOpname(doc) {
-    const user_id = await uid()
-    const { data, error } = await supabase.from('opname_forms')
-      .insert({ ...doc, user_id }).select('*').single()
+    const user_id = uid()
+    const { data, error } = await withTimeout(supabase.from('opname_forms')
+      .insert({ ...doc, user_id }).select('*').single())
     if (error) throw new Error(error.message)
     return data as OpnameDoc
   },
