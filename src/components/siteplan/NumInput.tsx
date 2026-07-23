@@ -14,9 +14,10 @@ interface Props {
   step?: number
   placeholder?: string
   className?: string
+  disabled?: boolean
 }
 
-export default function NumInput({ value, onValue, min, max, step, placeholder, className }: Props) {
+export default function NumInput({ value, onValue, min, max, step, placeholder, className, disabled }: Props) {
   const [text, setText] = useState<string>(String(value))
   const lastValue = useRef(value)
 
@@ -38,6 +39,7 @@ export default function NumInput({ value, onValue, min, max, step, placeholder, 
       step={step}
       placeholder={placeholder ?? String(value)}
       className={className}
+      disabled={disabled}
       onChange={e => {
         const t = e.target.value
         setText(t)

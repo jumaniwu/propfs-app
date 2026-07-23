@@ -16,6 +16,8 @@ import EditableRABTable from '@/components/cost/EditableRABTable'
 import TabMaterialSchedule from '@/components/cost/TabMaterialSchedule'
 import TabRealisasiBiaya from '@/components/cost/TabRealisasiBiaya'
 import TabKurvaS from '@/components/cost/TabKurvaS'
+import TabAkuntan from '@/components/cost/TabAkuntan'
+import TabSPK from '@/components/cost/TabSPK'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import WorkspaceSidebar, { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -467,7 +469,7 @@ export default function CostDashboard() {
                 className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
                 <ArrowLeft className="h-4 w-4" /> Kembali ke Portal
               </button>
-              <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Cost Control</h1>
+              <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Kontraktor AI</h1>
               {isSubscriptionEnabled ? (
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`text-sm font-bold ${canAdd ? 'text-muted-foreground' : 'text-red-500'}`}>
@@ -736,6 +738,8 @@ export default function CostDashboard() {
                 {activeTab === 'material' && <TabMaterialSchedule />}
                 {activeTab === 'realisasi' && <TabRealisasiBiaya />}
                 {activeTab === 'kurva_s' && <TabKurvaS />}
+                {activeTab === 'akuntan' && <TabAkuntan />}
+                {activeTab === 'spk' && <TabSPK />}
 
                 {/* Laporan & Export */}
                 {activeTab === 'laporan' && (

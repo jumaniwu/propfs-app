@@ -34,6 +34,8 @@ const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
 const LegalPage   = lazy(() => import('./pages/LegalPage'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
+const SpkSignPage = lazy(() => import('./pages/SpkSignPage'))
+const OpnameFillPage = lazy(() => import('./pages/OpnameFillPage'))
 
 function LoadingScreen() {
   return (
@@ -96,6 +98,9 @@ export default function App() {
           <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
           <Route path="/legal/:type" element={<OpenRoute><LegalPage /></OpenRoute>} />
           <Route path="/reset-password" element={<OpenRoute><ResetPasswordPage /></OpenRoute>} />
+          {/* Halaman publik Kontraktor AI: vendor/tukang tanpa login */}
+          <Route path="/spk/sign/:token" element={<OpenRoute><SpkSignPage /></OpenRoute>} />
+          <Route path="/opname/isi/:token" element={<OpenRoute><OpnameFillPage /></OpenRoute>} />
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />
