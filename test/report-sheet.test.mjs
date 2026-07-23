@@ -17,6 +17,11 @@ assert(ws['A7'].v === 'TOTAL', 'baris TOTAL')
 assert(ws['C7'].f === 'SUM(C5:C6)', 'rumus SUM benar: ' + ws['C7'].f)
 assert(ws['C7'].v === 4660000, 'nilai cache TOTAL terhitung: ' + ws['C7'].v)
 assert(ws['!merges'].length === 2, 'judul di-merge')
+assert(ws['A4'].s && ws['A4'].s.fill && ws['A4'].s.fill.fgColor.rgb === '0D1B2A', 'header berlatar navy')
+assert(ws['A4'].s.font.color.rgb === 'FFFFFF', 'font header putih')
+assert(ws['A7'].s && ws['A7'].s.fill.fgColor.rgb === 'F0E6CE', 'baris TOTAL berlatar emas muda')
+assert(ws['A5'].s && ws['A5'].s.border && ws['A5'].s.border.top, 'sel data berbingkai')
+assert(ws['A1'].s && ws['A1'].s.font.bold === true, 'judul tebal')
 assert(ws['!cols'].length === 3 && ws['!cols'][1].wch >= 'Bata 2000 pcs'.length, 'lebar kolom otomatis')
 
 // roundtrip tulis-baca

@@ -8,8 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
 import { chatRealisasiWithGemini, RealisasiEntry, ChatMessage } from '@/lib/ai-realisasi'
 import { useToast } from '@/hooks/use-toast'
-import * as xlsx from 'xlsx'
-import { buildReportSheet } from '@/utils/excel'
+import { buildReportSheet, reportXlsx } from '@/utils/excel'
 
 // ── Category Colors ───────────────────────────────────────────────────────────
 const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -122,7 +121,7 @@ Saya juga bisa mengubah format laporan sesuai permintaan Anda. ✨`
 }
 
 export default function TabRealisasiBiaya() {
-  const { activePlan, realisasiEntries, addRealisasiEntries, updateRealisasiEntry, deleteRealisasiEntry, clearRealisasiEntries } = useCostStore()
+  const { activePlan, projectInfo, realisasiEntries, addRealisasiEntries, updateRealisasiEntry, deleteRealisasiEntry, clearRealisasiEntries } = useCostStore()
   const { toast } = useToast()
 
   const storageKey = `propfs-chat-${activePlan?.projectId ?? 'default'}`
@@ -253,16 +252,20 @@ export default function TabRealisasiBiaya() {
   // ── Excel Export: laporan rapi (judul, tabel berformat, baris TOTAL/SUM) ──
   const exportToExcel = () => {
     if (realisasiEntries.length === 0) return
-    const wb = xlsx.utils.book_new()
-    const projectName = activePlan?.projectId?.substring(0, 10) || 'Proyek'
+    const wb = reportXlsx.utils.book_new()
+    // nama proyek diambil dari judul proyek, bukan kode ID
+    const projectName = projectInfo?.projectName?.trim()
+      || activePlan?.projectId?.substring(0, 10) || 'Proyek'
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-    const subtitle = `Proyek: ${projectName} · Dicetak: ${printed} · ${realisasiEntries.length} transaksi`
+    const dates = realisasiEntries.map(e => e.tanggal).filter(Boolean).sort()
+    const periode = dates.length ? `Periode: ${dates[0]} s.d. ${dates[dates.length - 1]} · ` : ''
+    const subtitle = `Proyek: ${projectName} · ${periode}Dicetak: ${printed} · ${realisasiEntries.length} transaksi`
 
     // Sheet 1: Ringkasan
     const grandTotal = realisasiEntries.reduce((s, e) => s + e.jumlah, 0)
     const totalMaterial = realisasiEntries.filter(e => e.tipe === 'material').reduce((s, e) => s + e.jumlah, 0)
     const totalUpah = realisasiEntries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0)
-    xlsx.utils.book_append_sheet(wb, buildReportSheet({
+    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
       title: 'LAPORAN REALISASI BIAYA PROYEK — RINGKASAN',
       subtitle,
       headers: ['Uraian', 'Jumlah Transaksi', 'Jumlah (Rp)'],
@@ -274,10 +277,25 @@ export default function TabRealisasiBiaya() {
       sumCols: [1, 2],
     }), 'Ringkasan')
 
+    // Sheet 2: Rekap per Kategori (gaya laporan akuntan)
+    const kategoriList = [...new Set(realisasiEntries.map(e => e.kategori || 'lainnya'))]
+    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      title: 'REKAPITULASI PENGELUARAN PER KATEGORI',
+      subtitle,
+      headers: ['No', 'Kategori', 'Jumlah Transaksi', 'Total (Rp)', '% dari Total'],
+      rows: kategoriList.map((k, i) => {
+        const items = realisasiEntries.filter(e => (e.kategori || 'lainnya') === k)
+        const tot = items.reduce((s, e) => s + e.jumlah, 0)
+        return [i + 1, k.toUpperCase(), items.length, tot,
+          grandTotal > 0 ? `${((tot / grandTotal) * 100).toFixed(1)}%` : '0%']
+      }),
+      sumCols: [2, 3],
+    }), 'Rekap Kategori')
+
     // Sheet 2: Pembelian Material
     const mat = realisasiEntries.filter(e => e.tipe === 'material')
     if (mat.length > 0) {
-      xlsx.utils.book_append_sheet(wb, buildReportSheet({
+      reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
         title: 'LAPORAN PEMBELIAN MATERIAL',
         subtitle,
         headers: ['No', 'Tanggal', 'Nama Material', 'Volume', 'Satuan', 'Harga Satuan (Rp)',
@@ -294,7 +312,7 @@ export default function TabRealisasiBiaya() {
     // Sheet 3: Upah Tukang
     const upah = realisasiEntries.filter(e => e.tipe === 'upah')
     if (upah.length > 0) {
-      xlsx.utils.book_append_sheet(wb, buildReportSheet({
+      reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
         title: 'LAPORAN UPAH TUKANG / PEKERJA',
         subtitle,
         headers: ['No', 'Tanggal', 'Nama Tukang/Mandor', 'Jenis Pekerjaan', 'Jumlah Orang',
@@ -308,7 +326,7 @@ export default function TabRealisasiBiaya() {
     }
 
     // Sheet 4: Semua Transaksi
-    xlsx.utils.book_append_sheet(wb, buildReportSheet({
+    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
       title: 'DAFTAR SEMUA TRANSAKSI',
       subtitle,
       headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Total (Rp)', 'Status'],
@@ -319,7 +337,8 @@ export default function TabRealisasiBiaya() {
     }), 'Semua Transaksi')
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
-    xlsx.writeFile(wb, `Laporan_Realisasi_${projectName}_${dateStr}.xlsx`)
+    const safeName = projectName.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_') || 'Proyek'
+    reportXlsx.writeFile(wb, `Laporan_Realisasi_${safeName}_${dateStr}.xlsx`)
     toast({ title: '✅ Laporan Excel berhasil diunduh!', description: 'Format laporan rapi: judul, tabel berformat, dan baris TOTAL (SUM) di tiap sheet.' })
   }
 
@@ -564,8 +583,8 @@ export default function TabRealisasiBiaya() {
             ))}
           </div>
 
-          {/* Mobile: tinggi natural (scroll ikut halaman); desktop: scroll internal */}
-          <div className="px-4 pb-4 space-y-2 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+          {/* Scroll internal di dalam kartu (mobile dibatasi 60vh, desktop ikut flex) */}
+          <div className="px-4 pb-4 space-y-2 overflow-y-auto overscroll-contain max-h-[60vh] lg:max-h-none lg:flex-1 lg:min-h-0">
             {filteredEntries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-center opacity-40">
                 <TrendingDown className="w-10 h-10 mb-2" />
