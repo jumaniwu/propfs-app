@@ -3,9 +3,13 @@
  * ================================================================
  * Cara pakai:
  * 1. Buka https://script.google.com → New Project.
- * 2. Ganti isi Code.gs dengan kode ini.
- * 3. Ganti FOLDER_ID di bawah dengan ID folder Drive tujuan Anda.
- *    (Buka folder di Drive → lihat URL: .../folders/<INI_FOLDER_ID>)
+ * 2. Ganti isi Code.gs dengan kode ini (hapus contoh myFunction bawaan).
+ * 3. Isi FOLDER_LINK di bawah dengan LINK folder Google Drive tujuan Anda.
+ *    Cara dapat link: buka Google Drive → klik kanan folder → "Bagikan" atau
+ *    "Salin link", ATAU buka folder lalu salin URL di address bar. Contoh:
+ *    https://drive.google.com/drive/folders/1AbCdEfGhIJKlmNOpQrStuVwx
+ *    (boleh tempel link penuh — script otomatis ambil ID-nya. Boleh juga
+ *     tempel ID mentahnya saja.)
  * 4. Deploy → New deployment → pilih tipe "Web app".
  *      - Execute as: Me
  *      - Who has access: Anyone
@@ -15,14 +19,25 @@
  *
  * Aplikasi akan mengirim foto (base64) sebagai JSON. Script menyimpannya
  * ke folder Anda; bila field "folder" dikirim, dibuatkan subfolder per proyek.
+ *
+ * CATATAN: yang ditempel di aplikasi PropFS adalah URL Web App (…/exec),
+ * BUKAN link folder Drive. Link folder Drive hanya dipakai di FOLDER_LINK ini.
  */
 
-var FOLDER_ID = 'GANTI_DENGAN_ID_FOLDER_DRIVE_ANDA';
+// Tempel LINK folder Drive Anda di sini (boleh link penuh atau ID saja):
+var FOLDER_LINK = 'TEMPEL_LINK_FOLDER_DRIVE_ANDA_DI_SINI';
+
+/** Ambil ID folder dari link Drive, atau kembalikan apa adanya bila sudah ID. */
+function folderIdFromLink(s) {
+  s = String(s || '').trim();
+  var m = s.match(/[-\w]{25,}/);   // ID Drive umumnya >= 25 karakter
+  return m ? m[0] : s;
+}
 
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
-    var root = DriveApp.getFolderById(FOLDER_ID);
+    var root = DriveApp.getFolderById(folderIdFromLink(FOLDER_LINK));
 
     // subfolder per proyek (opsional)
     var target = root;
