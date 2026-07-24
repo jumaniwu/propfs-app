@@ -1,0 +1,170 @@
+// ============================================================
+// PropFS — Laporan Harian Lapangan (Kontraktor AI)
+// - 1 link untuk pekerja upload laporan harian (kerja, progress, foto)
+// - 1 link untuk owner melihat kalender progress
+// - Auto-upload foto ke Google Drive lewat Apps Script webhook
+// REST langsung (bypass session supabase-js yang bisa menggantung).
+// window.__fieldApiMock dipakai test E2E.
+// ============================================================
+
+import { useAuthStore } from '@/store/authStore'
+
+export interface FieldLog {
+  id: string
+  project_name: string
+  drive_webhook: string
+  report_token: string
+  view_token: string
+  created_at?: string
+}
+
+export interface FieldReport {
+  id: string
+  log_id: string
+  tanggal: string           // YYYY-MM-DD
+  pelapor: string
+  kegiatan: string[]
+  catatan: string
+  photos: string[]          // data URL
+  created_at?: string
+}
+
+export interface FieldApi {
+  listLogs(): Promise<FieldLog[]>
+  createLog(projectName: string, driveWebhook: string): Promise<FieldLog>
+  updateLog(id: string, patch: Partial<Pick<FieldLog, 'project_name' | 'drive_webhook'>>): Promise<void>
+  deleteLog(id: string): Promise<void>
+  listReports(logId: string): Promise<FieldReport[]>
+  deleteReport(id: string): Promise<void>
+  // publik (token)
+  getLogByReportToken(token: string): Promise<{ project_name: string; drive_webhook: string } | null>
+  submitReport(token: string, r: Omit<FieldReport, 'id' | 'log_id' | 'created_at'>): Promise<boolean>
+  getOwnerView(token: string): Promise<{ project_name: string; reports: FieldReport[] } | null>
+}
+
+// ── REST langsung ────────────────────────────────────────────────────────────
+function supaConf() {
+  const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env
+  return {
+    url: env.VITE_SUPABASE_URL || 'https://ciazztqmkhzrgbaqfyyz.supabase.co',
+    key: env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD',
+  }
+}
+function storedAccessToken(url: string): string | null {
+  try {
+    const ref = url.replace(/^https?:\/\//, '').split('.')[0]
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
+  } catch { return null }
+}
+async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
+  const { url, key } = supaConf()
+  const token = storedAccessToken(url)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(`${url}/rest/v1/${path}`, {
+      ...init, signal: ctrl.signal,
+      headers: { apikey: key, Authorization: `Bearer ${token ?? key}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')
+    throw e
+  } finally { clearTimeout(timer) }
+}
+async function rpc<T>(fn: string, body: unknown): Promise<T> {
+  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Gagal (HTTP ${res.status}).`)
+  return await res.json() as T
+}
+function uid(): string {
+  const u = useAuthStore.getState().user
+  if (!u?.id) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+  return u.id
+}
+
+const realApi: FieldApi = {
+  async listLogs() {
+    const res = await restFetch('field_logs?select=*&order=created_at.desc')
+    if (!res.ok) throw new Error(`Gagal memuat (HTTP ${res.status}).`)
+    return await res.json() as FieldLog[]
+  },
+  async createLog(projectName, driveWebhook) {
+    const res = await restFetch('field_logs', {
+      method: 'POST', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ user_id: uid(), project_name: projectName, drive_webhook: driveWebhook }),
+    })
+    if (!res.ok) throw new Error(`Gagal membuat (HTTP ${res.status}).`)
+    return (await res.json() as FieldLog[])[0]
+  },
+  async updateLog(id, patch) {
+    const res = await restFetch(`field_logs?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    if (!res.ok) throw new Error(`Gagal memperbarui (HTTP ${res.status}).`)
+  },
+  async deleteLog(id) {
+    const res = await restFetch(`field_logs?id=eq.${id}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`Gagal menghapus (HTTP ${res.status}).`)
+  },
+  async listReports(logId) {
+    const res = await restFetch(`field_reports?select=*&log_id=eq.${logId}&order=tanggal.desc,created_at.desc`)
+    if (!res.ok) throw new Error(`Gagal memuat laporan (HTTP ${res.status}).`)
+    return await res.json() as FieldReport[]
+  },
+  async deleteReport(id) {
+    const res = await restFetch(`field_reports?id=eq.${id}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error(`Gagal menghapus laporan (HTTP ${res.status}).`)
+  },
+  async getLogByReportToken(token) {
+    const data = await rpc<Array<{ project_name: string; drive_webhook: string }>>('field_log_by_report_token', { p_token: token })
+    return (Array.isArray(data) ? data[0] : data) ?? null
+  },
+  async submitReport(token, r) {
+    return await rpc<boolean>('field_report_submit', {
+      p_token: token, p_tanggal: r.tanggal, p_pelapor: r.pelapor,
+      p_kegiatan: r.kegiatan, p_catatan: r.catatan, p_photos: r.photos,
+    }) === true
+  },
+  async getOwnerView(token) {
+    const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token })
+    const row = Array.isArray(data) ? data[0] : data
+    return row ? { project_name: row.project_name, reports: row.reports ?? [] } : null
+  },
+}
+
+export function fieldApi(): FieldApi {
+  return (window as { __fieldApiMock?: FieldApi }).__fieldApiMock ?? realApi
+}
+
+// ── Link publik ──────────────────────────────────────────────────────────────
+export function laporLink(token: string): string { return `${window.location.origin}/lapor/${token}` }
+export function progresLink(token: string): string { return `${window.location.origin}/progress/${token}` }
+export function waShare(message: string): string { return `https://wa.me/?text=${encodeURIComponent(message)}` }
+
+// ── Google Drive webhook (Apps Script) ───────────────────────────────────────
+const DRIVE_KEY = 'propfs-drive-webhook'
+export function getDriveWebhook(): string {
+  try { return localStorage.getItem(DRIVE_KEY) ?? '' } catch { return '' }
+}
+export function setDriveWebhook(url: string): void {
+  try { localStorage.setItem(DRIVE_KEY, url.trim()) } catch { /* ignore */ }
+}
+
+/** Kirim satu foto ke Apps Script Web App (fire-and-forget, tidak memblok UI). */
+export async function uploadToDrive(webhookUrl: string, file: { name: string; mimeType: string; base64Data: string; folder?: string }): Promise<void> {
+  if (!webhookUrl) return
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 20000)
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      signal: ctrl.signal,
+      // Apps Script Web App menerima text/plain agar tanpa preflight CORS
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ name: file.name, mimeType: file.mimeType, data: file.base64Data, folder: file.folder ?? '' }),
+    })
+  } catch (e) {
+    console.warn('[Drive] upload gagal:', e)
+  } finally { clearTimeout(timer) }
+}

@@ -9,6 +9,7 @@ import { useCostStore } from '@/store/costStore'
 import { chatRealisasiWithGemini, RealisasiEntry, ChatMessage } from '@/lib/ai-realisasi'
 import { useToast } from '@/hooks/use-toast'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
+import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 
 // ── Category Colors ───────────────────────────────────────────────────────────
 const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -190,6 +191,19 @@ export default function TabRealisasiBiaya() {
       files: pendingFiles.map(f => ({ name: f.name, mimeType: f.mimeType, base64Data: f.base64Data }))
     }
     setMessages(prev => [...prev, userMsg])
+    // Auto-upload foto ke Google Drive (fire-and-forget, tidak memblok AI)
+    const driveUrl = getDriveWebhook()
+    if (driveUrl) {
+      pendingFiles.forEach(f => {
+        if (f.mimeType.startsWith('image/')) {
+          void uploadToDrive(driveUrl, {
+            name: `${new Date().toISOString().slice(0, 10)}_${f.name}`,
+            mimeType: f.mimeType, base64Data: f.base64Data,
+            folder: activePlan?.projectId || 'Realisasi',
+          })
+        }
+      })
+    }
     setInputValue('')
     setPendingFiles([])
     setIsProcessing(true)

@@ -36,6 +36,8 @@ const LegalPage   = lazy(() => import('./pages/LegalPage'))
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 const SpkSignPage = lazy(() => import('./pages/SpkSignPage'))
 const OpnameFillPage = lazy(() => import('./pages/OpnameFillPage'))
+const LaporHarianPage = lazy(() => import('./pages/LaporHarianPage'))
+const ProgressKalenderPage = lazy(() => import('./pages/ProgressKalenderPage'))
 
 function LoadingScreen() {
   return (
@@ -101,6 +103,8 @@ export default function App() {
           {/* Halaman publik Kontraktor AI: vendor/tukang tanpa login */}
           <Route path="/spk/sign/:token" element={<OpenRoute><SpkSignPage /></OpenRoute>} />
           <Route path="/opname/isi/:token" element={<OpenRoute><OpnameFillPage /></OpenRoute>} />
+          <Route path="/lapor/:token" element={<OpenRoute><LaporHarianPage /></OpenRoute>} />
+          <Route path="/progress/:token" element={<OpenRoute><ProgressKalenderPage /></OpenRoute>} />
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />

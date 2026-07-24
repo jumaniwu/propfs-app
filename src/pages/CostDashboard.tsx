@@ -18,6 +18,7 @@ import TabRealisasiBiaya from '@/components/cost/TabRealisasiBiaya'
 import TabKurvaS from '@/components/cost/TabKurvaS'
 import TabAkuntan from '@/components/cost/TabAkuntan'
 import TabSPK from '@/components/cost/TabSPK'
+import TabLaporanLapangan, { DriveSettingCard } from '@/components/cost/TabLaporanLapangan'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import WorkspaceSidebar, { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -740,6 +741,7 @@ export default function CostDashboard() {
                 {activeTab === 'kurva_s' && <TabKurvaS />}
                 {activeTab === 'akuntan' && <TabAkuntan />}
                 {activeTab === 'spk' && <TabSPK />}
+                {activeTab === 'lapangan' && <TabLaporanLapangan />}
 
                 {/* Laporan & Export */}
                 {activeTab === 'laporan' && (
@@ -810,6 +812,7 @@ export default function CostDashboard() {
                 {activeTab === 'settings' && (
                   <div className="space-y-5">
                     <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Pengaturan Proyek</h2>
+                    <div className="max-w-md"><DriveSettingCard /></div>
                     <div className="bg-muted/30 rounded-2xl p-5 space-y-2 max-w-md">
                       <p className="text-sm font-semibold mb-3">Info Proyek</p>
                       {[
