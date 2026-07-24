@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Loader2, ChevronLeft, ChevronRight, CalendarDays, ImageIcon } from 'lucide-react'
 import { fieldApi, type FieldReport } from '@/lib/fieldReports'
+import PhotoLightbox from '@/components/PhotoLightbox'
 
 const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
 const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
@@ -15,6 +16,7 @@ export default function ProgressKalenderPage() {
   const [error, setError] = useState('')
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [selected, setSelected] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
 
   useEffect(() => {
     fieldApi().getOwnerView(token)
@@ -135,9 +137,10 @@ export default function ProgressKalenderPage() {
                     {r.photos.length > 0 && (
                       <div className="grid grid-cols-4 gap-1.5">
                         {r.photos.map((p, j) => (
-                          <a key={j} href={p} target="_blank" rel="noreferrer">
+                          <button key={j} type="button" onClick={() => setLightbox({ photos: r.photos, index: j })}
+                            className="block">
                             <img src={p} alt="" className="w-full h-16 object-cover rounded-lg border border-border" />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
@@ -155,6 +158,12 @@ export default function ProgressKalenderPage() {
         )}
         <p className="text-center text-[10px] text-muted-foreground">Dokumen digital · propfs.id · Kontraktor AI</p>
       </div>
+
+      {lightbox && (
+        <PhotoLightbox photos={lightbox.photos} index={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onIndex={i => setLightbox(lb => lb && { ...lb, index: i })} />
+      )}
     </div>
   )
 }

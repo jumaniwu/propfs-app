@@ -16,6 +16,7 @@ import {
   fieldApi, laporLink, progresLink, waShare, getDriveWebhook,
   type FieldLog, type FieldReport,
 } from '@/lib/fieldReports'
+import PhotoLightbox from '@/components/PhotoLightbox'
 
 export default function TabLaporanLapangan() {
   const { toast } = useToast()
@@ -27,6 +28,7 @@ export default function TabLaporanLapangan() {
   const [openLog, setOpenLog] = useState<FieldLog | null>(null)
   const [reports, setReports] = useState<FieldReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
+  const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
 
   const load = () => {
     setLoading(true); setError('')
@@ -180,9 +182,10 @@ export default function TabLaporanLapangan() {
                   {r.photos.length > 0 && (
                     <div className="grid grid-cols-6 gap-1.5">
                       {r.photos.map((p, j) => (
-                        <a key={j} href={p} target="_blank" rel="noreferrer">
+                        <button key={j} type="button" onClick={() => setLightbox({ photos: r.photos, index: j })}
+                          className="block">
                           <img src={p} alt="" className="w-full h-12 object-cover rounded-lg border border-border" />
-                        </a>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -191,6 +194,12 @@ export default function TabLaporanLapangan() {
             </div>
           )}
         </div>
+      )}
+
+      {lightbox && (
+        <PhotoLightbox photos={lightbox.photos} index={lightbox.index}
+          onClose={() => setLightbox(null)}
+          onIndex={i => setLightbox(lb => lb && { ...lb, index: i })} />
       )}
     </div>
   )
