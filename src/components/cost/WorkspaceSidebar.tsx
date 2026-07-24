@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon,
   TrendingUp, FileDown, Settings2, ChevronLeft, ChevronRight,
-  Building2, X, Menu, Scale, FileSignature
+  Building2, X, Menu, Scale, FileSignature, HardHat
 } from 'lucide-react'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 
 import { AppFeature } from '@/lib/supabase'
 
-export type WorkspaceTab = 'overview' | 'rab' | 'material' | 'realisasi' | 'kurva_s' | 'akuntan' | 'spk' | 'laporan' | 'settings'
+export type WorkspaceTab = 'overview' | 'rab' | 'material' | 'realisasi' | 'kurva_s' | 'akuntan' | 'spk' | 'lapangan' | 'laporan' | 'settings'
 
 interface SidebarItem {
   key: WorkspaceTab
@@ -32,12 +32,13 @@ const NAV_ITEMS: SidebarItem[] = [
   { key: 'kurva_s',    label: 'Kurva S & Progress',  icon: <TrendingUp className="w-5 h-5" />,     feature: 'scurve' },
   { key: 'akuntan',    label: 'Akuntan',             icon: <Scale className="w-5 h-5" /> },
   { key: 'spk',        label: 'SPK Digital',         icon: <FileSignature className="w-5 h-5" /> },
+  { key: 'lapangan',   label: 'Laporan Lapangan',    icon: <HardHat className="w-5 h-5" /> },
   { key: 'laporan',    label: 'Laporan & Export',    icon: <FileDown className="w-5 h-5" /> },
   { key: 'settings',   label: 'Pengaturan Proyek',   icon: <Settings2 className="w-5 h-5" /> },
 ]
 
 // ── Mobile Bottom Nav (shows 5 main items) ──
-const MOBILE_ITEMS: WorkspaceTab[] = ['overview', 'realisasi', 'akuntan', 'spk', 'laporan']
+const MOBILE_ITEMS: WorkspaceTab[] = ['overview', 'realisasi', 'akuntan', 'spk', 'lapangan']
 
 export default function WorkspaceSidebar({ activeTab, onTabChange }: WorkspaceSidebarProps) {
   const { isFeatureEnabled } = useAuthStore()
