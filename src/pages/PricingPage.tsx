@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CheckCircle2, XCircle, ArrowLeft, Crown, Zap, Star,
   Sparkles, Clock, Calendar, CalendarDays
@@ -14,6 +14,7 @@ import Header from '@/components/layout/Header'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePPNRate } from '@/hooks/usePPNRate'
+import { PRODUK, type Produk } from '@/lib/produk'
 
 // ── Duration Options ─────────────────────────────────────────
 const DURATIONS = [
@@ -128,9 +129,16 @@ function rp(n: number) { return `Rp ${n.toLocaleString('id-ID')}` }
 // ── COMPONENT ────────────────────────────────────────────────
 export default function PricingPage() {
   const navigate   = useNavigate()
-  const { getCurrentPlan } = useAuthStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { getPlanFor } = useAuthStore()
   const { ppnPct, loading: ppnLoading } = usePPNRate()
-  const currentPlan = getCurrentPlan()
+
+  // Produk yang sedang dibeli — Feasibility & Kontraktor AI dilanggan terpisah.
+  const [produk, setProduk] = useState<Produk>(
+    () => (searchParams.get('produk') === 'kontraktor' ? 'kontraktor' : 'feasibility'),
+  )
+  const currentPlan = getPlanFor(produk)
+  const produkInfo = PRODUK.find(p => p.key === produk)!
 
   const [selectedMonths, setSelectedMonths] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -185,6 +193,33 @@ export default function PricingPage() {
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
             Mulai gratis, upgrade kapan saja.{!ppnLoading && ppnPct > 0 && <> Semua harga <strong>belum termasuk PPN {ppnPct}%</strong>.</>}
+          </p>
+        </div>
+
+        {/* Pemilih produk — dua langganan terpisah */}
+        <div className="space-y-3">
+          <div className="flex justify-center">
+            <div className="inline-flex bg-muted rounded-2xl p-1.5 gap-1 max-w-full overflow-x-auto">
+              {PRODUK.map(p => (
+                <button
+                  key={p.key}
+                  onClick={() => {
+                    setProduk(p.key)
+                    const next = new URLSearchParams(searchParams)
+                    next.set('produk', p.key)
+                    setSearchParams(next, { replace: true })
+                  }}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-200
+                    ${produk === p.key ? 'bg-navy text-white shadow-lg' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {p.nama}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-center text-xs text-muted-foreground max-w-xl mx-auto">
+            Anda sedang memilih paket untuk <b className="text-foreground">{produkInfo.nama}</b> — {produkInfo.deskripsi}
+            {' '}Langganan produk lain terpisah dan tidak ikut terbeli.
           </p>
         </div>
 
@@ -408,14 +443,28 @@ export default function PricingPage() {
                         ppn_idr: ppnAmount,
                         total_idr: grandTotal,
                         status: 'pending' as const,
+                        product: produk,
                       }
 
-                      // Try to save to Supabase DB first
-                      const { data: dbInvoice, error: dbError } = await supabase
+                      // Try to save to Supabase DB first. Bila kolom `product`
+                      // belum ada (migrasi belum dijalankan), ulangi tanpa kolom
+                      // itu agar proses pembayaran tetap berjalan.
+                      let { data: dbInvoice, error: dbError } = await supabase
                         .from('invoices')
                         .insert(invoicePayload)
                         .select()
                         .single()
+
+                      if (dbError) {
+                        const { product: _lewati, ...tanpaProduk } = invoicePayload
+                        const ulang = await supabase
+                          .from('invoices')
+                          .insert(tanpaProduk)
+                          .select()
+                          .single()
+                        dbInvoice = ulang.data
+                        dbError = ulang.error
+                      }
 
                       let invoiceId: string
                       if (dbInvoice && !dbError) {

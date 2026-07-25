@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import Header from '@/components/layout/Header'
 import PlanBadge from '@/components/subscription/PlanBadge'
 import SubscriptionCard from '@/components/subscription/SubscriptionCard'
+import ProdukLanggananCard from '@/components/subscription/ProdukLanggananCard'
 import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
 import { supabase } from '@/lib/supabase'
@@ -168,6 +169,9 @@ export default function ProfilePage() {
             {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
           </Button>
         </form>
+
+        {/* Langganan per produk (Feasibility & Kontraktor AI terpisah) */}
+        <ProdukLanggananCard />
 
         {/* Subscription + Invoice */}
         <SubscriptionCard variant="full" />
