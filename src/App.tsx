@@ -31,6 +31,7 @@ const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
 const KontraktorHomePage = lazy(() => import('./pages/KontraktorHomePage'))
 const KonsolidasiPage = lazy(() => import('./pages/KonsolidasiPage'))
+const MaterialLapanganPage = lazy(() => import('./pages/MaterialLapanganPage'))
 const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
@@ -122,6 +123,7 @@ export default function App() {
           {/* Cost Control Module — blocked for free plan */}
           <Route path="/kontraktor" element={<FeatureRoute feature="cost_control"><KontraktorHomePage /></FeatureRoute>} />
           <Route path="/kontraktor/konsolidasi" element={<FeatureRoute feature="cost_control"><KonsolidasiPage /></FeatureRoute>} />
+          <Route path="/kontraktor/material" element={<FeatureRoute feature="cost_control"><MaterialLapanganPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 
