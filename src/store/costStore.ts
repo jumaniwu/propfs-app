@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
-import { useAuthStore } from './authStore'
 import { supabase } from '../lib/supabase'
 import { mergeNewest } from '../lib/cloudSync'
+import { dataOwnerId } from '../lib/teamApi'
 
 export interface ProjectInfo {
   id: string
@@ -95,8 +95,10 @@ function progressPlan(plan: BudgetPlan | null): number {
 // Each user gets their own isolated localStorage key.
 function getUserStorageKey(): string {
   try {
-    const user = useAuthStore.getState().user
-    if (user?.id) return `propfs-cost-projects:${user.id}`
+    // Saat membuka workspace perusahaan lain sebagai anggota tim, kunci mengikuti
+    // pemilik workspace agar data antar-perusahaan tidak tercampur di perangkat ini.
+    const owner = dataOwnerId()
+    if (owner) return `propfs-cost-projects:${owner}`
   } catch { /* ignore */ }
   return 'propfs-cost-projects:anonymous'
 }
@@ -117,7 +119,9 @@ function saveLocalData(projects: SavedCostProject[]) {
 
 // ── Sinkron cloud (Supabase) agar proyek terlihat di semua perangkat ────────
 function cloudUserId(): string | null {
-  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+  // Anggota tim membaca/menulis data milik pemilik workspace (diizinkan RLS
+  // lewat is_team_member); tanpa workspace terpilih = data milik sendiri.
+  return dataOwnerId()
 }
 
 async function upsertCloudProject(p: SavedCostProject): Promise<void> {

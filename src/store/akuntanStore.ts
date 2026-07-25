@@ -5,9 +5,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PemasukanEntry, InventoryAdjustment } from '@/lib/akuntan'
 import { supabase } from '@/lib/supabase'
-import { useAuthStore } from './authStore'
 import { useCostStore } from './costStore'
 import { unionById } from '@/lib/cloudSync'
+import { dataOwnerId } from '@/lib/teamApi'
 
 interface AkuntanStore {
   pemasukanEntries: PemasukanEntry[]
@@ -22,7 +22,8 @@ interface AkuntanStore {
 }
 
 function userId(): string | null {
-  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+  // Sama seperti costStore: anggota tim membaca data pemilik workspace aktif.
+  return dataOwnerId()
 }
 
 /**

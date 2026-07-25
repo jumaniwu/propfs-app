@@ -16,6 +16,10 @@ import {
   MENU_ITEMS, KATEGORI, cariMenu, targetUrl, butuhProyek,
   type MenuItem, type MenuKategori,
 } from '@/lib/kontraktorMenu'
+import {
+  teamApi, getWorkspaceOwner, setWorkspaceOwner, roleSaatIni, type Workspace,
+} from '@/lib/teamApi'
+import { can, MENU_KE_MODUL, ROLES } from '@/lib/teamRoles'
 
 const HIDE_KEY = 'propfs-kontraktor-hide-amount'
 
@@ -64,8 +68,24 @@ export default function KontraktorHomePage() {
   const [hideAmount, setHideAmount] = useState(() => localStorage.getItem(HIDE_KEY) === '1')
   const [pickerFor, setPickerFor] = useState<MenuItem | null>(null)
   const [bannerTutup, setBannerTutup] = useState(false)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [wsOwner, setWsOwner] = useState<string | null>(() => getWorkspaceOwner())
 
-  useEffect(() => { loadProjects() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadProjects()
+    // daftar workspace perusahaan tempat pengguna ini menjadi anggota tim
+    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const role = roleSaatIni(workspaces)
+  const wsAktif = workspaces.find(w => w.owner_id === wsOwner)
+
+  function gantiWorkspace(ownerId: string | null) {
+    setWorkspaceOwner(ownerId)
+    setWsOwner(ownerId)
+    // muat ulang agar seluruh store menarik data workspace yang dipilih
+    window.location.reload()
+  }
 
   const toggleAmount = () => setHideAmount(v => {
     localStorage.setItem(HIDE_KEY, v ? '0' : '1')
@@ -84,9 +104,14 @@ export default function KontraktorHomePage() {
 
   const menuTersaring = useMemo(() => {
     const byFeature = MENU_ITEMS.filter(i => !i.feature || isFeatureEnabled(i.feature))
-    const byKategori = kategori === 'semua' ? byFeature : byFeature.filter(i => i.kategori === kategori)
+    // saring sesuai role pada workspace aktif (pemilik sendiri = akses penuh)
+    const byRole = byFeature.filter(i => {
+      const modul = MENU_KE_MODUL[i.key]
+      return !modul || can(role, modul, 'baca')
+    })
+    const byKategori = kategori === 'semua' ? byRole : byRole.filter(i => i.kategori === kategori)
     return cariMenu(byKategori, q)
-  }, [kategori, q, isFeatureEnabled])
+  }, [kategori, q, isFeatureEnabled, role])
 
   function bukaMenu(item: MenuItem, projectId?: string) {
     if (butuhProyek(item)) {
@@ -134,9 +159,24 @@ export default function KontraktorHomePage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="font-serif font-bold text-lg leading-tight">Kontraktor AI</p>
-              <p className="text-white/60 text-[11px] truncate">
-                {profile?.company || 'Workspace Saya'}
-              </p>
+              {workspaces.length > 0 ? (
+                // pengguna ini anggota tim di perusahaan lain → bisa berpindah workspace
+                <select
+                  value={wsOwner ?? ''} onChange={e => gantiWorkspace(e.target.value || null)}
+                  aria-label="Pilih workspace"
+                  className="mt-0.5 bg-white/10 text-white/90 text-[11px] rounded-lg px-2 py-1 max-w-[210px] border border-white/20">
+                  <option value="" className="text-navy">Workspace Saya</option>
+                  {workspaces.map(w => (
+                    <option key={w.owner_id} value={w.owner_id} className="text-navy">
+                      {w.perusahaan || w.nama || 'Perusahaan'} ({ROLES.find(r => r.key === w.role)?.label ?? w.role})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-white/60 text-[11px] truncate">
+                  {profile?.company || 'Workspace Saya'}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-1">
               <button onClick={() => navigate('/kontraktor/tim')}
