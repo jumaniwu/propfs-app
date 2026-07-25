@@ -22,8 +22,9 @@ import { useCostStore } from '@/store/costStore'
 import { useAkuntanStore } from '@/store/akuntanStore'
 import { useToast } from '@/hooks/use-toast'
 import {
-  hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname,
-  type PemasukanEntry, type OpnameItem,
+  hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname, saringLingkup,
+  PROYEK_UMUM, LABEL_PROYEK_UMUM,
+  type PemasukanEntry, type OpnameItem, type LingkupAkuntan,
 } from '@/lib/akuntan'
 import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
@@ -34,6 +35,8 @@ const fmtJt = (n: number) => `Rp ${(n / 1_000_000).toFixed(2)} Jt`
 type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname'
 
 const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname']
+/** Nilai dropdown lingkup untuk "semua proyek". */
+const KONSOLIDASI = '__konsolidasi__'
 
 /** `initialSub` dipakai deep-link dari Home Kontraktor AI (?tab=akuntan&sub=…). */
 export default function TabAkuntan({ initialSub }: { initialSub?: string } = {}) {
@@ -54,9 +57,37 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   const [opnameLoading, setOpnameLoading] = useState(false)
   const [opnameError, setOpnameError] = useState('')
 
-  const labaRugi = useMemo(() => hitungLabaRugi(pemasukanEntries, realisasiEntries), [pemasukanEntries, realisasiEntries])
-  const inventori = useMemo(() => hitungInventori(realisasiEntries, inventoryAdjustments), [realisasiEntries, inventoryAdjustments])
-  const neraca = useMemo(() => hitungNeraca(pemasukanEntries, realisasiEntries, inventori), [pemasukanEntries, realisasiEntries, inventori])
+  // ── Lingkup laporan: proyek aktif (default) atau konsolidasi semua proyek ──
+  const [lingkupId, setLingkupId] = useState<string>(() => projectInfo?.id ?? KONSOLIDASI)
+  useEffect(() => { if (projectInfo?.id) setLingkupId(projectInfo.id) }, [projectInfo?.id])
+
+  const daftarProyek = useCostStore(s => s.savedProjects)
+  const semuaRealisasi = useCostStore(s => s.getAllRealisasi)
+
+  const lingkup: LingkupAkuntan = lingkupId === KONSOLIDASI
+    ? { jenis: 'konsolidasi' }
+    : { jenis: 'proyek', projectId: lingkupId }
+  const konsolidasi = lingkupId === KONSOLIDASI
+
+  /** Pengeluaran sesuai lingkup: proyek aktif memakai state aktif, selain itu ditarik lintas proyek. */
+  const pengeluaran = useMemo(() => {
+    if (!konsolidasi && lingkupId === projectInfo?.id) return realisasiEntries
+    return saringLingkup(semuaRealisasi(), lingkup)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [konsolidasi, lingkupId, projectInfo?.id, realisasiEntries, daftarProyek])
+
+  const pemasukanLingkup = useMemo(
+    () => saringLingkup(pemasukanEntries, lingkup),
+    [pemasukanEntries, lingkupId], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const adjustmentsLingkup = useMemo(
+    () => saringLingkup(inventoryAdjustments, lingkup),
+    [inventoryAdjustments, lingkupId], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const labaRugi = useMemo(() => hitungLabaRugi(pemasukanLingkup, pengeluaran), [pemasukanLingkup, pengeluaran])
+  const inventori = useMemo(() => hitungInventori(pengeluaran, adjustmentsLingkup), [pengeluaran, adjustmentsLingkup])
+  const neraca = useMemo(() => hitungNeraca(pemasukanLingkup, pengeluaran, inventori), [pemasukanLingkup, pengeluaran, inventori])
 
   const loadOpnames = () => {
     setOpnameLoading(true)
@@ -71,9 +102,14 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   // ── Export Excel: Laporan Akuntan lengkap ─────────────────────────────
   const exportAkuntan = () => {
     const wb = reportXlsx.utils.book_new()
-    const projectName = projectInfo?.projectName?.trim() || 'Proyek'
+    const projectName = konsolidasi
+      ? 'Konsolidasi Semua Proyek'
+      : lingkupId === PROYEK_UMUM
+        ? LABEL_PROYEK_UMUM
+        : (daftarProyek.find(p => p.info.id === lingkupId)?.info.projectName
+          ?? projectInfo?.projectName ?? 'Proyek').trim()
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-    const subtitle = `Proyek: ${projectName} · Dicetak: ${printed}`
+    const subtitle = `${konsolidasi ? 'Lingkup' : 'Proyek'}: ${projectName} · Dicetak: ${printed}`
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
       title: 'NERACA (SEDERHANA)',
@@ -106,7 +142,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
       title: 'DAFTAR PEMASUKAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Sumber', 'Kategori', 'Jumlah (Rp)', 'Keterangan'],
-      rows: pemasukanEntries.map((p, i) => [i + 1, p.tanggal, p.sumber, p.kategori, p.jumlah, p.keterangan ?? '']),
+      rows: pemasukanLingkup.map((p, i) => [i + 1, p.tanggal, p.sumber, p.kategori, p.jumlah, p.keterangan ?? '']),
       sumCols: [4],
     }), 'Pemasukan')
 
@@ -114,7 +150,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
       title: 'DAFTAR PENGELUARAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Jumlah (Rp)'],
-      rows: realisasiEntries.map((e, i) => [i + 1, e.tanggal, e.tipe, e.keterangan, e.kategori, e.jumlah]),
+      rows: pengeluaran.map((e, i) => [i + 1, e.tanggal, e.tipe, e.keterangan, e.kategori, e.jumlah]),
       sumCols: [5],
     }), 'Pengeluaran')
 
@@ -146,11 +182,32 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
         <h2 className="text-xl md:text-2xl font-serif font-bold text-navy flex items-center gap-2">
           <Scale className="w-6 h-6" /> Akuntan
         </h2>
-        <Button onClick={exportAkuntan} variant="outline"
-          className="gap-2 font-bold text-navy border-navy/20 hover:bg-navy hover:text-white">
-          <Download className="w-4 h-4" /> Laporan Akuntan (Excel)
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Lingkup laporan: konsolidasi semua proyek atau satu proyek */}
+          <select value={lingkupId} onChange={e => setLingkupId(e.target.value)}
+            aria-label="Lingkup laporan"
+            className="h-10 rounded-xl border border-input bg-white px-3 text-xs font-semibold text-navy max-w-[230px]">
+            <option value={KONSOLIDASI}>📊 Konsolidasi (Semua Proyek)</option>
+            {daftarProyek.map(p => (
+              <option key={p.info.id} value={p.info.id}>🏗️ {p.info.projectName}</option>
+            ))}
+            <option value={PROYEK_UMUM}>{LABEL_PROYEK_UMUM}</option>
+          </select>
+          <Button onClick={exportAkuntan} variant="outline"
+            className="gap-2 font-bold text-navy border-navy/20 hover:bg-navy hover:text-white">
+            <Download className="w-4 h-4" /> Laporan Akuntan (Excel)
+          </Button>
+        </div>
       </div>
+
+      {konsolidasi && (
+        <p className="text-xs bg-gold-lt/40 border border-gold/30 rounded-xl p-3 text-slate-700">
+          Menampilkan <b>gabungan seluruh proyek</b>. Pilih nama proyek pada dropdown di atas untuk melihat
+          laporan satu proyek saja, atau buka{' '}
+          <a href="/kontraktor/konsolidasi" className="font-bold text-navy underline">Laporan Konsolidasi</a>{' '}
+          untuk perbandingan antar proyek.
+        </p>
+      )}
 
       {/* Sub-tab */}
       <div className="flex gap-1.5 flex-wrap">
@@ -170,10 +227,10 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
 
       {sub === 'labarugi' && <SubLabaRugi labaRugi={labaRugi} neraca={neraca} />}
       {sub === 'pemasukan' && (
-        <SubPemasukan entries={pemasukanEntries} onAdd={addPemasukan} onDelete={deletePemasukan} />
+        <SubPemasukan entries={pemasukanLingkup} onAdd={addPemasukan} onDelete={deletePemasukan} />
       )}
       {sub === 'inventori' && (
-        <SubInventori inventori={inventori} adjustments={inventoryAdjustments}
+        <SubInventori inventori={inventori} adjustments={adjustmentsLingkup}
           onAdd={addAdjustment} onDelete={deleteAdjustment} />
       )}
       {sub === 'opname' && (

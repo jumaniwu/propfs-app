@@ -6,6 +6,10 @@
 
 import type { RealisasiEntry } from './ai-realisasi'
 
+/** Proyek tempat entri dicatat; entri lama tanpa proyek masuk grup ini. */
+export const PROYEK_UMUM = '__umum__'
+export const LABEL_PROYEK_UMUM = 'Umum (Non-Proyek)'
+
 export interface PemasukanEntry {
   id: string
   tanggal: string // YYYY-MM-DD
@@ -13,6 +17,8 @@ export interface PemasukanEntry {
   kategori: 'termin' | 'penjualan' | 'modal' | 'lainnya'
   jumlah: number
   keterangan?: string
+  /** Diisi otomatis dari proyek aktif. Kosong = entri lama / non-proyek. */
+  projectId?: string
 }
 
 /** Penyesuaian stok manual: qty positif = barang masuk, negatif = terpakai/keluar. */
@@ -23,6 +29,17 @@ export interface InventoryAdjustment {
   satuan: string
   qty: number
   keterangan?: string
+  /** Diisi otomatis dari proyek aktif. Kosong = entri lama / non-proyek. */
+  projectId?: string
+}
+
+/** Lingkup laporan akuntan: seluruh proyek, satu proyek, atau non-proyek. */
+export type LingkupAkuntan = { jenis: 'konsolidasi' } | { jenis: 'proyek'; projectId: string }
+
+/** Saring entri sesuai lingkup. Entri tanpa projectId dianggap PROYEK_UMUM. */
+export function saringLingkup<T extends { projectId?: string }>(rows: T[], lingkup: LingkupAkuntan): T[] {
+  if (lingkup.jenis === 'konsolidasi') return rows
+  return rows.filter(r => (r.projectId || PROYEK_UMUM) === lingkup.projectId)
 }
 
 export interface InventoryRow {
@@ -182,4 +199,95 @@ export function progresOpname(items: OpnameItem[]): number {
   if (rencana <= 0) return 0
   const real = items.reduce((s, i) => s + Math.min(i.vol_realisasi || 0, i.vol_rencana || 0), 0)
   return (real / rencana) * 100
+}
+
+// ── Ringkasan konsolidasi antar proyek ───────────────────────────────────────
+
+export interface BarisKonsolidasi {
+  projectId: string
+  namaProyek: string
+  rab: number
+  pemasukan: number
+  pengeluaran: number
+  laba: number
+  /** Progress fisik tertimbang 0–100, dari bobot biaya tiap item RAB. */
+  progressPct: number
+  /** Persentase RAB yang sudah terpakai (pengeluaran / rab). */
+  terpakaiPct: number
+  /** progressPct − terpakaiPct. Negatif = biaya berlari lebih cepat dari progres. */
+  deviasiPct: number
+}
+
+export interface ProyekRingkas {
+  id: string
+  nama: string
+  rab: number
+  progressPct: number
+}
+
+/**
+ * Gabungkan pemasukan + pengeluaran per proyek menjadi baris laporan
+ * konsolidasi. Entri tanpa projectId dikelompokkan ke PROYEK_UMUM dan hanya
+ * muncul bila memang ada datanya.
+ */
+export function ringkasPerProyek(
+  proyek: ProyekRingkas[],
+  pemasukan: PemasukanEntry[],
+  pengeluaran: Array<RealisasiEntry & { projectId?: string }>,
+): BarisKonsolidasi[] {
+  const kunci = (id?: string) => id || PROYEK_UMUM
+
+  const masuk = new Map<string, number>()
+  for (const p of pemasukan) masuk.set(kunci(p.projectId), (masuk.get(kunci(p.projectId)) ?? 0) + (p.jumlah || 0))
+
+  const keluar = new Map<string, number>()
+  for (const e of pengeluaran) keluar.set(kunci(e.projectId), (keluar.get(kunci(e.projectId)) ?? 0) + (e.jumlah || 0))
+
+  const baris: BarisKonsolidasi[] = proyek.map(p => {
+    const pemasukanP = masuk.get(p.id) ?? 0
+    const pengeluaranP = keluar.get(p.id) ?? 0
+    const terpakaiPct = p.rab > 0 ? (pengeluaranP / p.rab) * 100 : 0
+    return {
+      projectId: p.id,
+      namaProyek: p.nama,
+      rab: p.rab,
+      pemasukan: pemasukanP,
+      pengeluaran: pengeluaranP,
+      laba: pemasukanP - pengeluaranP,
+      progressPct: p.progressPct,
+      terpakaiPct,
+      deviasiPct: p.progressPct - terpakaiPct,
+    }
+  })
+
+  // Grup non-proyek hanya ditampilkan bila ada angkanya
+  const umumMasuk = masuk.get(PROYEK_UMUM) ?? 0
+  const umumKeluar = keluar.get(PROYEK_UMUM) ?? 0
+  if (umumMasuk !== 0 || umumKeluar !== 0) {
+    baris.push({
+      projectId: PROYEK_UMUM,
+      namaProyek: LABEL_PROYEK_UMUM,
+      rab: 0,
+      pemasukan: umumMasuk,
+      pengeluaran: umumKeluar,
+      laba: umumMasuk - umumKeluar,
+      progressPct: 0,
+      terpakaiPct: 0,
+      deviasiPct: 0,
+    })
+  }
+
+  return baris
+}
+
+/** Total seluruh baris konsolidasi. */
+export function totalKonsolidasi(baris: BarisKonsolidasi[]) {
+  const rab = baris.reduce((s, b) => s + b.rab, 0)
+  const pemasukan = baris.reduce((s, b) => s + b.pemasukan, 0)
+  const pengeluaran = baris.reduce((s, b) => s + b.pengeluaran, 0)
+  return {
+    rab, pemasukan, pengeluaran,
+    laba: pemasukan - pengeluaran,
+    terpakaiPct: rab > 0 ? (pengeluaran / rab) * 100 : 0,
+  }
 }
