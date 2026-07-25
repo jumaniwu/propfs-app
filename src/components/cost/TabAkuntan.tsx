@@ -33,7 +33,10 @@ const fmtJt = (n: number) => `Rp ${(n / 1_000_000).toFixed(2)} Jt`
 
 type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname'
 
-export default function TabAkuntan() {
+const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname']
+
+/** `initialSub` dipakai deep-link dari Home Kontraktor AI (?tab=akuntan&sub=…). */
+export default function TabAkuntan({ initialSub }: { initialSub?: string } = {}) {
   const { toast } = useToast()
   const { realisasiEntries, projectInfo } = useCostStore()
   const {
@@ -41,7 +44,9 @@ export default function TabAkuntan() {
     addPemasukan, deletePemasukan, addAdjustment, deleteAdjustment,
   } = useAkuntanStore()
 
-  const [sub, setSub] = useState<SubTab>('labarugi')
+  const [sub, setSub] = useState<SubTab>(
+    () => (SUB_TABS as string[]).includes(initialSub ?? '') ? initialSub as SubTab : 'labarugi',
+  )
 
   // tarik data akuntan dari cloud sekali saat tab dibuka (sinkron antar perangkat)
   useEffect(() => { void useAkuntanStore.getState().loadFromCloud() }, [])

@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/home', label: 'Beranda', icon: Home, match: ['/home'] },
   { path: '/dashboard', label: 'Feasibility', icon: Calculator, match: ['/dashboard', '/input', '/result', '/report'] },
   { path: '/siteplan', label: 'AI Architect', icon: Map, match: ['/siteplan'] },
-  { path: '/cost-control', label: 'Kontraktor AI', icon: BarChart3, match: ['/cost-control', '/cost-report'] },
+  { path: '/kontraktor', label: 'Kontraktor AI', icon: BarChart3, match: ['/kontraktor', '/cost-control', '/cost-report'] },
   { path: '/profile', label: 'Profil', icon: User, match: ['/profile', '/pricing', '/payment'] },
 ]
 

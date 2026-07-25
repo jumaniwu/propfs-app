@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Calculator, LineChart, FileSpreadsheet, PackageOpen,
   ReceiptIcon, TrendingUp, Download, FolderPlus, Building2,
@@ -37,6 +37,18 @@ export default function CostDashboard() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [search, setSearch] = useState('')
+
+  // ── Deep-link dari Home Kontraktor AI: /cost-control?tab=…&sub=…&project=… ──
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [deepSub] = useState(() => searchParams.get('sub') ?? undefined)
+  useEffect(() => {
+    const tab = searchParams.get('tab') as WorkspaceTab | null
+    const proj = searchParams.get('project')
+    if (!tab && !proj && !deepSub) return
+    if (proj && proj !== projectInfo?.id) loadProject(proj)
+    if (tab) setActiveTab(tab)
+    setSearchParams(new URLSearchParams(), { replace: true }) // bersihkan query
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { canCreateProject, isSubscriptionEnabled } = useSubscription()
   const { addonFeaturesEnabled, addonCostPrice, user, planCatalog } = useAuthStore()
@@ -466,9 +478,9 @@ export default function CostDashboard() {
         <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 md:mb-8">
             <div>
-              <button onClick={() => navigate('/home')}
+              <button onClick={() => navigate('/kontraktor')}
                 className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
-                <ArrowLeft className="h-4 w-4" /> Kembali ke Portal
+                <ArrowLeft className="h-4 w-4" /> Home Kontraktor AI
               </button>
               <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Kontraktor AI</h1>
               {isSubscriptionEnabled ? (
@@ -739,7 +751,7 @@ export default function CostDashboard() {
                 {activeTab === 'material' && <TabMaterialSchedule />}
                 {activeTab === 'realisasi' && <TabRealisasiBiaya />}
                 {activeTab === 'kurva_s' && <TabKurvaS />}
-                {activeTab === 'akuntan' && <TabAkuntan />}
+                {activeTab === 'akuntan' && <TabAkuntan initialSub={deepSub} />}
                 {activeTab === 'spk' && <TabSPK />}
                 {activeTab === 'lapangan' && <TabLaporanLapangan />}
 
