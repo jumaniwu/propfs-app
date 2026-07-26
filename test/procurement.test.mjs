@@ -3,6 +3,7 @@
 import {
   nomorPo, hitungTotalPo, sisaQty, belumTerpesan, bolehKirimPo,
   statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm,
+  katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
   LABEL_STATUS_PO, LABEL_TERM,
 } from '../src/lib/procurement.ts'
 
@@ -136,5 +137,103 @@ assert(hargaVendorUntuk(vItems, 'v2', 'SEMEN PORTLAND') === 65_000, 'pencocokan 
 assert(hargaVendorUntuk(vItems, 'v1', 'Cat Tembok') === 0, 'vendor tidak menawarkan barang itu = 0')
 assert(hargaVendorUntuk(vItems, 'v2', 'Cat Tembok') === 0, 'harga 0 dari vendor tetap 0 (harus diisi manual)')
 assert(hargaVendorUntuk([], 'v1', 'Semen') === 0, 'tanpa katalog = 0')
+
+// ── katalogDariNota ────────────────────────────────────────────────────────
+// Nota yang sudah dicatat di Realisasi Biaya jadi sumber harga tambahan,
+// tanpa menunggu vendor mengisi apa pun.
+const nota = [
+  // dua kali beli semen dari toko yang sama, harga naik pada pembelian terbaru
+  { id: 'n1', tipe: 'material', tanggal: '2026-07-01', namaMaterial: 'Semen Portland 50kg',
+    volume: 100, satuan: 'sak', hargaSatuan: 64_000, namaSupplier: 'TB Sumber Jaya',
+    keterangan: '', kategori: 'bangunan', jumlah: 6_400_000, status: '' },
+  { id: 'n2', tipe: 'material', tanggal: '2026-07-20', namaMaterial: 'semen portland 50kg',
+    volume: 50, satuan: 'sak', hargaSatuan: 66_000, namaSupplier: 'tb sumber jaya',
+    keterangan: '', kategori: 'bangunan', jumlah: 3_300_000, status: '' },
+  // toko lain, harga satuan kosong → dihitung dari jumlah ÷ volume
+  { id: 'n3', tipe: 'material', tanggal: '2026-07-15', namaMaterial: 'Semen Portland 50kg',
+    volume: 20, satuan: 'sak', namaSupplier: 'TB Rejeki',
+    keterangan: '', kategori: 'bangunan', jumlah: 1_300_000, status: '' },
+  // tanpa nama toko
+  { id: 'n4', tipe: 'material', tanggal: '2026-07-10', namaMaterial: 'Paku 5cm',
+    volume: 10, satuan: 'kg', hargaSatuan: 22_000,
+    keterangan: '', kategori: 'bangunan', jumlah: 220_000, status: '' },
+  // bukan material → diabaikan
+  { id: 'n5', tipe: 'upah', tanggal: '2026-07-11', namaTukang: 'Budi',
+    keterangan: '', kategori: 'bangunan', jumlah: 500_000, status: '' },
+  // material tanpa nama → diabaikan
+  { id: 'n6', tipe: 'material', tanggal: '2026-07-12', namaMaterial: '   ',
+    volume: 1, hargaSatuan: 1000, keterangan: '', kategori: '', jumlah: 1000, status: '' },
+  // tanpa harga & tanpa volume → tidak bisa dijadikan acuan
+  { id: 'n7', tipe: 'material', tanggal: '2026-07-13', namaMaterial: 'Kawat Bendrat',
+    keterangan: '', kategori: '', jumlah: 0, status: '' },
+]
+
+const dariNota = katalogDariNota(nota)
+// Sumber Jaya×Semen (2 nota digabung), Rejeki×Semen, dan (tanpa toko)×Paku.
+assert(dariNota.length === 3, `3 pasangan toko×barang (kini ${dariNota.length})`)
+
+const semenSJ = dariNota.find(n => /sumber jaya/i.test(n.supplier))
+assert(semenSJ.jumlahBeli === 2, 'pembelian berulang dari toko sama digabung')
+assert(semenSJ.harga === 66_000, 'harga memakai pembelian TERBARU, bukan yang pertama')
+assert(semenSJ.terakhir === '2026-07-20', 'tanggal pembelian terakhir dicatat')
+
+const semenRejeki = dariNota.find(n => n.supplier === 'TB Rejeki')
+assert(semenRejeki.harga === 65_000, 'harga satuan dihitung dari jumlah ÷ volume bila kosong')
+
+assert(dariNota.some(n => n.supplier === TOKO_TIDAK_DICATAT), 'nota tanpa nama toko tetap masuk')
+assert(!dariNota.some(n => /kawat/i.test(n.nama)), 'nota tanpa harga & volume diabaikan')
+assert(!dariNota.some(n => n.nama.trim() === ''), 'material tanpa nama diabaikan')
+assert(katalogDariNota([]).length === 0, 'tanpa nota aman')
+assert(katalogDariNota(null).length === 0, 'masukan null aman')
+
+// ── ringkasKatalog dengan sumber nota ──────────────────────────────────────
+// Satu nota memakai nama barang yang PERSIS sama dengan yang didaftarkan
+// vendor, supaya kedua sumber menyatu di baris yang sama.
+const notaSamaNama = katalogDariNota([
+  ...nota,
+  { id: 'n8', tipe: 'material', tanggal: '2026-07-22', namaMaterial: 'Semen Portland',
+    volume: 10, satuan: 'sak', hargaSatuan: 62_000, namaSupplier: 'CV Maju Jaya',
+    keterangan: '', kategori: 'bangunan', jumlah: 620_000, status: '' },
+])
+const gabung = ringkasKatalog(vItems, vendors, notaSamaNama)
+
+// 'Semen Portland' (vendor v1 & v2) + nota dari CV Maju Jaya
+const semenGabung = gabung.find(b => b.nama.toLowerCase() === 'semen portland')
+assert(semenGabung.penawaran.length === 3,
+  `harga vendor & nota menyatu di baris yang sama (kini ${semenGabung.penawaran.length})`)
+assert(semenGabung.hargaTermurah === 62_000, 'harga termurah lintas sumber (dari nota)')
+assert(semenGabung.vendorTermurah === 'CV Maju Jaya', 'toko termurah dikenali walau berasal dari nota')
+
+const dariVendor = semenGabung.penawaran.filter(p => p.sumber === 'vendor')
+const dariNotaSaja = semenGabung.penawaran.filter(p => p.sumber === 'nota')
+assert(dariVendor.length === 2 && dariNotaSaja.length === 1, 'kedua sumber ditandai terpisah')
+assert(dariNotaSaja.every(p => p.terakhir && p.jumlahBeli >= 1),
+  'penawaran dari nota membawa tanggal & jumlah pembelian')
+assert(dariVendor.every(p => p.terakhir === undefined),
+  'penawaran vendor tidak mengarang riwayat pembelian')
+assert(dariNotaSaja[0].vendor_id === 'v2',
+  'toko pada nota dicocokkan ke vendor lewat namanya')
+assert(dariNotaSaja[0].term === 'Cash / Tunai', 'term vendor ikut terbawa ke penawaran dari nota')
+
+// Toko yang belum jadi vendor tidak dipaksa punya vendor_id
+const belumTerdaftar = gabung
+  .find(b => b.nama.toLowerCase() === 'semen portland 50kg')
+  .penawaran.find(p => /rejeki/i.test(p.vendor_nama))
+assert(belumTerdaftar.vendor_id === '', 'toko yang belum jadi vendor tidak dikaitkan paksa')
+
+// Barang yang HANYA ada di nota tetap muncul di katalog
+assert(gabung.some(b => /paku/i.test(b.nama)), 'barang yang hanya ada di nota tetap muncul')
+assert(gabung.some(b => b.nama.toLowerCase() === 'semen portland 50kg'),
+  'nama barang yang berbeda tetap jadi baris terpisah')
+
+// ── tokoBelumJadiVendor ────────────────────────────────────────────────────
+const belum = tokoBelumJadiVendor(dariNota, vendors)
+assert(belum.includes('TB Sumber Jaya') && belum.includes('TB Rejeki'), 'toko dari nota bisa didaftarkan')
+assert(!belum.includes(TOKO_TIDAK_DICATAT), 'toko tanpa nama tidak ditawarkan jadi vendor')
+assert(tokoBelumJadiVendor(dariNota, [{ nama: 'tb sumber jaya' }]).includes('TB Rejeki'),
+  'pencocokan nama toko tidak peka huruf besar')
+assert(!tokoBelumJadiVendor(dariNota, [{ nama: 'TB SUMBER JAYA' }]).includes('TB Sumber Jaya'),
+  'toko yang sudah jadi vendor tidak ditawarkan lagi')
+assert(tokoBelumJadiVendor([], vendors).length === 0, 'tanpa nota tidak ada tawaran')
 
 console.log(`✅ procurement: ${ok} assertion lolos`)
