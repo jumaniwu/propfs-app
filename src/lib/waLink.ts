@@ -39,38 +39,63 @@ export function waKe(nomor: string | null | undefined, pesan: string): string {
   return n ? `https://wa.me/${n}?text=${teks}` : `https://wa.me/?text=${teks}`
 }
 
-/** Pesan akun baru: berisi User ID, password, dan tautan login. */
+/** Halaman login khusus anggota tim (Kode Perusahaan + User ID). */
+export const JALUR_LOGIN_TIM = '/tim/masuk'
+
+/**
+ * Pesan akun baru: Kode Perusahaan, User ID, password, dan tautan login tim.
+ * Ketiganya wajib ada — tanpa Kode Perusahaan karyawan tidak bisa masuk.
+ */
 export function pesanAkunBaru(a: {
-  nama: string; jabatan: string; email: string; password: string; origin: string
+  nama: string; jabatan: string; username: string; kode: string
+  password: string; origin: string; perusahaan?: string
 }): string {
   return [
-    `Halo ${a.nama}, berikut akun PropFS · Kontraktor AI Anda:`,
+    `Halo ${a.nama}, berikut akun PropFS · Kontraktor AI Anda${a.perusahaan ? ` di ${a.perusahaan}` : ''}:`,
     '',
-    `Jabatan   : ${a.jabatan}`,
-    `User ID   : ${a.email}`,
-    `Password  : ${a.password}`,
+    `Jabatan        : ${a.jabatan}`,
+    `Kode Perusahaan: ${a.kode}`,
+    `User ID        : ${a.username}`,
+    `Password       : ${a.password}`,
     '',
-    `Login di  : ${a.origin}/auth`,
+    `Login di       : ${a.origin}${JALUR_LOGIN_TIM}`,
     '',
-    'Mohon ganti password setelah login pertama. Jangan bagikan data ini ke orang lain.',
+    'Masukkan ketiga data di atas pada halaman login tim. Jangan bagikan data ini ke orang lain.',
   ].join('\n')
 }
 
 /**
  * Pesan pengingat untuk anggota lama. Password TIDAK disertakan karena tidak
- * pernah disimpan — pengguna diarahkan memakai "Lupa Password".
+ * pernah disimpan — karyawan diminta menghubungi admin untuk diatur ulang.
  */
 export function pesanIngatkanAkun(a: {
-  nama: string; jabatan: string; email: string; origin: string
+  nama: string; jabatan: string; username: string; kode: string
+  origin: string; perusahaan?: string
 }): string {
   return [
-    `Halo ${a.nama}, berikut pengingat akun PropFS · Kontraktor AI Anda:`,
+    `Halo ${a.nama}, berikut pengingat akun PropFS · Kontraktor AI Anda${a.perusahaan ? ` di ${a.perusahaan}` : ''}:`,
     '',
-    `Jabatan   : ${a.jabatan}`,
-    `User ID   : ${a.email}`,
+    `Jabatan        : ${a.jabatan}`,
+    `Kode Perusahaan: ${a.kode}`,
+    `User ID        : ${a.username}`,
     '',
-    `Login di  : ${a.origin}/auth`,
+    `Login di       : ${a.origin}${JALUR_LOGIN_TIM}`,
     '',
-    'Lupa password? Klik "Lupa Password" di halaman login, tautan penggantian akan dikirim ke email Anda.',
+    'Lupa password? Hubungi admin perusahaan Anda untuk mengatur ulang password.',
+  ].join('\n')
+}
+
+/** Pesan setelah admin mengatur ulang password seorang anggota. */
+export function pesanPasswordBaru(a: {
+  nama: string; username: string; kode: string; password: string; origin: string
+}): string {
+  return [
+    `Halo ${a.nama}, password akun PropFS · Kontraktor AI Anda sudah diatur ulang:`,
+    '',
+    `Kode Perusahaan: ${a.kode}`,
+    `User ID        : ${a.username}`,
+    `Password baru  : ${a.password}`,
+    '',
+    `Login di       : ${a.origin}${JALUR_LOGIN_TIM}`,
   ].join('\n')
 }

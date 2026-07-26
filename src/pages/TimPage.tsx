@@ -6,27 +6,28 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Users, UserPlus, ShieldCheck, Loader2, RefreshCw, Trash2,
-  Copy, Send, Eye, EyeOff, Shuffle, Check, X,
+  Users, UserPlus, ShieldCheck, Loader2, RefreshCw, Trash2, Building2,
+  Copy, Send, Eye, EyeOff, Shuffle, Check, X, KeyRound,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
-import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import { teamApi, passwordAcak, type TeamMember, type BuatPenggunaInput } from '@/lib/teamApi'
+import { normalUsername, usernameValid } from '@/lib/teamLogin'
 import { ROLES, ringkasIzin, IZIN_LABEL, MODUL_LABEL, type TeamRole, type Modul } from '@/lib/teamRoles'
-import { waKe, pesanAkunBaru, pesanIngatkanAkun } from '@/lib/waLink'
+import {
+  waKe, pesanAkunBaru, pesanIngatkanAkun, pesanPasswordBaru, JALUR_LOGIN_TIM,
+} from '@/lib/waLink'
+import { getBrandingCache } from '@/lib/branding'
 
 type Tab = 'anggota' | 'role'
 
 const kosong: BuatPenggunaInput = {
-  email: '', password: '', nama: '', jabatan: '', no_wa: '', role: 'pengawas',
+  username: '', email: '', password: '', nama: '', jabatan: '', no_wa: '', role: 'pengawas',
 }
 
 export default function TimPage() {
-  const navigate = useNavigate()
   const { toast } = useToast()
-  const { profile } = useAuthStore()
   const [params] = useSearchParams()
 
   const [tab, setTab] = useState<Tab>(() => (params.get('tab') === 'role' ? 'role' : 'anggota'))
@@ -35,7 +36,9 @@ export default function TimPage() {
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(() => params.get('aksi') === 'undang')
   /** Kredensial pengguna yang baru dibuat — password hanya ada di memori ini. */
-  const [akunBaru, setAkunBaru] = useState<(BuatPenggunaInput & { sudahAda: boolean }) | null>(null)
+  const [akunBaru, setAkunBaru] = useState<(BuatPenggunaInput & { kode: string }) | null>(null)
+  const [kode, setKode] = useState('')
+  const perusahaan = getBrandingCache().nama
 
   function muat() {
     setLoading(true); setError('')
@@ -44,7 +47,28 @@ export default function TimPage() {
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
   }
-  useEffect(muat, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    muat()
+    // Kode Perusahaan dibuatkan otomatis pada panggilan pertama.
+    teamApi().kodePerusahaan().then(setKode).catch(() => setKode(''))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Buat password baru untuk anggota yang lupa password, lalu kirim via WA. */
+  async function resetPassword(m: TeamMember) {
+    const pw = passwordAcak()
+    if (!window.confirm(`Atur ulang password ${m.nama}?\n\nPassword baru: ${pw}\n\nPassword lama langsung tidak berlaku.`)) return
+    try {
+      await teamApi().resetPassword(m.id, pw)
+      const pesan = pesanPasswordBaru({
+        nama: m.nama, username: m.username ?? '', kode,
+        password: pw, origin: window.location.origin,
+      })
+      window.open(waKe(m.no_wa, pesan), '_blank')
+      toast({ title: 'Password diatur ulang', description: `Kirim password baru ke ${m.nama} sekarang.` })
+    } catch (e) {
+      toast({ title: 'Gagal mengatur password', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    }
+  }
 
   async function ubahRole(m: TeamMember, role: TeamRole) {
     try {
@@ -113,24 +137,26 @@ export default function TimPage() {
 
         {tab === 'anggota' && (
           <>
+            <KartuKodePerusahaan kode={kode} perusahaan={perusahaan} />
+
             {/* Kartu kredensial setelah pengguna dibuat — password hanya ada di
                 sini, sistem tidak menyimpannya, jadi jangan ditutup otomatis. */}
             {akunBaru && (
-              <KartuAkunBaru akun={akunBaru} onTutup={() => setAkunBaru(null)} />
+              <KartuAkunBaru akun={akunBaru} perusahaan={perusahaan} onTutup={() => setAkunBaru(null)} />
             )}
 
             {formOpen && (
               <FormBuatPengguna
+                kode={kode}
                 onBatal={() => setFormOpen(false)}
-                onSukses={(m, input, sudahAda) => {
+                onSukses={(m, input, kodePakai) => {
                   setMembers(prev => [m, ...prev])
                   setFormOpen(false)
-                  setAkunBaru({ ...input, sudahAda })
+                  setKode(kodePakai)
+                  setAkunBaru({ ...input, kode: kodePakai })
                   toast({
                     title: '✅ Pengguna dibuat!',
-                    description: sudahAda
-                      ? 'Email ini sudah punya akun PropFS — akun lama ditautkan ke tim Anda (password tidak diubah).'
-                      : 'Kirim User ID & password ke karyawan Anda sekarang.',
+                    description: 'Kirim Kode Perusahaan, User ID, dan password ke karyawan Anda sekarang.',
                   })
                 }}
               />
@@ -176,15 +202,19 @@ export default function TimPage() {
                     </div>
 
                     <div className="text-[11px] text-muted-foreground space-y-0.5">
+                      <p className="flex items-center gap-1 truncate">
+                        <KeyRound className="w-3 h-3 shrink-0" />
+                        User ID: <b className="text-navy font-mono">{m.username || '—'}</b>
+                      </p>
                       <p className="truncate">✉️ {m.member_email}</p>
                       {m.no_wa && (
                         <p className="flex items-center gap-1">
                           📱 {m.no_wa}
                           <button
-                            title="Kirim pengingat User ID & tautan login (password tidak disimpan sistem)"
+                            title="Kirim pengingat Kode Perusahaan & User ID (password tidak disimpan sistem)"
                             onClick={() => window.open(waKe(m.no_wa, pesanIngatkanAkun({
-                              nama: m.nama, jabatan: m.jabatan,
-                              email: m.member_email, origin: window.location.origin,
+                              nama: m.nama, jabatan: m.jabatan, username: m.username ?? '',
+                              kode, origin: window.location.origin, perusahaan,
                             })), '_blank')}
                             className="text-navy hover:underline font-semibold">kirim data akun</button>
                         </p>
@@ -202,10 +232,16 @@ export default function TimPage() {
                       </p>
                     </div>
 
-                    <div className="flex gap-1.5 pt-1 border-t border-border">
+                    <div className="flex gap-1.5 pt-1 border-t border-border flex-wrap">
                       <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
                         onClick={() => ubahStatus(m)}>
                         {m.status === 'aktif' ? <><X className="w-3 h-3" /> Nonaktifkan</> : <><Check className="w-3 h-3" /> Aktifkan</>}
+                      </Button>
+                      {/* Akun tim dikelola perusahaan — tidak ada "Lupa Password"
+                          lewat email, jadi admin yang mengatur ulang. */}
+                      <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                        onClick={() => resetPassword(m)}>
+                        <KeyRound className="w-3 h-3" /> Reset Password
                       </Button>
                       <button onClick={() => hapus(m)}
                         className="ml-auto text-muted-foreground hover:text-red-600 self-center">
@@ -225,18 +261,63 @@ export default function TimPage() {
   )
 }
 
+// ── Kartu Kode Perusahaan ───────────────────────────────────────────────────
+// Kode ini yang membedakan login karyawan dari login akun PropFS pribadi.
+// Tanpa kode, karyawan tidak bisa masuk — jadi ditampilkan besar dan mudah
+// disalin, bukan disembunyikan di halaman pengaturan.
+function KartuKodePerusahaan({ kode, perusahaan }: { kode: string; perusahaan: string }) {
+  const { toast } = useToast()
+  const tautan = `${window.location.origin}${JALUR_LOGIN_TIM}`
+
+  return (
+    <div className="bg-navy rounded-2xl p-5 text-white">
+      <div className="flex items-start gap-3">
+        <span className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+          <Building2 className="w-5 h-5 text-gold" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] uppercase tracking-wider text-white/60 font-bold">Kode Perusahaan</p>
+          <p className="font-mono font-black text-2xl tracking-[0.2em] text-gold mt-0.5">
+            {kode || '••••••••'}
+          </p>
+          <p className="text-[11px] text-white/70 mt-1.5 leading-relaxed">
+            Karyawan {perusahaan || 'perusahaan Anda'} masuk lewat <b className="text-white">{tautan}</b> memakai
+            kode ini + User ID masing-masing. Akun tim terpisah dari akun PropFS pribadi mereka.
+          </p>
+        </div>
+      </div>
+      {kode && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <button
+            onClick={() => { navigator.clipboard?.writeText(kode); toast({ title: 'Kode Perusahaan disalin' }) }}
+            className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+            <Copy className="w-3.5 h-3.5" /> Salin Kode
+          </button>
+          <button
+            onClick={() => { navigator.clipboard?.writeText(tautan); toast({ title: 'Tautan login tim disalin' }) }}
+            className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+            <Copy className="w-3.5 h-3.5" /> Salin Tautan Login
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Kartu kredensial pengguna baru ──────────────────────────────────────────
 // Password TIDAK disimpan di database. Kartu ini satu-satunya kesempatan
 // mengirimkannya, jadi hanya hilang bila ditutup sendiri oleh admin.
-function KartuAkunBaru({ akun, onTutup }: {
-  akun: BuatPenggunaInput & { sudahAda: boolean }
+function KartuAkunBaru({ akun, perusahaan, onTutup }: {
+  akun: BuatPenggunaInput & { kode: string }
+  perusahaan: string
   onTutup: () => void
 }) {
   const { toast } = useToast()
   const origin = window.location.origin
-  const pesan = akun.sudahAda
-    ? pesanIngatkanAkun({ nama: akun.nama, jabatan: akun.jabatan, email: akun.email, origin })
-    : pesanAkunBaru({ nama: akun.nama, jabatan: akun.jabatan, email: akun.email, password: akun.password, origin })
+  const pesan = pesanAkunBaru({
+    nama: akun.nama, jabatan: akun.jabatan, username: akun.username,
+    kode: akun.kode, password: akun.password, origin, perusahaan,
+  })
 
   return (
     <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 space-y-4">
@@ -246,9 +327,8 @@ function KartuAkunBaru({ akun, onTutup }: {
             <Check className="w-4 h-4" /> Akun {akun.nama} siap dikirim
           </h2>
           <p className="text-[11px] text-emerald-800/80 mt-1">
-            {akun.sudahAda
-              ? 'Email ini sudah punya akun PropFS, jadi password lamanya tetap dipakai dan tidak ditampilkan.'
-              : 'Password hanya tampil sekali di sini — sistem tidak menyimpannya. Kirim sekarang sebelum menutup kartu ini.'}
+            Password hanya tampil sekali di sini — sistem tidak menyimpannya. Kirim sekarang
+            sebelum menutup kartu ini.
           </p>
         </div>
         <button onClick={onTutup} className="text-emerald-700/60 hover:text-emerald-900 shrink-0">
@@ -261,17 +341,19 @@ function KartuAkunBaru({ akun, onTutup }: {
           ['Nama', akun.nama],
           ['Jabatan', akun.jabatan],
           ['Nomor WA', akun.no_wa],
-          ['User ID', akun.email],
-          ...(akun.sudahAda ? [] : [['Password', akun.password]]),
+          ['Kode Perusahaan', akun.kode],
+          ['User ID', akun.username],
+          ['Password', akun.password],
         ].map(([k, v]) => (
           <div key={k} className="flex gap-2">
-            <span className="text-muted-foreground w-20 shrink-0">{k}</span>
-            <span className={`font-bold text-navy break-all ${k === 'Password' ? 'font-mono' : ''}`}>{v}</span>
+            <span className="text-muted-foreground w-32 shrink-0">{k}</span>
+            <span className={`font-bold text-navy break-all ${
+              k === 'Password' || k === 'Kode Perusahaan' || k === 'User ID' ? 'font-mono' : ''}`}>{v}</span>
           </div>
         ))}
         <div className="flex gap-2 pt-1 border-t border-emerald-100 mt-1">
-          <span className="text-muted-foreground w-20 shrink-0">Login di</span>
-          <span className="font-bold text-navy break-all">{origin}/auth</span>
+          <span className="text-muted-foreground w-32 shrink-0">Login di</span>
+          <span className="font-bold text-navy break-all">{origin}{JALUR_LOGIN_TIM}</span>
         </div>
       </div>
 
@@ -291,9 +373,10 @@ function KartuAkunBaru({ akun, onTutup }: {
 }
 
 // ── Form buat pengguna baru ─────────────────────────────────────────────────
-function FormBuatPengguna({ onBatal, onSukses }: {
+function FormBuatPengguna({ kode, onBatal, onSukses }: {
+  kode: string
   onBatal: () => void
-  onSukses: (m: TeamMember, input: BuatPenggunaInput, sudahPunyaAkun: boolean) => void
+  onSukses: (m: TeamMember, input: BuatPenggunaInput, kode: string) => void
 }) {
   const { toast } = useToast()
   const [f, setF] = useState<BuatPenggunaInput>({ ...kosong, password: passwordAcak() })
@@ -305,8 +388,8 @@ function FormBuatPengguna({ onBatal, onSukses }: {
     setF(prev => ({ ...prev, [k]: v }))
 
   const pesanAkun = () => pesanAkunBaru({
-    nama: f.nama, jabatan: f.jabatan, email: f.email,
-    password: f.password, origin: window.location.origin,
+    nama: f.nama, jabatan: f.jabatan, username: normalUsername(f.username),
+    kode, password: f.password, origin: window.location.origin,
   })
   const salinAkun = () => {
     navigator.clipboard?.writeText(pesanAkun())
@@ -318,17 +401,19 @@ function FormBuatPengguna({ onBatal, onSukses }: {
     if (f.nama.trim().length < 2) return setError('Nama wajib diisi.')
     if (f.jabatan.trim().length < 2) return setError('Jabatan wajib diisi.')
     if (f.no_wa.trim().length < 8) return setError('Nomor WhatsApp wajib diisi.')
+    if (!usernameValid(f.username)) return setError('User ID minimal 3 karakter (huruf, angka, titik, strip).')
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) return setError('Email tidak valid.')
     if (f.password.length < 8) return setError('Password minimal 8 karakter.')
 
     setSubmitting(true)
     try {
       const bersih = {
-        ...f, email: f.email.trim().toLowerCase(), nama: f.nama.trim(),
+        ...f, username: normalUsername(f.username),
+        email: f.email.trim().toLowerCase(), nama: f.nama.trim(),
         jabatan: f.jabatan.trim(), no_wa: f.no_wa.trim(),
       }
-      const { member, sudahPunyaAkun } = await teamApi().createUser(bersih)
-      onSukses(member, bersih, sudahPunyaAkun)
+      const { member, kode: kodePakai } = await teamApi().createUser(bersih)
+      onSukses(member, bersih, kodePakai || kode)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setSubmitting(false) }
@@ -345,8 +430,9 @@ function FormBuatPengguna({ onBatal, onSukses }: {
         <button onClick={onBatal} className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Anda membuatkan akun untuk karyawan. Setelah dibuat, bagikan <b>User ID (email)</b> dan
-        <b> password</b> kepada yang bersangkutan — mereka login sendiri di halaman login PropFS.
+        Anda membuatkan akun kerja untuk karyawan. Mereka masuk lewat <b>halaman login tim</b> memakai
+        <b> Kode Perusahaan {kode || '(dibuat otomatis)'}</b> + <b>User ID</b> + password — bukan email
+        pribadi, jadi akun kerja ini tidak bercampur dengan akun PropFS pribadi mereka.
       </p>
 
       <div className="grid sm:grid-cols-2 gap-3">
@@ -366,9 +452,23 @@ function FormBuatPengguna({ onBatal, onSukses }: {
             placeholder="mis. 081234567890" className={inputCls} />
         </div>
         <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Email (dipakai sebagai User ID) *</label>
+          <label className="text-xs font-medium text-muted-foreground">User ID untuk login *</label>
+          <input value={f.username}
+            onChange={e => set('username', e.target.value)}
+            onBlur={() => set('username', normalUsername(f.username))}
+            placeholder="mis. suhanto" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            className={`${inputCls} font-mono`} />
+          <p className="text-[10px] text-muted-foreground">
+            Cukup unik di perusahaan Anda. Karyawan mengetik ini bersama Kode Perusahaan.
+          </p>
+        </div>
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground">Email karyawan (data kontak) *</label>
           <input type="email" value={f.email} onChange={e => set('email', e.target.value)}
             placeholder="mis. suhanto@perusahaan.com" className={inputCls} />
+          <p className="text-[10px] text-muted-foreground">
+            Disimpan sebagai data kontak saja — tidak dipakai untuk login.
+          </p>
         </div>
       </div>
 

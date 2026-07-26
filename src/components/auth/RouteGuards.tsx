@@ -1,7 +1,23 @@
 // ── Auth Route Guards ────────────────────────────────────
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { sesiTim } from '@/lib/teamApi'
 import type { AppFeature } from '@/lib/supabase'
+
+/** Beranda sesi tim: karyawan selalu mendarat di modul Kontraktor AI. */
+const HOME_TIM = '/kontraktor'
+
+/**
+ * Halaman non-Kontraktor yang tetap boleh dibuka akun tim. Selain ini,
+ * karyawan diarahkan kembali ke Kontraktor AI — akun tim memang tidak
+ * berlangganan Feasibility Study dan tidak punya dashboard akun utama.
+ */
+const BOLEH_UNTUK_TIM = ['/profile']
+
+/** Fitur yang aksesnya menumpang langganan perusahaan saat sesi tim aktif. */
+const FITUR_KONTRAKTOR: AppFeature[] = [
+  'cost_control', 'cost_rab', 'cost_realisasi', 'cost_material', 'scurve',
+]
 
 interface Props { children: React.ReactNode }
 interface FeatureProps { children: React.ReactNode; feature: AppFeature }
@@ -17,8 +33,15 @@ function Spinner() {
 /** Redirect to /auth if not logged in. Block if user is suspended. */
 export function PrivateRoute({ children }: Props) {
   const { user, profile, isLoading, signOut } = useAuthStore()
+  const { pathname } = useLocation()
   if (isLoading) return <Spinner />
   if (!user) return <Navigate to="/auth" replace />
+
+  // Sesi tim dikunci ke Kontraktor AI — jangan pernah mendarat di dashboard
+  // akun utama atau modul Feasibility Study milik perusahaan lain.
+  if (sesiTim() && !BOLEH_UNTUK_TIM.some(p => pathname.startsWith(p))) {
+    return <Navigate to={HOME_TIM} replace />
+  }
   
   // Block suspended users
   if (profile && profile.is_active === false) {
@@ -60,7 +83,7 @@ export function AuthRoute({ children }: Props) {
 
   // Do not return null on isLoading here, because it will UNMOUNT AuthPage and destroy its local state
   // AuthPage itself already handles its loading state via the useAuthStore's isLoading flag.
-  if (user && !isLoading) return <Navigate to={redirectTo} replace />
+  if (user && !isLoading) return <Navigate to={sesiTim() ? HOME_TIM : redirectTo} replace />
   return <>{children}</>
 }
 
@@ -84,6 +107,13 @@ export function FeatureRoute({ children, feature }: FeatureProps) {
   const { user, isLoading, isFeatureEnabled } = useAuthStore()
   if (isLoading) return <Spinner />
   if (!user) return <Navigate to="/auth" replace />
+
+  // Anggota tim tidak punya langganan sendiri — hak aksesnya menumpang
+  // langganan perusahaan, yang sudah diperiksa saat login tim dan diperiksa
+  // ulang di halaman Home Kontraktor AI. Tanpa pengecualian ini, penjaga
+  // rute akan menendang karyawan keluar begitu ia masuk.
+  if (sesiTim() && FITUR_KONTRAKTOR.includes(feature)) return <>{children}</>
+
   if (!isFeatureEnabled(feature)) {
     return <Navigate to="/home" replace state={{ upgradeNeeded: feature }} />
   }

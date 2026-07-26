@@ -389,6 +389,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           localStorage.removeItem(key)
         }
       })
+      // Lepas juga penanda sesi tim & workspace aktif. Kalau tertinggal,
+      // login berikutnya — akun pribadi sekalipun — ikut terkunci ke
+      // perusahaan yang tadi dibuka.
+      try {
+        const { bersihkanSesiTim } = await import('@/lib/teamApi')
+        bersihkanSesiTim()
+      } catch { /* abaikan */ }
       set({ user: null, session: null, profile: null, subscription: null, subscriptions: [] })
     }
   },

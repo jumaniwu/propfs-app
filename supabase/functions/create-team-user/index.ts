@@ -1,10 +1,17 @@
 // ============================================================
-// PropFS — Edge Function: buat akun anggota tim
-// Super admin perusahaan (pemilik workspace) membuat User ID + password
-// untuk karyawannya. Pembuatan akun butuh service_role, jadi TIDAK boleh
-// dilakukan dari browser — karena itu dikerjakan di sini.
+// PropFS — Edge Function: akun anggota tim
+// Super admin perusahaan membuat User ID + password untuk karyawannya, dan
+// bisa mengatur ulang password bila karyawan lupa. Keduanya butuh
+// service_role, jadi TIDAK boleh dikerjakan dari browser.
+//
+// Anggota tim TIDAK memakai email pribadinya untuk login. Kombinasi
+// Kode Perusahaan + username dipetakan ke email internal
+//   <username>@<kode>.tim.propfs.id
+// sehingga akun kerja tidak pernah bertabrakan dengan akun PropFS pribadi
+// karyawan tersebut. Email asli tetap disimpan sebagai data kontak.
 //
 // Deploy:  supabase functions deploy create-team-user
+// Setelan: matikan "Verify JWT" — fungsi ini memeriksa sesi sendiri.
 // Rahasia: SUPABASE_URL & SUPABASE_SERVICE_ROLE_KEY sudah otomatis tersedia.
 // ============================================================
 
@@ -19,20 +26,62 @@ const corsHeaders = {
 }
 
 const ROLES = ['pemilik', 'manajemen', 'keuangan', 'pm', 'pengawas', 'logistik', 'viewer']
+const DOMAIN_TIM = 'tim.propfs.id'
+const HURUF_KODE = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 
 interface Body {
-  email: string
-  password: string
-  nama: string
-  jabatan: string
+  aksi?: 'buat' | 'reset'
+  // aksi 'buat'
+  username?: string
+  email?: string          // email asli, untuk kontak — bukan untuk login
+  password?: string
+  nama?: string
+  jabatan?: string
   no_wa?: string
-  role: string
+  role?: string
+  // aksi 'reset'
+  member_id?: string
 }
 
 function jsonRes(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+/** Sama persis dengan normalUsername() di src/lib/teamLogin.ts. */
+function normalUsername(input: string): string {
+  return (input ?? '')
+    .trim().toLowerCase()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z0-9._-]/g, '')
+    .replace(/^[._-]+/, '')
+    .slice(0, 24)
+    .replace(/[._-]+$/, '')
+}
+function usernameValid(u: string): boolean {
+  return u.length >= 3 && /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(u)
+}
+
+/** Kode perusahaan pemilik; dibuatkan bila belum ada. */
+// deno-lint-ignore no-explicit-any
+async function kodePerusahaan(admin: any, ownerId: string): Promise<string> {
+  const { data: profil } = await admin
+    .from('company_profiles').select('kode').eq('user_id', ownerId).maybeSingle()
+  if (profil?.kode) return profil.kode as string
+
+  // buat kode acak yang belum dipakai perusahaan lain
+  for (let coba = 0; coba < 12; coba++) {
+    let kode = 'PFS-'
+    for (let i = 0; i < 4; i++) kode += HURUF_KODE[Math.floor(Math.random() * HURUF_KODE.length)]
+    const { data: bentrok } = await admin
+      .from('company_profiles').select('user_id').eq('kode', kode).maybeSingle()
+    if (bentrok) continue
+    const { error } = await admin
+      .from('company_profiles').upsert({ user_id: ownerId, kode }, { onConflict: 'user_id' })
+    if (!error) return kode
+  }
+  throw new Error('Gagal membuat Kode Perusahaan. Coba lagi.')
 }
 
 serve(async (req) => {
@@ -63,67 +112,96 @@ serve(async (req) => {
       return jsonRes({ error: `Sesi login tidak valid (${sebab}). Coba logout lalu login kembali.` }, 401)
     }
 
-    // ── 2. Validasi masukan ────────────────────────────────────────────────
     const body = await req.json() as Body
-    const email = (body.email ?? '').trim().toLowerCase()
+    const admin = createClient(url, serviceKey)
     const password = body.password ?? ''
+
+    // ── 2a. Atur ulang password anggota yang sudah ada ─────────────────────
+    if (body.aksi === 'reset') {
+      if (password.length < 8) return jsonRes({ error: 'Password minimal 8 karakter.' }, 400)
+
+      const { data: anggota } = await admin
+        .from('team_members').select('*')
+        .eq('id', body.member_id ?? '').eq('owner_id', pemilik.id).maybeSingle()
+      if (!anggota) return jsonRes({ error: 'Anggota tidak ditemukan di tim Anda.' }, 404)
+      if (!anggota.member_user_id) return jsonRes({ error: 'Anggota ini belum punya akun login.' }, 400)
+
+      const { error: updErr } = await admin.auth.admin
+        .updateUserById(anggota.member_user_id, { password })
+      if (updErr) return jsonRes({ error: `Gagal mengatur password: ${updErr.message}` }, 400)
+
+      return jsonRes({ ok: true, member: anggota })
+    }
+
+    // ── 2b. Buat akun anggota baru ─────────────────────────────────────────
+    const username = normalUsername(body.username ?? '')
+    const emailAsli = (body.email ?? '').trim().toLowerCase()
     const nama = (body.nama ?? '').trim()
     const jabatan = (body.jabatan ?? '').trim()
     const noWa = (body.no_wa ?? '').trim()
-    const role = ROLES.includes(body.role) ? body.role : 'viewer'
+    const role = ROLES.includes(body.role ?? '') ? body.role! : 'viewer'
 
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return jsonRes({ error: 'Email tidak valid.' }, 400)
+    if (!usernameValid(username)) {
+      return jsonRes({ error: 'User ID minimal 3 karakter, hanya huruf, angka, titik, strip, atau garis bawah.' }, 400)
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailAsli)) return jsonRes({ error: 'Email tidak valid.' }, 400)
     if (password.length < 8) return jsonRes({ error: 'Password minimal 8 karakter.' }, 400)
     if (nama.length < 2) return jsonRes({ error: 'Nama wajib diisi.' }, 400)
     if (jabatan.length < 2) return jsonRes({ error: 'Jabatan wajib diisi.' }, 400)
     if (noWa.length < 8) return jsonRes({ error: 'Nomor WhatsApp wajib diisi.' }, 400)
 
-    const admin = createClient(url, serviceKey)
+    const kode = await kodePerusahaan(admin, pemilik.id)
+    const loginEmail = `${username}@${kode.toLowerCase()}.${DOMAIN_TIM}`
 
-    // ── 3. Cegah duplikat di workspace yang sama ───────────────────────────
+    // ── 3. Cegah User ID kembar di perusahaan yang sama ────────────────────
     const { data: sudahAda } = await admin
       .from('team_members').select('id')
-      .eq('owner_id', pemilik.id).eq('member_email', email).maybeSingle()
-    if (sudahAda) return jsonRes({ error: 'Email ini sudah terdaftar di tim Anda.' }, 409)
-
-    // ── 4. Buat akun (atau pakai akun yang sudah ada di PropFS) ────────────
-    let memberId: string | null = null
-    const { data: dibuat, error: createErr } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true,
-      user_metadata: { full_name: nama, jabatan, phone: noWa, created_by_team: pemilik.id },
-    })
-
-    if (createErr) {
-      const pesan = String(createErr.message ?? '')
-      const sudahTerdaftar = /already|registered|exists/i.test(pesan)
-      if (!sudahTerdaftar) return jsonRes({ error: `Gagal membuat akun: ${pesan}` }, 400)
-      // Akun PropFS sudah ada → cukup tautkan ke tim (password tidak diubah)
-      const { data: daftar } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-      memberId = daftar?.users?.find(u => (u.email ?? '').toLowerCase() === email)?.id ?? null
-      if (!memberId) return jsonRes({ error: 'Email sudah dipakai akun lain dan tidak dapat ditautkan.' }, 409)
-    } else {
-      memberId = dibuat.user?.id ?? null
+      .eq('owner_id', pemilik.id).ilike('username', username).maybeSingle()
+    if (sudahAda) {
+      return jsonRes({ error: `User ID "${username}" sudah dipakai di tim Anda. Pilih User ID lain.` }, 409)
     }
-    if (!memberId) return jsonRes({ error: 'Akun tidak terbentuk.' }, 500)
+
+    // ── 4. Buat akun. Email internal tidak mungkin bentrok dengan akun
+    //      pribadi siapa pun, jadi kegagalan di sini memang kesalahan nyata.
+    const { data: dibuat, error: createErr } = await admin.auth.admin.createUser({
+      email: loginEmail, password, email_confirm: true,
+      user_metadata: {
+        full_name: nama, jabatan, phone: noWa, email_kontak: emailAsli,
+        akun_tim: true, kode_perusahaan: kode, created_by_team: pemilik.id,
+      },
+    })
+    if (createErr || !dibuat?.user?.id) {
+      const pesan = String(createErr?.message ?? 'akun tidak terbentuk')
+      // Sisa akun dari percobaan sebelumnya yang gagal di tengah jalan.
+      if (/already|registered|exists/i.test(pesan)) {
+        return jsonRes({
+          error: `User ID "${username}" pernah dibuat tapi tidak tercatat di daftar tim. `
+            + 'Pilih User ID lain, atau hapus anggota lama lebih dulu.',
+        }, 409)
+      }
+      return jsonRes({ error: `Gagal membuat akun: ${pesan}` }, 400)
+    }
+    const memberId = dibuat.user.id
 
     // ── 5. Lengkapi profil & daftarkan sebagai anggota tim ─────────────────
     await admin.from('profiles').upsert({
-      id: memberId, email, full_name: nama, phone: noWa, is_active: true,
+      id: memberId, email: emailAsli, full_name: nama, phone: noWa, is_active: true,
     }, { onConflict: 'id' })
 
     const { data: anggota, error: teamErr } = await admin.from('team_members').insert({
-      owner_id: pemilik.id, member_user_id: memberId, member_email: email,
+      owner_id: pemilik.id, member_user_id: memberId,
+      member_email: emailAsli, username, login_email: loginEmail,
       nama, jabatan, no_wa: noWa, role, status: 'aktif',
       joined_at: new Date().toISOString(),
     }).select().single()
 
-    if (teamErr) return jsonRes({ error: `Gagal menyimpan anggota: ${teamErr.message}` }, 400)
+    if (teamErr) {
+      // Jangan tinggalkan akun yatim yang tidak muncul di daftar tim.
+      await admin.auth.admin.deleteUser(memberId).catch(() => {})
+      return jsonRes({ error: `Gagal menyimpan anggota: ${teamErr.message}` }, 400)
+    }
 
-    return jsonRes({
-      ok: true,
-      member: anggota,
-      sudah_punya_akun: !!createErr,   // true = akun lama, password tidak diubah
-    })
+    return jsonRes({ ok: true, member: anggota, kode, login_email: loginEmail })
   } catch (e) {
     return jsonRes({ error: e instanceof Error ? e.message : String(e) }, 500)
   }

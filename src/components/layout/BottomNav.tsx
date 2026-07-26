@@ -6,6 +6,7 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Home, Calculator, Map, BarChart3, User } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { sesiTim } from '@/lib/teamApi'
 
 interface NavItem {
   path: string
@@ -23,8 +24,18 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/profile', label: 'Profil', icon: User, match: ['/profile', '/pricing', '/payment'] },
 ]
 
+/**
+ * Menu untuk akun tim: hanya Kontraktor AI dan Profil. Karyawan tidak
+ * berlangganan Feasibility Study maupun AI Architect, dan tidak punya
+ * dashboard akun utama, jadi menu itu tidak ditampilkan sama sekali.
+ */
+const NAV_TIM: NavItem[] = [
+  { path: '/kontraktor', label: 'Kontraktor AI', icon: BarChart3, match: ['/kontraktor', '/cost-control', '/cost-report'] },
+  { path: '/profile', label: 'Profil', icon: User, match: ['/profile'] },
+]
+
 // Halaman tanpa bottom nav: landing, auth, legal, reset password, admin
-const HIDDEN_PREFIXES = ['/auth', '/legal', '/reset-password', '/admin']
+const HIDDEN_PREFIXES = ['/auth', '/tim/masuk', '/legal', '/reset-password', '/admin']
 
 export function useBottomNavVisible(): boolean {
   const location = useLocation()
@@ -40,6 +51,8 @@ export default function BottomNav() {
   const visible = useBottomNavVisible()
   if (!visible) return null
 
+  const items = sesiTim() ? NAV_TIM : NAV_ITEMS
+
   return (
     <>
       {/* spacer agar konten halaman tidak tertutup nav yang fixed */}
@@ -48,8 +61,8 @@ export default function BottomNav() {
         aria-label="Navigasi utama"
         className="fixed bottom-0 inset-x-0 z-50 lg:hidden bg-white dark:bg-navy border-t border-border shadow-[0_-2px_10px_rgba(13,27,42,0.08)] pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="grid grid-cols-5 h-16">
-          {NAV_ITEMS.map(item => {
+        <div className="h-16 grid" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+          {items.map(item => {
             const active = item.match.some(m => location.pathname.startsWith(m))
             const Icon = item.icon
             return (

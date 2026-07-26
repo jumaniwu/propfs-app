@@ -13,7 +13,12 @@ export interface TeamMember {
   id: string
   owner_id: string
   member_user_id: string | null
+  /** Email asli anggota — data kontak, BUKAN yang dipakai login. */
   member_email: string
+  /** User ID yang diketik anggota di halaman login tim. */
+  username: string | null
+  /** Email internal <username>@<kode>.tim.propfs.id yang dipakai auth. */
+  login_email: string | null
   nama: string
   jabatan: string
   no_wa: string
@@ -25,6 +30,7 @@ export interface TeamMember {
 }
 
 export interface BuatPenggunaInput {
+  username: string
   email: string
   password: string
   nama: string
@@ -38,14 +44,24 @@ export interface Workspace {
   nama: string
   perusahaan: string
   role: TeamRole
+  /** Kode Perusahaan workspace ini, mis. "PFS-4K7M". */
+  kode?: string
+  /** Paket Kontraktor AI milik pemilik workspace — anggota menumpang ini. */
+  owner_plan?: string | null
+  owner_plan_expires?: string | null
+  owner_trial_expires?: string | null
 }
 
 export interface TeamApi {
   listMembers(): Promise<TeamMember[]>
-  createUser(input: BuatPenggunaInput): Promise<{ member: TeamMember; sudahPunyaAkun: boolean }>
+  createUser(input: BuatPenggunaInput): Promise<{ member: TeamMember; kode: string; loginEmail: string }>
+  /** Atur ulang password anggota (karyawan lupa password). */
+  resetPassword(memberId: string, password: string): Promise<void>
   updateMember(id: string, patch: Partial<Pick<TeamMember, 'role' | 'jabatan' | 'nama' | 'no_wa' | 'status'>>): Promise<void>
   deleteMember(id: string): Promise<void>
   myWorkspaces(): Promise<Workspace[]>
+  /** Kode Perusahaan milik pengguna yang sedang login; dibuatkan bila belum ada. */
+  kodePerusahaan(): Promise<string>
 }
 
 // ── REST langsung (pola sama dengan fieldReports.ts / materialApi.ts) ───────
@@ -112,6 +128,58 @@ async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Prom
   } finally { clearTimeout(timer) }
 }
 
+/**
+ * Panggil Edge Function create-team-user (aksi 'buat' atau 'reset').
+ * Kegagalan jaringan diterjemahkan jadi petunjuk yang bisa ditindaklanjuti —
+ * di sini penyebabnya hampir selalu deploy atau setelan Verify JWT.
+ */
+async function panggilFungsiTim(payload: Record<string, unknown>): Promise<{
+  member?: TeamMember; kode?: string; login_email?: string
+}> {
+  const { url, key } = supaConf()
+  const token = await freshAccessToken(url)
+  if (!token) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+
+  const exp = jwtExp(token)
+  if (exp !== null && exp * 1000 <= Date.now()) {
+    throw new Error('Sesi login sudah kedaluwarsa. Logout lalu login kembali, kemudian ulangi.')
+  }
+
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 25000)
+  try {
+    const res = await fetch(`${url}/functions/v1/create-team-user`, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { apikey: key, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({})) as {
+      error?: string; member?: TeamMember; kode?: string; login_email?: string
+    }
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('Edge Function "create-team-user" belum ditemukan. Deploy dulu di Supabase → Edge Functions (nama harus persis create-team-user).')
+      }
+      throw new Error(data.error || `Permintaan gagal (HTTP ${res.status}).`)
+    }
+    return data
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Waktu habis — periksa koneksi lalu coba lagi.')
+    }
+    // fetch() melempar TypeError bila permintaan tidak pernah sampai:
+    // fungsi belum di-deploy, atau preflight CORS ditolak gateway.
+    if (e instanceof TypeError) {
+      throw new Error(
+        'Tidak bisa menghubungi Edge Function "create-team-user". Periksa di Supabase → Edge Functions: '
+        + '(1) fungsi sudah ter-deploy dengan nama persis create-team-user, dan '
+        + '(2) setelan "Verify JWT" pada fungsi ini DIMATIKAN — fungsi sudah memeriksa sesi login sendiri.',
+      )
+    }
+    throw e
+  } finally { clearTimeout(timer) }
+}
+
 const realApi: TeamApi = {
   async listMembers() {
     const res = await restFetch('team_members?select=*&order=created_at.desc')
@@ -120,46 +188,16 @@ const realApi: TeamApi = {
   },
 
   async createUser(input) {
-    const { url, key } = supaConf()
-    const token = await freshAccessToken(url)
-    if (!token) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
-
-    const exp = jwtExp(token)
-    if (exp !== null && exp * 1000 <= Date.now()) {
-      throw new Error('Sesi login sudah kedaluwarsa. Logout lalu login kembali, kemudian ulangi.')
+    const data = await panggilFungsiTim({ aksi: 'buat', ...input })
+    return {
+      member: data.member as TeamMember,
+      kode: data.kode ?? '',
+      loginEmail: data.login_email ?? '',
     }
+  },
 
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 25000)
-    try {
-      const res = await fetch(`${url}/functions/v1/create-team-user`, {
-        method: 'POST', signal: ctrl.signal,
-        headers: { apikey: key, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      const data = await res.json().catch(() => ({})) as { error?: string; member?: TeamMember; sudah_punya_akun?: boolean }
-      if (!res.ok) {
-        if (res.status === 404) {
-          throw new Error('Edge Function "create-team-user" belum ditemukan. Deploy dulu di Supabase → Edge Functions (nama harus persis create-team-user).')
-        }
-        throw new Error(data.error || `Gagal membuat pengguna (HTTP ${res.status}).`)
-      }
-      return { member: data.member as TeamMember, sudahPunyaAkun: !!data.sudah_punya_akun }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') {
-        throw new Error('Waktu habis saat membuat pengguna — periksa koneksi lalu coba lagi.')
-      }
-      // fetch() melempar TypeError bila permintaan tidak pernah sampai:
-      // fungsi belum di-deploy, atau preflight CORS ditolak gateway.
-      if (e instanceof TypeError) {
-        throw new Error(
-          'Tidak bisa menghubungi Edge Function "create-team-user". Periksa di Supabase → Edge Functions: '
-          + '(1) fungsi sudah ter-deploy dengan nama persis create-team-user, dan '
-          + '(2) setelan "Verify JWT" pada fungsi ini DIMATIKAN — fungsi sudah memeriksa sesi login sendiri.',
-        )
-      }
-      throw e
-    } finally { clearTimeout(timer) }
+  async resetPassword(memberId, password) {
+    await panggilFungsiTim({ aksi: 'reset', member_id: memberId, password })
   },
 
   async updateMember(id, patch) {
@@ -177,6 +215,37 @@ const realApi: TeamApi = {
     if (!res.ok) return []
     return await res.json() as Workspace[]
   },
+
+  async kodePerusahaan() {
+    const res = await restFetch('rpc/kode_perusahaan_saya', { method: 'POST', body: '{}' })
+    if (!res.ok) {
+      throw new Error(
+        `Gagal membaca Kode Perusahaan (HTTP ${res.status}) — pastikan migration_team_login.sql sudah dijalankan.`,
+      )
+    }
+    return (await res.json() as string | null) ?? ''
+  },
+}
+
+/**
+ * Nama perusahaan pemilik sebuah Kode Perusahaan. Dipakai halaman login tim
+ * SEBELUM pengguna masuk, jadi memakai kunci anon. Mengembalikan string
+ * kosong bila kodenya tidak dikenal.
+ */
+export async function perusahaanByKode(kode: string, ms = 8000): Promise<string> {
+  const { url, key } = supaConf()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/perusahaan_by_kode`, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_kode: kode }),
+    })
+    if (!res.ok) return ''
+    const rows = await res.json() as Array<{ nama_perusahaan?: string }>
+    return rows?.[0]?.nama_perusahaan ?? ''
+  } catch { return '' } finally { clearTimeout(timer) }
 }
 
 export function teamApi(): TeamApi {
@@ -195,6 +264,27 @@ export function setWorkspaceOwner(ownerId: string | null): void {
     if (ownerId) localStorage.setItem(WS_KEY, ownerId)
     else localStorage.removeItem(WS_KEY)
   } catch { /* ignore */ }
+}
+
+// ── Sesi tim ────────────────────────────────────────────────────────────────
+// Ditandai saat seseorang masuk lewat halaman login tim (/tim/masuk). Sesi
+// seperti ini dikunci pada satu perusahaan: tidak ada Feasibility Study,
+// tidak ada dashboard akun utama, dan tidak ada penukar workspace.
+const SESI_TIM_KEY = 'propfs-sesi-tim'
+
+export function sesiTim(): boolean {
+  try { return localStorage.getItem(SESI_TIM_KEY) === '1' } catch { return false }
+}
+export function setSesiTim(aktif: boolean): void {
+  try {
+    if (aktif) localStorage.setItem(SESI_TIM_KEY, '1')
+    else localStorage.removeItem(SESI_TIM_KEY)
+  } catch { /* ignore */ }
+}
+/** Bersihkan jejak sesi tim & workspace — dipanggil saat logout. */
+export function bersihkanSesiTim(): void {
+  setSesiTim(false)
+  setWorkspaceOwner(null)
 }
 
 /** Id pemilik data yang harus dipakai saat query — anggota membaca data owner. */
