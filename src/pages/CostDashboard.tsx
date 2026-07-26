@@ -9,6 +9,7 @@ import { useState, useMemo, useEffect } from 'react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import { buatInvoiceAddon } from '@/lib/invoice'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
 import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
@@ -97,7 +98,13 @@ export default function CostDashboard() {
             description: `Anda bisa membeli slot tambahan Cost Control seharga Rp ${addonCostPrice.toLocaleString('id-ID')}, atau upgrade paket Anda.`,
             variant: 'destructive',
           })
-          navigate(`/payment?plan_id=addon_cost&amount=${addonCostPrice}`)
+          buatInvoiceAddon('addon_cost', addonCostPrice)
+            .then(id => navigate(`/payment/${id}`))
+            .catch(e => toast({
+              title: 'Gagal memulai pembelian',
+              description: e instanceof Error ? e.message : String(e),
+              variant: 'destructive',
+            }))
         } else {
           toast({
             title: 'Batas proyek tercapai',

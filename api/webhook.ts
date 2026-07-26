@@ -75,6 +75,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else if (invoice.plan_id === 'addon_cost') {
           await supabase.rpc('increment_addon_slots', { uid: invoice.user_id, slot_col: 'addon_cost_slots' });
           console.log(`[Webhook] Cost addon slot added for user ${invoice.user_id}`);
+        } else if (invoice.plan_id === 'addon_user') {
+          // Slot pengguna tim — dipakai kuota di halaman Tim & Pengguna.
+          const { error: slotErr } = await supabase.rpc('increment_addon_user_slots', {
+            uid: invoice.user_id, jumlah: 1,
+          });
+          if (slotErr) console.error('[Webhook] Team user slot failed:', slotErr.message);
+          else console.log(`[Webhook] Team user slot added for user ${invoice.user_id}`);
         } else {
           // ── Regular subscription plan ──
           // Calculate duration based on invoice period
