@@ -49,11 +49,19 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization') ?? ''
     if (!authHeader.startsWith('Bearer ')) return jsonRes({ error: 'Tidak ada sesi login.' }, 401)
 
+    // Token WAJIB dioper eksplisit ke getUser(). Tanpa argumen, supabase-js
+    // membaca sesi miliknya sendiri — di Edge Function tidak ada sesi
+    // tersimpan, sehingga pemeriksaan selalu gagal.
+    const jwt = authHeader.slice('Bearer '.length).trim()
     const asCaller = createClient(url, anonKey, {
       global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
     })
-    const { data: { user: pemilik }, error: authErr } = await asCaller.auth.getUser()
-    if (authErr || !pemilik) return jsonRes({ error: 'Sesi login tidak valid.' }, 401)
+    const { data: { user: pemilik }, error: authErr } = await asCaller.auth.getUser(jwt)
+    if (authErr || !pemilik) {
+      const sebab = authErr?.message ?? 'token tidak dikenali'
+      return jsonRes({ error: `Sesi login tidak valid (${sebab}). Coba logout lalu login kembali.` }, 401)
+    }
 
     // ── 2. Validasi masukan ────────────────────────────────────────────────
     const body = await req.json() as Body

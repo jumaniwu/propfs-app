@@ -65,6 +65,37 @@ function storedAccessToken(url: string): string | null {
     return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
   } catch { return null }
 }
+
+/** Detik kedaluwarsa dari klaim `exp` JWT; null bila tidak terbaca. */
+function jwtExp(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof payload.exp === 'number' ? payload.exp : null
+  } catch { return null }
+}
+
+/**
+ * Token yang dijamin masih berlaku untuk memanggil Edge Function.
+ * Token di localStorage bisa sudah kedaluwarsa (umumnya 1 jam); bila begitu
+ * kita minta sesi baru ke supabase-js — dengan batas waktu, karena klien itu
+ * kadang menggantung di Chrome mobile.
+ */
+async function freshAccessToken(url: string): Promise<string | null> {
+  const stored = storedAccessToken(url)
+  const exp = stored ? jwtExp(stored) : null
+  const masihLama = exp !== null && exp * 1000 - Date.now() > 60_000
+  if (stored && masihLama) return stored
+
+  try {
+    const { supabase } = await import('@/lib/supabase')
+    const segar = await Promise.race([
+      supabase.auth.getSession().then(r => r.data.session?.access_token ?? null),
+      new Promise<null>(resolve => setTimeout(() => resolve(null), 6000)),
+    ])
+    if (segar) return segar
+  } catch { /* pakai token tersimpan sebagai upaya terakhir */ }
+  return stored
+}
 async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
   const { url, key } = supaConf()
   const token = storedAccessToken(url)
@@ -90,8 +121,13 @@ const realApi: TeamApi = {
 
   async createUser(input) {
     const { url, key } = supaConf()
-    const token = storedAccessToken(url)
+    const token = await freshAccessToken(url)
     if (!token) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+
+    const exp = jwtExp(token)
+    if (exp !== null && exp * 1000 <= Date.now()) {
+      throw new Error('Sesi login sudah kedaluwarsa. Logout lalu login kembali, kemudian ulangi.')
+    }
 
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 25000)
