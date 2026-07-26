@@ -11,6 +11,11 @@ interface Props {
 export default function SignaturePad({ onChange, height = 180 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
+  // Dicatat di ref, BUKAN hanya di state: end() dulu membaca `empty` dari
+  // closure render yang sama, sehingga bila React belum commit pembaruan
+  // state sebelum pointerup, tanda tangan yang baru digambar dibuang begitu
+  // saja dan pengguna melihat "tanda tangan belum digambar".
+  const adaGoresan = useRef(false)
   const [empty, setEmpty] = useState(true)
 
   useEffect(() => {
@@ -38,11 +43,16 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
 
   const start = (e: React.PointerEvent) => {
     drawing.current = true
-    canvasRef.current!.setPointerCapture(e.pointerId)
+    try { canvasRef.current!.setPointerCapture(e.pointerId) } catch { /* abaikan */ }
     const ctx = canvasRef.current!.getContext('2d')!
     const p = pos(e)
     ctx.beginPath()
     ctx.moveTo(p.x, p.y)
+    // Ketukan tunggal (titik) juga dianggap tanda tangan yang sah.
+    ctx.lineTo(p.x + 0.6, p.y + 0.6)
+    ctx.stroke()
+    adaGoresan.current = true
+    setEmpty(false)
   }
   const move = (e: React.PointerEvent) => {
     if (!drawing.current) return
@@ -50,12 +60,13 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
     const p = pos(e)
     ctx.lineTo(p.x, p.y)
     ctx.stroke()
+    adaGoresan.current = true
     if (empty) setEmpty(false)
   }
   const end = () => {
     if (!drawing.current) return
     drawing.current = false
-    onChange(empty ? null : canvasRef.current!.toDataURL('image/png'))
+    onChange(adaGoresan.current ? canvasRef.current!.toDataURL('image/png') : null)
   }
 
   const clear = () => {
@@ -66,6 +77,7 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.restore()
+    adaGoresan.current = false
     setEmpty(true)
     onChange(null)
   }

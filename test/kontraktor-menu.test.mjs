@@ -10,7 +10,7 @@ const cari = (q) => cariMenu(MENU_ITEMS, q).map(i => i.label)
 const item = (key) => MENU_ITEMS.find(i => i.key === key)
 
 // ── Bentuk katalog ─────────────────────────────────────────────────────────
-assert(MENU_ITEMS.length === 13, `13 ikon setelah digabung (kini ${MENU_ITEMS.length})`)
+assert(MENU_ITEMS.length === 14, `14 ikon (kini ${MENU_ITEMS.length})`)
 
 // tidak ada key ganda
 const keys = MENU_ITEMS.map(i => i.key)
@@ -45,6 +45,8 @@ assert(!item('kalender') && !item('link_pekerja'), 'Kalender Progres & Link Peke
 assert(item('lapangan')?.label === 'Laporan Lapangan', 'ikon lapangan bernama Laporan Lapangan')
 assert(!item('pakai_bahan') && !item('req_bahan'), 'Pakai & Request Material menyatu')
 assert(item('material_lapangan')?.label === 'Material Lapangan', 'ikon material lapangan ada')
+assert(item('procurement')?.label === 'Procurement', 'ikon Procurement ada')
+assert(item('procurement')?.path === '/kontraktor/procurement', 'Procurement menuju halamannya sendiri')
 
 // ── Pencarian: label lama harus tetap menemukan ikon gabungannya ───────────
 const petaCari = {
@@ -54,6 +56,8 @@ const petaCari = {
   kalender: 'Laporan Lapangan', 'link pekerja': 'Laporan Lapangan', mandor: 'Laporan Lapangan',
   request: 'Material Lapangan', kekurangan: 'Material Lapangan', 'pakai material': 'Material Lapangan',
   'google drive': 'Pengaturan',
+  vendor: 'Procurement', supplier: 'Procurement', 'purchase order': 'Procurement',
+  pengadaan: 'Procurement',
 }
 for (const [kata, label] of Object.entries(petaCari)) {
   assert(cari(kata).includes(label), `cari "${kata}" menemukan ${label}`)

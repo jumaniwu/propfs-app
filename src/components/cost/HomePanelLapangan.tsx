@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import {
   ShoppingCart, RefreshCw, Check, X, ChevronRight, AlertTriangle,
-  TrendingUp, PackageOpen, Clock,
+  TrendingUp, PackageOpen, Clock, FileText,
 } from 'lucide-react'
 import {
   materialApi, URGENSI_LABEL, URGENSI_TONE,
@@ -23,6 +23,7 @@ import {
   type ProyekUntukProgres, type StatusProgres,
 } from '@/lib/dashboardLapangan'
 import { can, type TeamRole } from '@/lib/teamRoles'
+import { belumTerpesan } from '@/lib/procurement'
 import type { MaterialScheduleItem } from '@/types/cost.types'
 import { useToast } from '@/hooks/use-toast'
 
@@ -64,10 +65,12 @@ interface Props {
   approverNama: string
   onBukaProyek: (projectId: string) => void
   onBukaMaterial: (sub: 'pakai' | 'request' | 'kurang') => void
+  onBukaProcurement: () => void
 }
 
 export default function HomePanelLapangan({
-  role, proyek, rencanaMaterial, approverNama, onBukaProyek, onBukaMaterial,
+  role, proyek, rencanaMaterial, approverNama,
+  onBukaProyek, onBukaMaterial, onBukaProcurement,
 }: Props) {
   const { toast } = useToast()
   const [requests, setRequests] = useState<MaterialRequest[]>([])
@@ -111,6 +114,10 @@ export default function HomePanelLapangan({
       .sort((a, b) => (b.created_at ?? b.tanggal).localeCompare(a.created_at ?? a.tanggal)),
     [requests],
   )
+
+  // Request yang sudah disetujui tapi belum penuh terpesan — langkah
+  // berikutnya bagi pemakai adalah membuat PO.
+  const siapDipesan = useMemo(() => belumTerpesan(requests).length, [requests])
 
   const progres = useMemo(() => ringkasProgres(proyek), [proyek])
   const dataGrafik = useMemo(() => progres.map(p => ({
@@ -216,6 +223,18 @@ export default function HomePanelLapangan({
               <button onClick={() => onBukaMaterial('request')}
                 className="w-full text-[11px] font-bold text-muted-foreground hover:text-navy flex items-center justify-center gap-0.5 pt-1">
                 Lihat semua permintaan <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Setelah disetujui, langkah berikutnya adalah memesan ke vendor —
+              jadi pintasannya ditaruh di sini, bukan disembunyikan di menu. */}
+          {siapDipesan > 0 && (
+            <div className="mt-3 pt-3 border-t border-border">
+              <button onClick={onBukaProcurement}
+                className="w-full h-10 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-navy/90">
+                <FileText className="w-3.5 h-3.5" />
+                Buat PO — {siapDipesan} request siap dipesan
               </button>
             </div>
           )}

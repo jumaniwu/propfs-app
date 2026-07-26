@@ -42,12 +42,23 @@ export interface MaterialRequest {
   approver: string
   approved_at: string | null
   catatan_approval: string
+  /** Qty yang sudah masuk Purchase Order; sisa = qty − qty_dipesan. */
+  qty_dipesan?: number
   created_at?: string
 }
 
 export interface MaterialApi {
   listUsage(): Promise<MaterialUsage[]>
   listRequests(): Promise<MaterialRequest[]>
+  /**
+   * Buat permintaan material dari dalam aplikasi (anggota tim yang login).
+   * Sebelum ini, permintaan hanya bisa lahir dari link publik pekerja —
+   * PM dan logistik tidak punya jalan sama sekali.
+   */
+  createRequest(r: {
+    tanggal: string; pemohon: string; nama: string; satuan: string; qty: number
+    urgensi: Urgensi; butuh_tanggal: string | null; catatan: string; project_name: string
+  }): Promise<MaterialRequest>
   setRequestStatus(id: string, status: StatusRequest, approver: string, catatan: string): Promise<void>
   deleteUsage(id: string): Promise<void>
   deleteRequest(id: string): Promise<void>
@@ -111,6 +122,17 @@ const realApi: MaterialApi = {
     if (!res.ok) throw new Error(`Gagal memuat permintaan (HTTP ${res.status}).`)
     return await res.json() as MaterialRequest[]
   },
+  async createRequest(r) {
+    const res = await restFetch('material_requests', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ ...r, status: 'menunggu', photos: [] }),
+    })
+    if (!res.ok) throw new Error(`Gagal menyimpan permintaan (HTTP ${res.status}).`)
+    const rows = await res.json() as MaterialRequest[]
+    return rows[0]
+  },
+
   async setRequestStatus(id, status, approver, catatan) {
     const res = await restFetch(`material_requests?id=eq.${id}`, {
       method: 'PATCH',

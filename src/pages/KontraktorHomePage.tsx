@@ -383,6 +383,7 @@ export default function KontraktorHomePage() {
           approverNama={profile?.full_name || 'Manajemen'}
           onBukaProyek={id => { loadProject(id); navigate('/cost-control?tab=overview') }}
           onBukaMaterial={sub => navigate(`/kontraktor/material?sub=${sub}`)}
+          onBukaProcurement={() => navigate('/kontraktor/procurement?sub=po')}
         />
 
         {/* ── Aktivitas terbaru ───────────────────────────────────────── */}
