@@ -58,15 +58,34 @@ returns text language sql security definer stable set search_path = public as $$
 $$;
 
 -- Daftar workspace yang bisa diakses pengguna saat ini (untuk switcher).
-create or replace function public.my_workspaces()
-returns table (owner_id uuid, nama text, perusahaan text, role text)
-language sql security definer stable set search_path = public as $$
-  select t.owner_id,
-         coalesce(p.full_name, ''), coalesce(p.company, ''), t.role
-  from team_members t
-  left join profiles p on p.id = t.owner_id
-  where t.member_user_id = auth.uid() and t.status = 'aktif';
-$$;
+--
+-- Bentuk hasil fungsi ini DIPERLUAS oleh migrasi berikutnya
+-- (migration_team_login.sql menambah `kode`, migration_team_quota.sql
+-- menambah kolom plan & `owner_akses`). Postgres menolak `create or replace`
+-- yang mengubah daftar kolom (ERROR 42P13), jadi versi dasar ini hanya
+-- dibuat bila fungsinya belum ada. Dengan begitu migrasi ini aman dijalankan
+-- ulang: tidak error, dan tidak menurunkan versi yang sudah lebih baru.
+do $do$
+begin
+  if not exists (
+    select 1 from pg_proc pr
+    join pg_namespace ns on ns.oid = pr.pronamespace
+    where ns.nspname = 'public' and pr.proname = 'my_workspaces'
+  ) then
+    execute $ddl$
+      create function public.my_workspaces()
+      returns table (owner_id uuid, nama text, perusahaan text, role text)
+      language sql security definer stable set search_path = public as $fn$
+        select t.owner_id,
+               coalesce(p.full_name, ''), coalesce(p.company, ''), t.role
+        from team_members t
+        left join profiles p on p.id = t.owner_id
+        where t.member_user_id = auth.uid() and t.status = 'aktif';
+      $fn$;
+    $ddl$;
+  end if;
+end
+$do$;
 
 alter table public.team_members enable row level security;
 

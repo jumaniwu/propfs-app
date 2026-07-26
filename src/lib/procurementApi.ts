@@ -8,6 +8,8 @@
 import type {
   Vendor, VendorItem, PurchaseOrder, StatusVendor, StatusPo, PoItem,
 } from './procurement'
+import { milikWorkspace } from './procurement'
+import { dataOwnerId } from './teamApi'
 
 export interface BuatPoInput {
   nomor: string
@@ -156,25 +158,45 @@ async function sisip<T>(tabel: string, body: unknown, apa: string): Promise<T> {
     method: 'POST', body: JSON.stringify(body),
     headers: { Prefer: 'return=representation' },
   })
-  if (!res.ok) throw new Error(`Gagal menyimpan ${apa} (HTTP ${res.status}).`)
+  if (!res.ok) throw new Error(`Gagal menyimpan ${apa}${sebab(res.status)}`)
   const rows = await res.json() as T[]
   return rows[0]
+}
+
+/**
+ * Pesan lanjutan menurut kode HTTP. 403 dari PostgREST berarti kebijakan RLS
+ * menolak barisnya — nyaris selalu karena migrasi belum dijalankan sehingga
+ * `is_team_member` belum ada, atau sesi login sudah kedaluwarsa.
+ */
+function sebab(status: number): string {
+  if (status === 403) {
+    return ' — akses ditolak. Pastikan migration_procurement.sql sudah'
+      + ' dijalankan di Supabase, lalu keluar dan masuk lagi.'
+  }
+  if (status === 404) return ' — jalankan migration_procurement.sql di Supabase SQL Editor.'
+  return ` (HTTP ${status}).`
 }
 
 const realApi: ProcurementApi = {
   listVendors: () => ambil<Vendor[]>('vendors?select=*&order=created_at.desc', 'vendor'),
   updateVendor: (id, patch) => ubah(`vendors?id=eq.${id}`, patch, 'vendor'),
   deleteVendor: (id) => hapus(`vendors?id=eq.${id}`, 'vendor'),
-  createVendor: (v) => sisip<Vendor>('vendors', { ...v, status: v.status ?? 'aktif' }, 'vendor'),
+  createVendor: (v) => sisip<Vendor>(
+    'vendors', milikWorkspace({ ...v, status: v.status ?? 'aktif' }, dataOwnerId()), 'vendor',
+  ),
 
   listVendorItems: () => ambil<VendorItem[]>('vendor_items?select=*&order=nama.asc', 'katalog'),
   createVendorItem: async (vendorId, item) => {
-    await sisip('vendor_items', { ...item, vendor_id: vendorId }, 'barang vendor')
+    await sisip(
+      'vendor_items', milikWorkspace({ ...item, vendor_id: vendorId }, dataOwnerId()), 'barang vendor',
+    )
   },
   deleteVendorItem: (id) => hapus(`vendor_items?id=eq.${id}`, 'barang vendor'),
 
   listPo: () => ambil<PurchaseOrder[]>('purchase_orders?select=*&order=created_at.desc', 'purchase order'),
-  createPo: (input) => sisip<PurchaseOrder>('purchase_orders', { ...input, status: 'draft' }, 'purchase order'),
+  createPo: (input) => sisip<PurchaseOrder>(
+    'purchase_orders', milikWorkspace({ ...input, status: 'draft' }, dataOwnerId()), 'purchase order',
+  ),
 
   async signPo(id, peran, data, status) {
     const patch = peran === 'pembuat'

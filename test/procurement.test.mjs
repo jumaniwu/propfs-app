@@ -4,6 +4,7 @@ import {
   nomorPo, hitungTotalPo, sisaQty, belumTerpesan, bolehKirimPo,
   statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm,
   katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
+  milikWorkspace,
   LABEL_STATUS_PO, LABEL_TERM,
 } from '../src/lib/procurement.ts'
 
@@ -235,5 +236,30 @@ assert(tokoBelumJadiVendor(dariNota, [{ nama: 'tb sumber jaya' }]).includes('TB 
 assert(!tokoBelumJadiVendor(dariNota, [{ nama: 'TB SUMBER JAYA' }]).includes('TB Sumber Jaya'),
   'toko yang sudah jadi vendor tidak ditawarkan lagi')
 assert(tokoBelumJadiVendor([], vendors).length === 0, 'tanpa nota tidak ada tawaran')
+
+// ── milikWorkspace ─────────────────────────────────────────────────────────
+// Baris tanpa user_id ditolak RLS sebagai HTTP 403, bukan pesan kolom kosong,
+// jadi aturan ini dijaga di sini supaya tidak hilang lagi.
+const OWNER = '11111111-1111-1111-1111-111111111111'
+const baris = milikWorkspace({ nama: 'TB Sumber Jaya', status: 'aktif' }, OWNER)
+assert(baris.user_id === OWNER, 'user_id ditempelkan pada baris')
+assert(baris.nama === 'TB Sumber Jaya' && baris.status === 'aktif', 'kolom asli tidak berubah')
+
+const asal = { nama: 'X' }
+milikWorkspace(asal, OWNER)
+assert(!('user_id' in asal), 'objek asal tidak dimutasi')
+
+// Pemilik workspace menang atas uid penyisip: anggota tim menyimpan atas nama
+// perusahaan, bukan atas namanya sendiri — kalau tidak, barisnya tak terlihat
+// oleh pemilik dan data vendor terpecah per orang.
+const MEMBER = '22222222-2222-2222-2222-222222222222'
+assert(milikWorkspace({ user_id: MEMBER }, OWNER).user_id === OWNER,
+  'pemilik workspace menimpa user_id yang terlanjur ada')
+
+for (const kosong of [null, undefined, '']) {
+  let kena = false
+  try { milikWorkspace({ nama: 'X' }, kosong) } catch { kena = true }
+  assert(kena, `tanpa pemilik (${JSON.stringify(kosong)}) harus gagal cepat, bukan kirim 403 ke server`)
+}
 
 console.log(`✅ procurement: ${ok} assertion lolos`)
