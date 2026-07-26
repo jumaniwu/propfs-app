@@ -82,20 +82,35 @@ export function akunTim(email: string | null | undefined): boolean {
 // ── Hak akses Kontraktor AI yang menumpang langganan perusahaan ─────────────
 
 export interface PaketWorkspace {
+  /**
+   * Keputusan akses yang dihitung backend di my_workspaces(), meniru
+   * isFeatureEnabled(): peran superadmin, custom_features, langganan aktif,
+   * masa uji coba, atau flag fitur global. Ini sumber yang benar — kolom
+   * paket di bawah hanya untuk ditampilkan.
+   */
+  owner_akses?: boolean | null
   owner_plan?: string | null
   owner_plan_expires?: string | null
   owner_trial_expires?: string | null
 }
 
 /**
- * Anggota tim tidak punya langganan sendiri — aksesnya mengikuti langganan
- * Kontraktor AI milik perusahaan. Dianggap masih berlaku bila paketnya bukan
- * `free` dan belum lewat tanggal, atau masa uji coba perusahaan masih jalan.
- * Tanggal kosong diartikan "tanpa batas", bukan "sudah lewat", supaya
- * perusahaan yang paketnya diatur manual di backend tidak ikut terkunci.
+ * Apakah anggota tim boleh memakai Kontraktor AI. Anggota tidak punya
+ * langganan sendiri — aksesnya menumpang hak akses perusahaan.
+ *
+ * Bila backend sudah mengirim `owner_akses`, itulah yang dipakai: hak akses
+ * di PropFS bisa datang dari peran superadmin atau custom_features, bukan
+ * hanya dari baris `subscriptions`, dan menebaknya di klien membuat
+ * perusahaan yang sebenarnya berhak ikut terkunci.
+ *
+ * Bila `owner_akses` belum ada (migrasi kuota belum dijalankan), fungsi ini
+ * kembali ke perkiraan lama dan sengaja longgar — lebih baik memberi akses
+ * lalu dibatasi RLS daripada memblokir perusahaan yang sudah membayar.
  */
 export function aksesLewatPerusahaan(ws: PaketWorkspace | null | undefined, sekarang = new Date()): boolean {
   if (!ws) return false
+  if (typeof ws.owner_akses === 'boolean') return ws.owner_akses
+
   const belumLewat = (iso: string | null | undefined) =>
     !iso ? true : new Date(iso).getTime() > sekarang.getTime()
 
