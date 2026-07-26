@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { teamApi, passwordAcak, type TeamMember, type BuatPenggunaInput } from '@/lib/teamApi'
 import { normalUsername, usernameValid } from '@/lib/teamLogin'
 import { ringkasKuota, biayaSlotUser, type RingkasanKuota } from '@/lib/kuotaTim'
+import { buatInvoiceAddon } from '@/lib/invoice'
 import { useAuthStore } from '@/store/authStore'
 import { ROLES, ringkasIzin, IZIN_LABEL, MODUL_LABEL, type TeamRole, type Modul } from '@/lib/teamRoles'
 import {
@@ -334,6 +335,24 @@ function KartuKuota({ kuota, harga, addonAktif }: {
   addonAktif: boolean
 }) {
   const navigate = useNavigate()
+  const { toast } = useToast()
+  const [membeli, setMembeli] = useState(false)
+
+  /** Buat invoice add-on lalu buka halaman pembayaran Midtrans. */
+  async function beliSlot() {
+    setMembeli(true)
+    try {
+      const invoiceId = await buatInvoiceAddon('addon_user', biayaSlotUser(1, harga))
+      navigate(`/payment/${invoiceId}`)
+    } catch (e) {
+      toast({
+        title: 'Gagal memulai pembelian',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+      setMembeli(false)
+    }
+  }
 
   return (
     <div className={`rounded-2xl border p-4 ${
@@ -366,9 +385,9 @@ function KartuKuota({ kuota, harga, addonAktif }: {
       </p>
 
       {addonAktif && (
-        <button
-          onClick={() => navigate(`/payment?plan_id=addon_user&amount=${biayaSlotUser(1, harga)}`)}
-          className="mt-3 h-9 px-4 rounded-xl bg-gold text-navy text-xs font-bold hover:bg-gold/90">
+        <button onClick={beliSlot} disabled={membeli}
+          className="mt-3 h-9 px-4 rounded-xl bg-gold text-navy text-xs font-bold hover:bg-gold/90 disabled:opacity-60 inline-flex items-center gap-1.5">
+          {membeli && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
           ➕ Beli 1 Slot Pengguna — Rp {biayaSlotUser(1, harga).toLocaleString('id-ID')}/bulan
         </button>
       )}

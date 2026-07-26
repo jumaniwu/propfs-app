@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
 import Header from '@/components/layout/Header'
+import { buatInvoiceAddon } from '@/lib/invoice'
 
 import ProjectCard from '@/components/shared/ProjectCard'
 import { useFSStore } from '@/store/fsStore'
@@ -360,7 +361,9 @@ export default function Dashboard() {
                   variant="outline"
                   size="sm"
                   className="border-navy text-navy hover:bg-navy hover:text-white shrink-0 gap-1.5"
-                  onClick={() => navigate(`/payment?plan_id=addon_fs&amount=${addonFsPrice}`)}
+                  onClick={() => buatInvoiceAddon('addon_fs', addonFsPrice)
+                    .then(id => navigate(`/payment/${id}`))
+                    .catch(e => alert(e instanceof Error ? e.message : String(e)))}
                 >
                   ➕ Beli +1 Slot FS — Rp {addonFsPrice.toLocaleString('id-ID')}
                 </Button>

@@ -8,9 +8,23 @@ const PLAN_PRICES: Record<string, number> = {
   // Add-on prices fallback (will be overridden by DB value if available)
   addon_fs: 75000,
   addon_cost: 50000,
+  addon_user: 50000,
 };
 
-const ADDON_TYPES = ['addon_fs', 'addon_cost'];
+const ADDON_TYPES = ['addon_fs', 'addon_cost', 'addon_user'];
+
+// Kunci app_settings tempat admin mengatur harga tiap add-on.
+const ADDON_PRICE_KEYS: Record<string, string> = {
+  addon_fs: 'addon_fs_price',
+  addon_cost: 'addon_cost_price',
+  addon_user: 'addon_user_price',
+};
+
+const ADDON_NAMES: Record<string, string> = {
+  addon_fs: 'PropFS - Tambah 1 Slot Proyek Feasibility Study',
+  addon_cost: 'PropFS - Tambah 1 Slot Proyek Kontraktor AI',
+  addon_user: 'PropFS - Tambah 1 Pengguna Tim (1 Bulan)',
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers for React frontend
@@ -50,9 +64,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (ADDON_TYPES.includes(plan_id) && process.env.VITE_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-      const settingKey = plan_id === 'addon_fs' ? 'addon_fs_price' : 'addon_cost_price';
+      const settingKey = ADDON_PRICE_KEYS[plan_id];
       const { data } = await supabase.from('app_settings').select('value').eq('key', settingKey).maybeSingle();
-      if (data?.value && typeof data.value === 'number') basePrice = data.value;
+      // Nilai di app_settings bisa tersimpan sebagai number maupun string.
+      const harga = Math.floor(Number(String(data?.value ?? '').replace(/"/g, '')));
+      if (Number.isFinite(harga) && harga > 0) basePrice = harga;
     } catch { /* use fallback */ }
   }
 
@@ -92,11 +108,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         id: plan_id,
         price: grossAmount,
         quantity: 1,
-        name: plan_id === 'addon_fs'
-          ? 'PropFS - Tambah 1 Slot Proyek Feasibility Study'
-          : plan_id === 'addon_cost'
-          ? 'PropFS - Tambah 1 Slot Proyek Cost Control'
-          : `PropFS - Paket ${plan_id.charAt(0).toUpperCase() + plan_id.slice(1)} (${months} Bulan)`,
+        name: ADDON_NAMES[plan_id]
+          ?? `PropFS - Paket ${plan_id.charAt(0).toUpperCase() + plan_id.slice(1)} (${months} Bulan)`,
       },
     ],
     usage_limit: 1,

@@ -32,7 +32,10 @@ begin
    where id = uid;
 end $$;
 
+-- Hanya webhook pembayaran (service_role) yang boleh menambah slot; pengguna
+-- biasa tidak, supaya slot tidak bisa ditambah tanpa membayar.
 revoke all on function public.increment_addon_user_slots(uuid, integer) from public;
+grant execute on function public.increment_addon_user_slots(uuid, integer) to service_role;
 
 -- Batas dasar & harga slot tambahan — diatur admin di menu Paket & Harga.
 insert into public.app_settings (key, value) values

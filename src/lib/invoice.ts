@@ -45,6 +45,67 @@ export async function calculateInvoice(planId: string, months: number = 1) {
   return { subtotal, ppn, total, ppnRate, ppnPct: Math.round(ppnRate * 100) }
 }
 
+// ── Add-on satuan (slot proyek & slot pengguna tim) ──────────
+// Halaman pembayaran dibuka lewat /payment/:id dengan id INVOICE, bukan
+// query string. Karena itu tombol add-on harus membuat baris invoice lebih
+// dulu — tanpa ini rute tidak cocok dan pengguna dilempar ke /home.
+
+export type JenisAddon = 'addon_fs' | 'addon_cost' | 'addon_user'
+
+export const LABEL_ADDON: Record<JenisAddon, string> = {
+  addon_fs: 'Tambah 1 Slot Proyek Feasibility Study',
+  addon_cost: 'Tambah 1 Slot Proyek Kontraktor AI',
+  addon_user: 'Tambah 1 Pengguna Tim (per bulan)',
+}
+
+/**
+ * Buat invoice untuk pembelian add-on dan kembalikan id-nya, siap dipakai
+ * `navigate(/payment/<id>)`.
+ *
+ * Add-on ditagih sekali tanpa PPN — sama dengan perhitungan di
+ * `api/initiate-payment.ts`, supaya nominal invoice dan nominal Midtrans
+ * tidak pernah berbeda. Bila insert ke database gagal, invoice disimpan di
+ * localStorage seperti pada pembelian paket, agar pembayaran tetap jalan.
+ */
+export async function buatInvoiceAddon(jenis: JenisAddon, harga: number): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Sesi login tidak ditemukan. Login ulang lalu coba lagi.')
+
+  const total = Math.max(0, Math.round(harga))
+  if (total <= 0) throw new Error('Harga add-on belum diatur. Hubungi admin PropFS.')
+
+  const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(Math.random() * 10000)}`
+  // Slot pengguna berlaku sebulan; slot proyek bersifat permanen.
+  const hari = jenis === 'addon_user' ? 30 : 365
+  const payload = {
+    user_id: user.id,
+    plan_id: jenis,
+    invoice_number: invoiceNumber,
+    period_start: new Date().toISOString(),
+    period_end: new Date(Date.now() + hari * 86_400_000).toISOString(),
+    subtotal_idr: total,
+    ppn_idr: 0,
+    total_idr: total,
+    status: 'pending' as const,
+    product: jenis === 'addon_fs' ? 'feasibility' : 'kontraktor',
+  }
+
+  // Kolom `product` mungkin belum ada bila migrasi produk belum dijalankan.
+  let { data, error } = await supabase.from('invoices').insert(payload).select().single()
+  if (error) {
+    const { product: _lewati, ...tanpaProduk } = payload
+    const ulang = await supabase.from('invoices').insert(tanpaProduk).select().single()
+    data = ulang.data
+    error = ulang.error
+  }
+
+  const id = data && !error ? data.id as string : `local_${Math.random().toString(36).slice(2, 11)}`
+  localStorage.setItem(`propfs_invoice_${id}`, JSON.stringify({
+    ...payload, id, created_at: data?.created_at ?? new Date().toISOString(),
+  }))
+  return id
+}
+
 // ── Get user invoices ─────────────────────────────────────────
 export async function getUserInvoices(): Promise<Invoice[]> {
   const { data: { user } } = await supabase.auth.getUser()
