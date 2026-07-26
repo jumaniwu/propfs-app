@@ -10,7 +10,23 @@ const semuaRole = ROLES.map(r => r.key)
 const semuaModul = Object.keys(MODUL_LABEL)
 
 assert(semuaRole.length === 7, '7 jabatan terdaftar')
-assert(semuaModul.length === 7, '7 modul terdaftar')
+assert(semuaModul.length === 8, '8 modul terdaftar')
+assert(semuaModul.includes('procurement'), 'modul procurement terdaftar')
+
+// ── Procurement ────────────────────────────────────────────────────────────
+// Yang boleh menyetujui PO harus sama dengan yang boleh menyetujui material —
+// kalau tidak, request bisa lolos approval tetapi PO-nya macet, atau sebaliknya.
+for (const r of semuaRole) {
+  assert(can(r, 'procurement', 'approve') === can(r, 'material', 'approve'),
+    `hak menyetujui PO sejalan dengan material untuk ${r}`)
+}
+// Logistik membuat PO tetapi tidak menyetujui PO buatannya sendiri.
+assert(can('logistik', 'procurement', 'tulis') && !can('logistik', 'procurement', 'approve'),
+  'logistik boleh membuat PO tapi tidak menyetujui')
+// Keuangan perlu melihat PO untuk pembayaran, tanpa boleh mengubah.
+assert(can('keuangan', 'procurement', 'baca') && !can('keuangan', 'procurement', 'tulis'),
+  'keuangan hanya melihat PO')
+assert(!can('viewer', 'procurement', 'baca'), 'viewer tidak melihat procurement')
 
 // ── Pemilik: akses penuh ke semuanya ───────────────────────────────────────
 for (const m of semuaModul) {
@@ -60,12 +76,13 @@ for (const r of semuaRole) {
   assert(semuaModul.filter(m => can(r, m, 'baca')).length === terlihat.length,
     `modulTerlihat(${r}) lengkap`)
 }
-assert(modulTerlihat('pemilik').length === 7, 'pemilik melihat semua modul')
-assert(modulTerlihat('logistik').length === 3, 'logistik melihat 3 modul (rab, lapangan, material)')
+assert(modulTerlihat('pemilik').length === semuaModul.length, 'pemilik melihat semua modul')
+assert(modulTerlihat('logistik').join(',') === 'rab,lapangan,material,procurement',
+  'logistik melihat RAB, lapangan, material, dan procurement')
 
 // ── ringkasIzin ────────────────────────────────────────────────────────────
 const ringkas = ringkasIzin('keuangan')
-assert(ringkas.length === 7, 'ringkasIzin mengembalikan seluruh modul')
+assert(ringkas.length === semuaModul.length, 'ringkasIzin mengembalikan seluruh modul')
 assert(ringkas.find(x => x.modul === 'akuntan').izin === 'rw', 'izin keuangan atas akuntan = rw')
 assert(ringkas.find(x => x.modul === 'lapangan').izin === '-', 'izin keuangan atas lapangan = -')
 

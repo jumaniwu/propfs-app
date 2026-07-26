@@ -34,6 +34,10 @@ const KonsolidasiPage = lazy(() => import('./pages/KonsolidasiPage'))
 const MaterialLapanganPage = lazy(() => import('./pages/MaterialLapanganPage'))
 const TimPage = lazy(() => import('./pages/TimPage'))
 const TimLoginPage = lazy(() => import('./pages/TimLoginPage'))
+const ProcurementPage = lazy(() => import('./pages/ProcurementPage'))
+const VendorDaftarPage = lazy(() => import('./pages/VendorDaftarPage'))
+const VendorItemPage = lazy(() => import('./pages/VendorItemPage'))
+const PoViewPage = lazy(() => import('./pages/PoViewPage'))
 const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
@@ -120,6 +124,10 @@ export default function App() {
           <Route path="/opname/isi/:token" element={<OpenRoute><OpnameFillPage /></OpenRoute>} />
           <Route path="/lapor/:token" element={<OpenRoute><LaporHarianPage /></OpenRoute>} />
           <Route path="/progress/:token" element={<OpenRoute><ProgressKalenderPage /></OpenRoute>} />
+          {/* Procurement: vendor mendaftar & membuka PO tanpa login */}
+          <Route path="/vendor/daftar/:token" element={<OpenRoute><VendorDaftarPage /></OpenRoute>} />
+          <Route path="/vendor/item/:token" element={<OpenRoute><VendorItemPage /></OpenRoute>} />
+          <Route path="/po/:token" element={<OpenRoute><PoViewPage /></OpenRoute>} />
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />
@@ -137,6 +145,7 @@ export default function App() {
           <Route path="/kontraktor/konsolidasi" element={<FeatureRoute feature="cost_control"><KonsolidasiPage /></FeatureRoute>} />
           <Route path="/kontraktor/material" element={<FeatureRoute feature="cost_control"><MaterialLapanganPage /></FeatureRoute>} />
           <Route path="/kontraktor/tim" element={<FeatureRoute feature="cost_control"><TimPage /></FeatureRoute>} />
+          <Route path="/kontraktor/procurement" element={<FeatureRoute feature="cost_control"><ProcurementPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 

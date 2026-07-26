@@ -18,10 +18,13 @@ import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   materialApi, ringkasKekurangan, URGENSI_LABEL, URGENSI_TONE, STATUS_TONE,
-  type MaterialUsage, type MaterialRequest, type StatusRequest,
+  type MaterialUsage, type MaterialRequest, type StatusRequest, type Urgensi,
 } from '@/lib/materialApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
+import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
+import { can } from '@/lib/teamRoles'
+import { sisaQty } from '@/lib/procurement'
 
 type Sub = 'pakai' | 'request' | 'kurang'
 
@@ -43,6 +46,8 @@ export default function MaterialLapanganPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const bolehTulis = can(roleSaatIni(workspaces), 'material', 'tulis')
 
   function muat() {
     setLoading(true); setError('')
@@ -51,7 +56,10 @@ export default function MaterialLapanganPage() {
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
   }
-  useEffect(() => { loadProjects(); muat() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    loadProjects(); muat()
+    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const kekurangan = useMemo(
     () => ringkasKekurangan(materialSchedule, usage, requests),
@@ -237,10 +245,20 @@ export default function MaterialLapanganPage() {
 
             {/* ── Request ───────────────────────────────────────────────── */}
             {sub === 'request' && (
-              requests.length === 0 ? (
-                <Kosong ikon={<ShoppingCart className="w-10 h-10" />}
-                  teks="Belum ada permintaan material dari lapangan." />
-              ) : (
+              <>
+                {/* Permintaan dari dalam aplikasi. Sebelumnya permintaan hanya
+                    bisa lahir dari link publik pekerja, sehingga PM & logistik
+                    tidak punya jalan sama sekali. */}
+                {bolehTulis && (
+                  <FormRequest
+                    projectName={projectInfo?.projectName ?? ''}
+                    pemohon={profile?.full_name ?? ''}
+                    onSukses={muat} />
+                )}
+                {requests.length === 0 ? (
+                  <Kosong ikon={<ShoppingCart className="w-10 h-10" />}
+                    teks="Belum ada permintaan material." />
+                ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   {requests.map(r => (
                     <div key={r.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
@@ -267,6 +285,23 @@ export default function MaterialLapanganPage() {
                         {r.catatan && <p className="italic">"{r.catatan}"</p>}
                         {r.approver && <p>✍️ {r.status} oleh {r.approver}{r.catatan_approval ? ` — ${r.catatan_approval}` : ''}</p>}
                       </div>
+
+                      {/* Jejak pemesanan — sebuah request bisa dipecah ke
+                          beberapa PO, jadi yang ditampilkan sisa dan terpesan. */}
+                      {r.status === 'disetujui' && (
+                        <p className={`text-[11px] font-semibold rounded-lg px-2 py-1.5 ${
+                          sisaQty(r) === 0
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : (r.qty_dipesan ?? 0) > 0
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-amber-50 text-amber-700'}`}>
+                          {sisaQty(r) === 0
+                            ? `Sudah dipesan penuh (${num(r.qty)} ${r.satuan})`
+                            : (r.qty_dipesan ?? 0) > 0
+                              ? `Terpesan ${num(r.qty_dipesan ?? 0)} · sisa ${num(sisaQty(r))} ${r.satuan}`
+                              : `Belum dipesan — buat PO di menu Procurement`}
+                        </p>
+                      )}
 
                       {r.photos?.length > 0 && (
                         <div className="flex gap-1.5">
@@ -310,8 +345,9 @@ export default function MaterialLapanganPage() {
                       </div>
                     </div>
                   ))}
-                </div>
-              )
+                  </div>
+                )}
+              </>
             )}
 
             {/* ── Kekurangan ────────────────────────────────────────────── */}
@@ -379,6 +415,118 @@ export default function MaterialLapanganPage() {
           onClose={() => setLightbox(null)}
           onIndex={i => setLightbox(lb => lb && { ...lb, index: i })} />
       )}
+    </div>
+  )
+}
+
+// ── Form permintaan material dari dalam aplikasi ────────────────────────────
+// Dibatasi role yang boleh menulis modul material (pemilik, manajemen, PM,
+// pengawas, logistik). Permintaan tetap masuk berstatus 'menunggu' supaya
+// gerbang persetujuan Owner/PM tidak terlewati.
+function FormRequest({ projectName, pemohon, onSukses }: {
+  projectName: string
+  pemohon: string
+  onSukses: () => void
+}) {
+  const { toast } = useToast()
+  const [buka, setBuka] = useState(false)
+  const [nama, setNama] = useState('')
+  const [satuan, setSatuan] = useState('')
+  const [qty, setQty] = useState(0)
+  const [urgensi, setUrgensi] = useState<Urgensi>('normal')
+  const [butuh, setButuh] = useState('')
+  const [catatan, setCatatan] = useState('')
+  const [kirim, setKirim] = useState(false)
+
+  const cls = 'w-full h-10 rounded-lg border border-input bg-white px-3 text-sm text-navy'
+
+  async function simpan() {
+    if (nama.trim().length < 2) { toast({ title: 'Nama material wajib diisi', variant: 'destructive' }); return }
+    if (qty <= 0) { toast({ title: 'Jumlah harus lebih dari 0', variant: 'destructive' }); return }
+    setKirim(true)
+    try {
+      await materialApi().createRequest({
+        tanggal: new Date().toISOString().slice(0, 10),
+        pemohon: pemohon || 'Tim',
+        nama: nama.trim(), satuan: satuan.trim(), qty,
+        urgensi, butuh_tanggal: butuh || null,
+        catatan: catatan.trim(), project_name: projectName,
+      })
+      toast({ title: 'Permintaan dikirim', description: 'Menunggu persetujuan Owner / Manajemen / Project Manager.' })
+      setNama(''); setSatuan(''); setQty(0); setCatatan(''); setButuh(''); setUrgensi('normal')
+      setBuka(false)
+      onSukses()
+    } catch (e) {
+      toast({ title: 'Gagal mengirim', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setKirim(false) }
+  }
+
+  if (!buka) {
+    return (
+      <button onClick={() => setBuka(true)}
+        className="w-full h-11 rounded-xl border-2 border-dashed border-navy/25 text-navy text-xs font-bold inline-flex items-center justify-center gap-1.5 hover:border-navy/50 bg-white">
+        <ShoppingCart className="w-4 h-4" /> Buat Request Material
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gold/40 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-navy text-sm">Request Material Baru</h3>
+        <button onClick={() => setBuka(false)} className="text-muted-foreground hover:text-navy">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1 sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground">Nama Material *</label>
+          <input value={nama} onChange={e => setNama(e.target.value)}
+            placeholder="mis. Semen Portland 50kg" className={cls} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Jumlah *</label>
+          <input type="number" min={0} value={qty || ''} onChange={e => setQty(Number(e.target.value) || 0)}
+            inputMode="decimal" className={cls} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Satuan</label>
+          <input value={satuan} onChange={e => setSatuan(e.target.value)}
+            placeholder="sak" className={cls} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Dibutuhkan sebelum</label>
+          <input type="date" value={butuh} onChange={e => setButuh(e.target.value)} className={cls} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Catatan</label>
+          <input value={catatan} onChange={e => setCatatan(e.target.value)}
+            placeholder="Opsional" className={cls} />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-medium text-muted-foreground">Urgensi</label>
+        <div className="flex gap-2">
+          {(['normal', 'segera', 'darurat'] as Urgensi[]).map(u => (
+            <button key={u} onClick={() => setUrgensi(u)}
+              className={`flex-1 h-10 rounded-lg text-xs font-bold border transition-colors ${
+                urgensi === u
+                  ? u === 'darurat' ? 'bg-red-500 text-white border-red-500'
+                    : u === 'segera' ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-navy text-white border-navy'
+                  : 'bg-white text-muted-foreground border-border hover:bg-slate-50'}`}>
+              {URGENSI_LABEL[u]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Button onClick={simpan} disabled={kirim} className="gap-2 bg-navy hover:bg-navy/90 font-bold">
+        {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+        Kirim Permintaan
+      </Button>
+      <p className="text-[11px] text-muted-foreground">
+        Permintaan masuk berstatus <b>menunggu</b> dan perlu disetujui sebelum bisa dipesan ke vendor.
+      </p>
     </div>
   )
 }

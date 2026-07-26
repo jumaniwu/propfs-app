@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, type LucideIcon,
+  BarChart3, Settings, Store, type LucideIcon,
 } from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -74,6 +74,9 @@ export const MENU_ITEMS: MenuItem[] = [
     alias: 'laba rugi neraca pemasukan termin inventori stok gudang opname progres pekerjaan' },
   { key: 'konsolidasi', label: 'Konsolidasi', icon: BarChart3, kategori: 'keuangan', path: '/kontraktor/konsolidasi', tone: TONE.gold,
     alias: 'laporan semua proyek gabungan' },
+  // Satu halaman memuat Vendor, Katalog harga, dan Purchase Order.
+  { key: 'procurement', label: 'Procurement', icon: Store, kategori: 'keuangan', path: '/kontraktor/procurement', tone: TONE.violet, tag: 'BARU',
+    alias: 'vendor supplier katalog harga purchase order po pembelian pengadaan' },
 
   // ── Lapangan ──────────────────────────────────────────────────────────────
   { key: 'spk', label: 'SPK Digital', icon: FileSignature, kategori: 'lapangan', tab: 'spk', tone: TONE.violet,

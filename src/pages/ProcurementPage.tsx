@@ -1,0 +1,947 @@
+// ============================================================
+// PROCUREMENT — Vendor · Katalog · Purchase Order
+//
+// Menyambung Material Request yang sudah disetujui ke pemesanan:
+//   request disetujui → pilih (boleh sebagian) → pilih vendor → PO terbit
+//   → tanda tangan pembuat → persetujuan Owner/Manajemen/PM → kirim WA
+//
+// Tombol "Kirim ke Vendor" sengaja tetap mati sampai kedua syarat terpenuhi,
+// dan syarat yang sama diperiksa ulang di server oleh po_tandai_terkirim().
+// ============================================================
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Store, Package, ShoppingCart, Loader2, RefreshCw, Trash2, Plus, Copy,
+  Send, Check, X, Link2, PenLine, Download, FileText, Search, AlertTriangle,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import SignaturePad from '@/components/cost/SignaturePad'
+import { useAuthStore } from '@/store/authStore'
+import { useCostStore } from '@/store/costStore'
+import { useToast } from '@/hooks/use-toast'
+import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
+import { can } from '@/lib/teamRoles'
+import { materialApi, type MaterialRequest } from '@/lib/materialApi'
+import {
+  procurementApi, vendorDaftarLink, poViewLink,
+  type ProfilVendorPublik,
+} from '@/lib/procurementApi'
+import { downloadPoPdf } from '@/lib/poPdf'
+import { waKe } from '@/lib/waLink'
+import {
+  belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
+  ringkasKatalog, hargaVendorUntuk, teksTerm,
+  LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
+  type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
+} from '@/lib/procurement'
+
+type Sub = 'vendor' | 'katalog' | 'po'
+
+const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
+const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
+const inputCls = 'w-full h-10 rounded-lg border border-input bg-white px-3 text-sm text-navy'
+
+export default function ProcurementPage() {
+  const { toast } = useToast()
+  const { profile } = useAuthStore()
+  const { projectInfo } = useCostStore()
+
+  const [sub, setSub] = useState<Sub>(() => {
+    const s = new URLSearchParams(window.location.search).get('sub')
+    return s === 'katalog' || s === 'po' ? s : 'vendor'
+  })
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [items, setItems] = useState<VendorItem[]>([])
+  const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [requests, setRequests] = useState<MaterialRequest[]>([])
+  const [token, setToken] = useState('')
+  const [memuat, setMemuat] = useState(true)
+  const [error, setError] = useState('')
+
+  const role = roleSaatIni(workspaces)
+  const bolehUbah = can(role, 'procurement', 'tulis')
+  const bolehApprove = can(role, 'procurement', 'approve')
+
+  const muat = useCallback(async (diam = false) => {
+    if (!diam) setMemuat(true)
+    try {
+      const api = procurementApi()
+      const [v, it, p, r] = await Promise.all([
+        api.listVendors(), api.listVendorItems(), api.listPo(),
+        materialApi().listRequests().catch(() => [] as MaterialRequest[]),
+      ])
+      setVendors(v); setItems(it); setPos(p); setRequests(r); setError('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally { setMemuat(false) }
+  }, [])
+
+  useEffect(() => {
+    muat()
+    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+    procurementApi().vendorToken().then(setToken).catch(() => setToken(''))
+  }, [muat])
+
+  const vendorAktif = useMemo(() => vendors.filter(v => v.status === 'aktif'), [vendors])
+  const perluVerifikasi = useMemo(() => vendors.filter(v => v.status === 'baru').length, [vendors])
+  const siapDipesan = useMemo(() => belumTerpesan(requests), [requests])
+
+  const TAB: Array<[Sub, string, JSX.Element, number]> = [
+    ['vendor', 'Vendor', <Store key="i" className="w-4 h-4" />, perluVerifikasi],
+    ['katalog', 'Katalog', <Package key="i" className="w-4 h-4" />, 0],
+    ['po', 'Purchase Order', <ShoppingCart key="i" className="w-4 h-4" />, siapDipesan.length],
+  ]
+
+  return (
+    <div className="min-h-screen bg-slate-100/70 pb-10">
+      <KontraktorHeader
+        judul="Procurement"
+        subjudul={`${vendors.length} vendor · ${pos.length} purchase order`}
+        kembaliKe="/kontraktor"
+        aksi={
+          <Button onClick={() => muat()} variant="outline" size="sm"
+            className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20">
+            <RefreshCw className={`w-3.5 h-3.5 ${memuat ? 'animate-spin' : ''}`} /> Muat Ulang
+          </Button>
+        }
+      />
+
+      <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+          {TAB.map(([key, label, icon, badge]) => (
+            <button key={key} onClick={() => setSub(key)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all shrink-0 ${
+                sub === key ? 'bg-navy text-white shadow' : 'bg-white text-muted-foreground border border-border hover:bg-slate-50'}`}>
+              {icon} {label}
+              {badge > 0 && (
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                  sub === key ? 'bg-white/20' : 'bg-red-500 text-white'}`}>{badge}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3">
+            {error}
+          </p>
+        )}
+
+        {memuat ? (
+          <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <>
+            {sub === 'vendor' && (
+              <TabVendor
+                vendors={vendors} items={items} token={token} bolehUbah={bolehUbah}
+                onUbah={muat} />
+            )}
+            {sub === 'katalog' && <TabKatalog items={items} vendors={vendors} />}
+            {sub === 'po' && (
+              <TabPo
+                pos={pos} requests={siapDipesan} vendors={vendorAktif} items={items}
+                projectName={projectInfo?.projectName ?? ''}
+                namaSaya={profile?.full_name ?? ''}
+                bolehUbah={bolehUbah} bolehApprove={bolehApprove}
+                onUbah={muat} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ══ TAB VENDOR ══════════════════════════════════════════════════════════════
+function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
+  vendors: Vendor[]
+  items: VendorItem[]
+  token: string
+  bolehUbah: boolean
+  onUbah: () => void
+}) {
+  const { toast } = useToast()
+  const [formOpen, setFormOpen] = useState(false)
+  const [cari, setCari] = useState('')
+  const tautan = token ? vendorDaftarLink(token) : ''
+
+  const jumlahItem = (id: string) => items.filter(i => i.vendor_id === id).length
+  const tersaring = vendors.filter(v =>
+    `${v.nama} ${v.kategori} ${v.pic}`.toLowerCase().includes(cari.trim().toLowerCase()))
+
+  async function ubahStatus(v: Vendor, status: Vendor['status']) {
+    try {
+      await procurementApi().updateVendor(v.id, { status })
+      toast({ title: status === 'aktif' ? `${v.nama} diaktifkan` : `${v.nama} dinonaktifkan` })
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    }
+  }
+
+  async function hapus(v: Vendor) {
+    if (!window.confirm(`Hapus vendor ${v.nama}? Barang yang terdaftar ikut terhapus.`)) return
+    try {
+      await procurementApi().deleteVendor(v.id)
+      toast({ title: 'Vendor dihapus' })
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal menghapus', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Tautan registrasi vendor */}
+      <div className="bg-navy rounded-2xl p-5 text-white">
+        <div className="flex items-start gap-3">
+          <span className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+            <Link2 className="w-5 h-5 text-gold" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] uppercase tracking-wider text-white/60 font-bold">Link Registrasi Vendor</p>
+            <p className="font-mono text-[11px] break-all text-gold mt-1">{tautan || '••••••••'}</p>
+            <p className="text-[11px] text-white/70 mt-1.5 leading-relaxed">
+              Bagikan ke calon vendor. Mereka mengisi profil, nomor WA, daftar barang beserta
+              harga jual dan syarat pembayaran sendiri. Vendor baru masuk sebagai
+              <b className="text-white"> perlu verifikasi</b> — hanya vendor aktif yang bisa dipilih di PO.
+            </p>
+          </div>
+        </div>
+        {tautan && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <button onClick={() => { navigator.clipboard?.writeText(tautan); toast({ title: 'Link registrasi disalin' }) }}
+              className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold inline-flex items-center gap-1.5">
+              <Copy className="w-3.5 h-3.5" /> Salin Link
+            </button>
+            <button onClick={() => window.open(waKe('', `Halo, silakan daftar sebagai vendor kami di:\n${tautan}`), '_blank')}
+              className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold inline-flex items-center gap-1.5">
+              <Send className="w-3.5 h-3.5" /> Bagikan via WA
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input value={cari} onChange={e => setCari(e.target.value)}
+            placeholder="Cari vendor…"
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm" />
+        </div>
+        {bolehUbah && (
+          <Button onClick={() => setFormOpen(v => !v)} size="sm"
+            className="gap-1.5 bg-navy hover:bg-navy/90 font-bold shrink-0 h-10">
+            <Plus className="w-4 h-4" /> Vendor
+          </Button>
+        )}
+      </div>
+
+      {formOpen && <FormVendor onBatal={() => setFormOpen(false)} onSukses={() => { setFormOpen(false); onUbah() }} />}
+
+      {tersaring.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-border p-12 text-center">
+          <Store className="w-10 h-10 mx-auto opacity-30 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            {vendors.length === 0
+              ? 'Belum ada vendor. Bagikan link registrasi di atas, atau tambahkan vendor secara manual.'
+              : `Vendor "${cari}" tidak ditemukan.`}
+          </p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-3">
+          {tersaring.map(v => (
+            <div key={v.id} className={`bg-white rounded-2xl border p-4 space-y-2.5 ${
+              v.status === 'baru' ? 'border-amber-300' : 'border-border'}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-navy text-sm truncate">{v.nama}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {v.kategori || 'Tanpa kategori'}{v.pic && ` · ${v.pic}`}
+                  </p>
+                </div>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${TONE_STATUS_VENDOR[v.status]}`}>
+                  {v.status}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground space-y-0.5">
+                {v.no_wa && <p>📱 {v.no_wa}</p>}
+                {v.email && <p className="truncate">✉️ {v.email}</p>}
+                <p>💳 {teksTerm(v.term, v.term_hari)}</p>
+                <p>📦 {jumlahItem(v.id)} barang terdaftar</p>
+              </div>
+
+              {v.status === 'baru' && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                  Vendor ini mendaftar sendiri lewat link. Periksa datanya, lalu aktifkan agar
+                  bisa dipilih saat membuat PO.
+                </p>
+              )}
+
+              {bolehUbah && (
+                <div className="flex gap-1.5 pt-1 border-t border-border flex-wrap">
+                  {v.status !== 'aktif' ? (
+                    <Button size="sm" className="h-7 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => ubahStatus(v, 'aktif')}>
+                      <Check className="w-3 h-3" /> Aktifkan
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                      onClick={() => ubahStatus(v, 'nonaktif')}>
+                      <X className="w-3 h-3" /> Nonaktifkan
+                    </Button>
+                  )}
+                  {v.no_wa && (
+                    <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                      onClick={() => window.open(waKe(v.no_wa, `Halo ${v.pic || v.nama},`), '_blank')}>
+                      <Send className="w-3 h-3" /> WA
+                    </Button>
+                  )}
+                  <button onClick={() => hapus(v)}
+                    className="ml-auto text-muted-foreground hover:text-rose-600 self-center">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function FormVendor({ onBatal, onSukses }: { onBatal: () => void; onSukses: () => void }) {
+  const { toast } = useToast()
+  const [f, setF] = useState<ProfilVendorPublik>({
+    nama: '', pic: '', no_wa: '', email: '', alamat: '', npwp: '',
+    kategori: '', term: 'cash', term_hari: 0, catatan: '',
+  })
+  const [kirim, setKirim] = useState(false)
+  const set = <K extends keyof ProfilVendorPublik>(k: K, v: ProfilVendorPublik[K]) =>
+    setF(p => ({ ...p, [k]: v }))
+
+  async function simpan() {
+    if (f.nama.trim().length < 2) {
+      toast({ title: 'Nama vendor wajib diisi', variant: 'destructive' })
+      return
+    }
+    setKirim(true)
+    try {
+      await procurementApi().createVendor({ ...f, nama: f.nama.trim(), status: 'aktif' })
+      toast({ title: 'Vendor ditambahkan' })
+      onSukses()
+    } catch (e) {
+      toast({ title: 'Gagal menyimpan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setKirim(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gold/40 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-navy text-sm">Tambah Vendor Manual</h3>
+        <button onClick={onBatal} className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <input value={f.nama} onChange={e => set('nama', e.target.value)} placeholder="Nama vendor *" className={inputCls} />
+        <input value={f.pic} onChange={e => set('pic', e.target.value)} placeholder="Nama kontak" className={inputCls} />
+        <input value={f.no_wa} onChange={e => set('no_wa', e.target.value)} placeholder="Nomor WhatsApp" className={inputCls} />
+        <input value={f.kategori} onChange={e => set('kategori', e.target.value)} placeholder="Kategori barang" className={inputCls} />
+        <select value={f.term} onChange={e => set('term', e.target.value as 'cash' | 'term')}
+          className={`${inputCls} font-semibold`}>
+          {(['cash', 'term'] as const).map(t => <option key={t} value={t}>{LABEL_TERM[t]}</option>)}
+        </select>
+        {f.term === 'term' && (
+          <input type="number" min={1} value={f.term_hari || ''}
+            onChange={e => set('term_hari', Number(e.target.value) || 0)}
+            placeholder="Tempo (hari)" className={inputCls} />
+        )}
+      </div>
+      <Button onClick={simpan} disabled={kirim} className="gap-2 bg-navy hover:bg-navy/90 font-bold">
+        {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Simpan Vendor
+      </Button>
+    </div>
+  )
+}
+
+// ══ TAB KATALOG ═════════════════════════════════════════════════════════════
+function TabKatalog({ items, vendors }: { items: VendorItem[]; vendors: Vendor[] }) {
+  const [cari, setCari] = useState('')
+  const namaVendor = useMemo(() => new Map(vendors.map(v => [v.id, v.nama])), [vendors])
+  const katalog = useMemo(
+    () => ringkasKatalog(items.map(i => ({ ...i, vendor_nama: namaVendor.get(i.vendor_id) })), vendors),
+    [items, vendors, namaVendor],
+  )
+  const tersaring = katalog.filter(b => b.nama.toLowerCase().includes(cari.trim().toLowerCase()))
+
+  return (
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <input value={cari} onChange={e => setCari(e.target.value)}
+          placeholder="Cari barang…"
+          className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm" />
+      </div>
+
+      {tersaring.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-border p-12 text-center">
+          <Package className="w-10 h-10 mx-auto opacity-30 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            {items.length === 0
+              ? 'Katalog masih kosong. Barang muncul di sini setelah vendor mengisi daftar barangnya lewat link registrasi.'
+              : `Barang "${cari}" tidak ditemukan.`}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {tersaring.map(b => (
+            <div key={b.nama} className="bg-white rounded-2xl border border-border p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-navy text-sm">{b.nama}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    satuan {b.satuan} · {b.penawaran.length} penawaran
+                  </p>
+                </div>
+                {b.hargaTermurah > 0 && (
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-black text-emerald-700 tabular-nums">{fmt(b.hargaTermurah)}</p>
+                    <p className="text-[10px] text-muted-foreground">termurah</p>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {b.penawaran.map((p, i) => {
+                  const termurah = p.harga > 0 && p.harga === b.hargaTermurah
+                  return (
+                    <div key={`${p.vendor_id}-${i}`}
+                      className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs ${
+                        termurah ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}`}>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-navy truncate">
+                          {p.vendor_nama}
+                          {termurah && <span className="ml-1.5 text-[9px] font-black text-emerald-700">TERMURAH</span>}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {p.merek && `${p.merek} · `}{p.term}
+                        </p>
+                      </div>
+                      <span className={`font-bold tabular-nums shrink-0 ${termurah ? 'text-emerald-700' : 'text-navy'}`}>
+                        {p.harga > 0 ? fmt(p.harga) : 'belum ada harga'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ══ TAB PURCHASE ORDER ══════════════════════════════════════════════════════
+function TabPo({ pos, requests, vendors, items, projectName, namaSaya, bolehUbah, bolehApprove, onUbah }: {
+  pos: PurchaseOrder[]
+  requests: MaterialRequest[]
+  vendors: Vendor[]
+  items: VendorItem[]
+  projectName: string
+  namaSaya: string
+  bolehUbah: boolean
+  bolehApprove: boolean
+  onUbah: () => void
+}) {
+  const [buatOpen, setBuatOpen] = useState(false)
+
+  return (
+    <div className="space-y-4">
+      {/* Ringkasan request yang siap dipesan */}
+      <div className="bg-white rounded-2xl border border-border p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="font-bold text-navy text-sm">Menunggu Dipesan</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {requests.length === 0
+                ? 'Tidak ada request material disetujui yang belum dipesan.'
+                : `${requests.length} request material sudah disetujui dan belum penuh terpesan.`}
+            </p>
+          </div>
+          {bolehUbah && requests.length > 0 && (
+            <Button onClick={() => setBuatOpen(true)} size="sm"
+              className="gap-1.5 bg-gold text-navy hover:bg-gold/90 font-bold shrink-0">
+              <Plus className="w-4 h-4" /> Buat PO
+            </Button>
+          )}
+        </div>
+        {requests.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {requests.slice(0, 5).map(r => (
+              <div key={r.id} className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-2">
+                <span className="font-semibold text-navy truncate">{r.nama}</span>
+                <span className="text-muted-foreground shrink-0">
+                  sisa {angka(sisaQty(r))} {r.satuan}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {buatOpen && (
+        <FormPo
+          requests={requests} vendors={vendors} items={items}
+          projectName={projectName} jumlahPo={pos.length}
+          onBatal={() => setBuatOpen(false)}
+          onSukses={() => { setBuatOpen(false); onUbah() }} />
+      )}
+
+      {/* Daftar PO */}
+      {pos.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-border p-12 text-center">
+          <FileText className="w-10 h-10 mx-auto opacity-30 mb-3" />
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            Belum ada purchase order. PO dibuat dari request material yang sudah disetujui.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {pos.map(po => (
+            <KartuPo key={po.id} po={po} namaSaya={namaSaya}
+              bolehUbah={bolehUbah} bolehApprove={bolehApprove} onUbah={onUbah} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Form pembuatan PO ───────────────────────────────────────────────────────
+interface BarisPilih {
+  request_id: string
+  nama: string
+  satuan: string
+  sisa: number
+  qty: number
+  harga: number
+  pilih: boolean
+}
+
+function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSukses }: {
+  requests: MaterialRequest[]
+  vendors: Vendor[]
+  items: VendorItem[]
+  projectName: string
+  jumlahPo: number
+  onBatal: () => void
+  onSukses: () => void
+}) {
+  const { toast } = useToast()
+  const [vendorId, setVendorId] = useState('')
+  const [butuh, setButuh] = useState('')
+  const [ppnPct, setPpnPct] = useState(0)
+  const [catatan, setCatatan] = useState('')
+  const [kirim, setKirim] = useState(false)
+  const [baris, setBaris] = useState<BarisPilih[]>(() => requests.map(r => ({
+    request_id: r.id, nama: r.nama, satuan: r.satuan,
+    sisa: sisaQty(r), qty: sisaQty(r), harga: 0, pilih: false,
+  })))
+
+  const vendor = vendors.find(v => v.id === vendorId)
+
+  // Harga terisi otomatis dari katalog vendor; tetap bisa diubah manual karena
+  // vendor belum tentu mendaftarkan setiap barang yang diminta.
+  useEffect(() => {
+    if (!vendorId) return
+    setBaris(list => list.map(b => {
+      const h = hargaVendorUntuk(items, vendorId, b.nama)
+      return h > 0 ? { ...b, harga: h } : b
+    }))
+  }, [vendorId, items])
+
+  const set = (i: number, patch: Partial<BarisPilih>) =>
+    setBaris(list => list.map((b, n) => (n === i ? { ...b, ...patch } : b)))
+
+  const dipilih = baris.filter(b => b.pilih && b.qty > 0)
+  const total = useMemo(
+    () => hitungTotalPo(dipilih.map(b => ({
+      request_id: b.request_id, nama: b.nama, satuan: b.satuan,
+      qty: b.qty, harga: b.harga, subtotal: 0,
+    })), ppnPct),
+    [dipilih, ppnPct],
+  )
+
+  async function terbitkan() {
+    if (!vendor) { toast({ title: 'Pilih vendor dulu', variant: 'destructive' }); return }
+    if (dipilih.length === 0) { toast({ title: 'Pilih minimal satu barang', variant: 'destructive' }); return }
+    const lewat = dipilih.find(b => b.qty > b.sisa)
+    if (lewat) {
+      toast({
+        title: 'Qty melebihi sisa',
+        description: `${lewat.nama}: sisa yang belum dipesan hanya ${angka(lewat.sisa)} ${lewat.satuan}.`,
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setKirim(true)
+    try {
+      await procurementApi().createPo({
+        nomor: nomorPo(jumlahPo),
+        vendor_id: vendor.id,
+        vendor_nama: vendor.nama,
+        vendor_wa: vendor.no_wa,
+        project_name: projectName,
+        butuh_tanggal: butuh || null,
+        term: vendor.term,
+        term_hari: vendor.term_hari,
+        items: total.items as PoItem[],
+        subtotal: total.subtotal,
+        ppn_pct: ppnPct,
+        ppn: total.ppn,
+        total: total.total,
+        catatan,
+      })
+      toast({ title: '✅ PO diterbitkan', description: 'Tanda tangani, lalu mintakan persetujuan sebelum dikirim ke vendor.' })
+      onSukses()
+    } catch (e) {
+      toast({ title: 'Gagal menerbitkan PO', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setKirim(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gold/40 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-navy text-sm">Buat Purchase Order</h3>
+        <button onClick={onBatal} className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
+      </div>
+
+      {vendors.length === 0 && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed inline-flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          Belum ada vendor aktif. Aktifkan vendor di tab Vendor lebih dulu — hanya vendor
+          aktif yang bisa dipilih di sini.
+        </p>
+      )}
+
+      {/* Pilih barang dari request */}
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-navy">1. Pilih barang yang dipesan</p>
+        {baris.map((b, i) => (
+          <div key={b.request_id} className={`rounded-xl border p-3 space-y-2 ${
+            b.pilih ? 'border-navy bg-navy/[0.03]' : 'border-border'}`}>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={b.pilih}
+                onChange={e => set(i, { pilih: e.target.checked })}
+                className="mt-0.5 w-4 h-4 accent-navy shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-navy truncate">{b.nama}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  belum terpesan {angka(b.sisa)} {b.satuan}
+                </p>
+              </div>
+            </label>
+            {b.pilih && (
+              <div className="grid grid-cols-2 gap-2 pl-6">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Qty dipesan</label>
+                  <input type="number" min={0} max={b.sisa} value={b.qty || ''}
+                    onChange={e => set(i, { qty: Number(e.target.value) || 0 })}
+                    inputMode="decimal" className={inputCls} />
+                  {b.qty > b.sisa && (
+                    <p className="text-[10px] text-rose-600">Melebihi sisa {angka(b.sisa)}.</p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-muted-foreground">Harga satuan (Rp)</label>
+                  <input type="number" min={0} value={b.harga || ''}
+                    onChange={e => set(i, { harga: Number(e.target.value) || 0 })}
+                    inputMode="numeric" className={inputCls} />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Vendor & syarat */}
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-navy">2. Vendor & syarat</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">Vendor *</label>
+            <select value={vendorId} onChange={e => setVendorId(e.target.value)}
+              className={`${inputCls} font-semibold`}>
+              <option value="">— pilih vendor —</option>
+              {vendors.map(v => <option key={v.id} value={v.id}>{v.nama}</option>)}
+            </select>
+            {vendor && (
+              <p className="text-[10px] text-muted-foreground">
+                Pembayaran: {teksTerm(vendor.term, vendor.term_hari)}
+                {vendor.no_wa ? ` · WA ${vendor.no_wa}` : ' · belum ada nomor WA'}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">Dibutuhkan tanggal</label>
+            <input type="date" value={butuh} onChange={e => setButuh(e.target.value)} className={inputCls} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">PPN (%)</label>
+            <input type="number" min={0} max={100} value={ppnPct || ''}
+              onChange={e => setPpnPct(Number(e.target.value) || 0)}
+              placeholder="0 = tanpa PPN" inputMode="numeric" className={inputCls} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">Catatan</label>
+            <input value={catatan} onChange={e => setCatatan(e.target.value)}
+              placeholder="mis. kirim ke gudang proyek" className={inputCls} />
+          </div>
+        </div>
+      </div>
+
+      {/* Ringkasan */}
+      <div className="rounded-xl bg-slate-50 p-3 space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-muted-foreground">{dipilih.length} barang</span>
+          <span className="font-semibold text-navy tabular-nums">{fmt(total.subtotal)}</span>
+        </div>
+        {ppnPct > 0 && (
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">PPN {ppnPct}%</span>
+            <span className="font-semibold text-navy tabular-nums">{fmt(total.ppn)}</span>
+          </div>
+        )}
+        <div className="flex justify-between pt-1 border-t border-border">
+          <span className="font-bold text-navy text-sm">Total</span>
+          <span className="font-black text-navy text-base tabular-nums">{fmt(total.total)}</span>
+        </div>
+      </div>
+
+      <Button onClick={terbitkan} disabled={kirim || !vendorId || dipilih.length === 0}
+        className="w-full gap-2 bg-navy hover:bg-navy/90 font-bold h-11">
+        {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+        Terbitkan PO
+      </Button>
+    </div>
+  )
+}
+
+// ── Kartu PO: tanda tangan → persetujuan → kirim ────────────────────────────
+function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
+  po: PurchaseOrder
+  namaSaya: string
+  bolehUbah: boolean
+  bolehApprove: boolean
+  onUbah: () => void
+}) {
+  const { toast } = useToast()
+  const [ttdUntuk, setTtdUntuk] = useState<'pembuat' | 'approver' | null>(null)
+  const [signature, setSignature] = useState<string | null>(null)
+  const [nama, setNama] = useState(namaSaya)
+  const [jabatan, setJabatan] = useState('')
+  const [proses, setProses] = useState(false)
+  const [buka, setBuka] = useState(false)
+
+  const izin = bolehKirimPo(po)
+
+  async function simpanTtd() {
+    if (!ttdUntuk) return
+    if (!signature) { toast({ title: 'Tanda tangan belum digambar', variant: 'destructive' }); return }
+    if (nama.trim().length < 2) { toast({ title: 'Nama wajib diisi', variant: 'destructive' }); return }
+
+    setProses(true)
+    try {
+      const setelah = statusPoSetelah({
+        status: po.status,
+        pembuat_signature: ttdUntuk === 'pembuat' ? signature : po.pembuat_signature,
+        approver_signature: ttdUntuk === 'approver' ? signature : po.approver_signature,
+      })
+      await procurementApi().signPo(po.id, ttdUntuk, {
+        nama: nama.trim(), jabatan: jabatan.trim(), signature,
+      }, setelah)
+      toast({ title: ttdUntuk === 'pembuat' ? 'PO ditandatangani' : 'PO disetujui' })
+      setTtdUntuk(null); setSignature(null)
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal menyimpan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setProses(false) }
+  }
+
+  async function tolak() {
+    const alasan = window.prompt('Alasan penolakan PO ini?')
+    if (alasan === null) return
+    setProses(true)
+    try {
+      await procurementApi().rejectPo(po.id, alasan, namaSaya)
+      toast({ title: 'PO ditolak' })
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setProses(false) }
+  }
+
+  async function kirimWa() {
+    setProses(true)
+    try {
+      const ok = await procurementApi().kirimPo(po.id)
+      if (!ok) throw new Error('Server menolak: pastikan PO sudah ditandatangani dan disetujui.')
+      const link = poViewLink(po.view_token)
+      const pesan = [
+        `Halo ${po.vendor_nama}, berikut Purchase Order dari kami:`,
+        '',
+        `Nomor    : ${po.nomor}`,
+        `Total    : ${fmt(po.total)}`,
+        `Pembayaran: ${teksTerm(po.term, po.term_hari)}`,
+        '',
+        `Rincian & PDF bisa dibuka di:`,
+        link,
+        '',
+        'Mohon konfirmasi ketersediaan barang. Terima kasih.',
+      ].join('\n')
+      window.open(waKe(po.vendor_wa, pesan), '_blank')
+      toast({ title: 'PO dikirim', description: 'Qty terpesan pada request material sudah diperbarui.' })
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal mengirim', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setProses(false) }
+  }
+
+  const items = po.items ?? []
+
+  return (
+    <div className="bg-white rounded-2xl border border-border p-4 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-bold text-navy text-sm truncate">{po.nomor}</p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {po.vendor_nama} · {items.length} barang · {teksTerm(po.term, po.term_hari)}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${TONE_STATUS_PO[po.status]}`}>
+            {LABEL_STATUS_PO[po.status]}
+          </span>
+          <p className="text-sm font-bold text-navy tabular-nums mt-1">{fmt(po.total)}</p>
+        </div>
+      </div>
+
+      <button onClick={() => setBuka(v => !v)}
+        className="text-[11px] font-bold text-muted-foreground hover:text-navy">
+        {buka ? 'Sembunyikan rincian' : 'Lihat rincian'}
+      </button>
+
+      {buka && (
+        <div className="space-y-1.5 rounded-xl bg-slate-50 p-3">
+          {items.map((it, i) => (
+            <div key={i} className="flex justify-between gap-2 text-[11px]">
+              <span className="text-navy font-semibold truncate">{it.nama}</span>
+              <span className="text-muted-foreground shrink-0">
+                {angka(it.qty)} {it.satuan} × {fmt(it.harga)} = <b className="text-navy">{fmt(it.subtotal)}</b>
+              </span>
+            </div>
+          ))}
+          {po.catatan && <p className="text-[11px] text-muted-foreground pt-1.5 border-t border-border">📝 {po.catatan}</p>}
+        </div>
+      )}
+
+      {/* Jejak pengesahan */}
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        {([
+          ['Ditandatangani', po.pembuat_nama, po.pembuat_signed_at],
+          ['Disetujui', po.approver_nama, po.approver_signed_at],
+        ] as Array<[string, string, string | null]>).map(([judul, org, kapan]) => (
+          <div key={judul} className={`rounded-lg p-2 ${kapan ? 'bg-emerald-50' : 'bg-slate-100'}`}>
+            <p className="text-muted-foreground">{judul}</p>
+            <p className="font-bold text-navy truncate">{org || '—'}</p>
+            {kapan && <p className="text-[10px] text-emerald-700">{new Date(kapan).toLocaleDateString('id-ID')}</p>}
+          </div>
+        ))}
+      </div>
+
+      {po.status === 'ditolak' && po.catatan_approval && (
+        <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
+          Ditolak: {po.catatan_approval}
+        </p>
+      )}
+
+      {/* Aksi */}
+      <div className="flex gap-1.5 pt-1 border-t border-border flex-wrap">
+        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+          onClick={() => downloadPoPdf(po, useAuthStore.getState().getPlanFor('kontraktor'))}>
+          <Download className="w-3 h-3" /> PDF
+        </Button>
+
+        {bolehUbah && !po.pembuat_signature && po.status !== 'ditolak' && (
+          <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+            onClick={() => { setTtdUntuk('pembuat'); setJabatan('') }}>
+            <PenLine className="w-3 h-3" /> Tanda Tangan
+          </Button>
+        )}
+
+        {bolehApprove && po.pembuat_signature && !po.approver_signature && po.status !== 'ditolak' && (
+          <>
+            <Button size="sm" className="h-7 text-[11px] gap-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => { setTtdUntuk('approver'); setJabatan('') }}>
+              <Check className="w-3 h-3" /> Setujui
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+              disabled={proses} onClick={tolak}>
+              <X className="w-3 h-3" /> Tolak
+            </Button>
+          </>
+        )}
+
+        {bolehUbah && po.status !== 'terkirim' && po.status !== 'selesai' && (
+          <Button size="sm" disabled={!izin.boleh || proses} onClick={kirimWa}
+            title={izin.boleh ? 'Kirim PO ke WhatsApp vendor' : izin.alasan}
+            className="h-7 text-[11px] gap-1 bg-gold text-navy hover:bg-gold/90 disabled:opacity-50">
+            {proses ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+            Kirim ke Vendor
+          </Button>
+        )}
+
+        {po.status === 'terkirim' && (
+          <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+            onClick={() => { navigator.clipboard?.writeText(poViewLink(po.view_token)); toast({ title: 'Link PO disalin' }) }}>
+            <Copy className="w-3 h-3" /> Link Vendor
+          </Button>
+        )}
+      </div>
+
+      {/* Alasan tombol kirim masih mati — supaya tidak perlu menebak */}
+      {bolehUbah && !izin.boleh && po.status !== 'terkirim' && po.status !== 'selesai' && (
+        <p className="text-[10px] text-muted-foreground">{izin.alasan}</p>
+      )}
+
+      {/* Panel tanda tangan */}
+      {ttdUntuk && (
+        <div className="rounded-xl border-2 border-gold/40 p-3 space-y-2.5">
+          <p className="text-xs font-bold text-navy">
+            {ttdUntuk === 'pembuat' ? 'Tanda tangan pembuat PO' : 'Persetujuan Owner / Manajemen / Project Manager'}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <input value={nama} onChange={e => setNama(e.target.value)}
+              placeholder="Nama *" className={inputCls} />
+            <input value={jabatan} onChange={e => setJabatan(e.target.value)}
+              placeholder="Jabatan" className={inputCls} />
+          </div>
+          <SignaturePad onChange={setSignature} height={140} />
+          <div className="flex gap-2">
+            <Button size="sm" disabled={proses} onClick={simpanTtd}
+              className="gap-1.5 bg-navy hover:bg-navy/90 font-bold">
+              {proses ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+              Simpan
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setTtdUntuk(null); setSignature(null) }}>
+              Batal
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

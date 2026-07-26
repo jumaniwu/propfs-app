@@ -1,0 +1,254 @@
+// ============================================================
+// PropFS — API Procurement (vendor, katalog, purchase order)
+// REST langsung dengan batas waktu, pola sama dengan materialApi.ts —
+// supabase-js bisa menggantung saat menyegarkan token di Chrome mobile.
+// window.__procurementApiMock dipakai test E2E.
+// ============================================================
+
+import type {
+  Vendor, VendorItem, PurchaseOrder, StatusVendor, StatusPo, PoItem,
+} from './procurement'
+
+export interface BuatPoInput {
+  nomor: string
+  vendor_id: string | null
+  vendor_nama: string
+  vendor_wa: string
+  project_name: string
+  butuh_tanggal: string | null
+  term: 'cash' | 'term'
+  term_hari: number
+  items: PoItem[]
+  subtotal: number
+  ppn_pct: number
+  ppn: number
+  total: number
+  catatan: string
+}
+
+/** Profil vendor yang dikirim dari halaman registrasi publik. */
+export interface ProfilVendorPublik {
+  nama: string
+  pic: string
+  no_wa: string
+  email: string
+  alamat: string
+  npwp: string
+  kategori: string
+  term: 'cash' | 'term'
+  term_hari: number
+  catatan: string
+}
+
+export type ItemVendorPublik = Pick<VendorItem, 'nama' | 'satuan' | 'harga' | 'merek' | 'min_order' | 'catatan'>
+
+export interface ProcurementApi {
+  // ── Dalam aplikasi (butuh login) ──
+  listVendors(): Promise<Vendor[]>
+  updateVendor(id: string, patch: Partial<Pick<Vendor, 'nama' | 'pic' | 'no_wa' | 'email' | 'alamat' | 'npwp' | 'kategori' | 'term' | 'term_hari' | 'catatan' | 'status'>>): Promise<void>
+  deleteVendor(id: string): Promise<void>
+  /** Vendor ditambahkan manual oleh admin (tanpa lewat link registrasi). */
+  createVendor(v: ProfilVendorPublik & { status?: StatusVendor }): Promise<Vendor>
+
+  listVendorItems(): Promise<VendorItem[]>
+  createVendorItem(vendorId: string, item: ItemVendorPublik): Promise<void>
+  deleteVendorItem(id: string): Promise<void>
+
+  listPo(): Promise<PurchaseOrder[]>
+  createPo(input: BuatPoInput): Promise<PurchaseOrder>
+  /** Tanda tangan pembuat atau persetujuan; status ikut disesuaikan. */
+  signPo(id: string, peran: 'pembuat' | 'approver', data: {
+    nama: string; jabatan: string; signature: string; catatan?: string
+  }, status: StatusPo): Promise<void>
+  rejectPo(id: string, catatan: string, oleh: string): Promise<void>
+  /** Menandai terkirim + menambah qty_dipesan pada tiap request, di server. */
+  kirimPo(id: string): Promise<boolean>
+  deletePo(id: string): Promise<void>
+
+  /** Tautan registrasi vendor milik perusahaan ini. */
+  vendorToken(): Promise<string>
+
+  // ── Publik (tanpa login) ──
+  perusahaanByVendorToken(token: string): Promise<string>
+  daftarVendor(token: string, profil: ProfilVendorPublik, items: ItemVendorPublik[]): Promise<string | null>
+  vendorBySelfToken(token: string): Promise<(ProfilVendorPublik & { status: StatusVendor; items: ItemVendorPublik[] }) | null>
+  simpanItemVendor(token: string, items: ItemVendorPublik[]): Promise<boolean>
+  poByToken(token: string): Promise<PurchaseOrder | null>
+}
+
+// ── REST langsung ───────────────────────────────────────────────────────────
+function supaConf() {
+  const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env
+  return {
+    url: env.VITE_SUPABASE_URL || 'https://ciazztqmkhzrgbaqfyyz.supabase.co',
+    key: env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD',
+  }
+}
+function storedAccessToken(url: string): string | null {
+  try {
+    const ref = url.replace(/^https?:\/\//, '').split('.')[0]
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
+  } catch { return null }
+}
+
+/** `publik: true` memakai kunci anon saja — halaman vendor tidak punya sesi. */
+async function restFetch(
+  path: string, init: RequestInit = {}, ms = 15000, publik = false,
+): Promise<Response> {
+  const { url, key } = supaConf()
+  const token = publik ? null : storedAccessToken(url)
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(`${url}/rest/v1/${path}`, {
+      ...init, signal: ctrl.signal,
+      headers: {
+        apikey: key, Authorization: `Bearer ${token ?? key}`,
+        'Content-Type': 'application/json', ...(init.headers ?? {}),
+      },
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')
+    }
+    throw e
+  } finally { clearTimeout(timer) }
+}
+
+async function rpc<T>(fn: string, body: unknown, publik = false): Promise<T> {
+  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) }, 15000, publik)
+  if (!res.ok) {
+    throw new Error(
+      `Gagal (HTTP ${res.status}).`
+      + (res.status === 404 ? ' Pastikan migration_procurement.sql sudah dijalankan di Supabase.' : ''),
+    )
+  }
+  return await res.json() as T
+}
+
+async function ambil<T>(path: string, apa: string): Promise<T> {
+  const res = await restFetch(path)
+  if (!res.ok) {
+    throw new Error(
+      `Gagal memuat ${apa} (HTTP ${res.status}).`
+      + (res.status === 404 ? ' Jalankan migration_procurement.sql di Supabase SQL Editor.' : ''),
+    )
+  }
+  return await res.json() as T
+}
+
+async function ubah(path: string, body: unknown, apa: string): Promise<void> {
+  const res = await restFetch(path, { method: 'PATCH', body: JSON.stringify(body) })
+  if (!res.ok) throw new Error(`Gagal memperbarui ${apa} (HTTP ${res.status}).`)
+}
+
+async function hapus(path: string, apa: string): Promise<void> {
+  const res = await restFetch(path, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Gagal menghapus ${apa} (HTTP ${res.status}).`)
+}
+
+/** Insert satu baris & kembalikan hasilnya. */
+async function sisip<T>(tabel: string, body: unknown, apa: string): Promise<T> {
+  const res = await restFetch(tabel, {
+    method: 'POST', body: JSON.stringify(body),
+    headers: { Prefer: 'return=representation' },
+  })
+  if (!res.ok) throw new Error(`Gagal menyimpan ${apa} (HTTP ${res.status}).`)
+  const rows = await res.json() as T[]
+  return rows[0]
+}
+
+const realApi: ProcurementApi = {
+  listVendors: () => ambil<Vendor[]>('vendors?select=*&order=created_at.desc', 'vendor'),
+  updateVendor: (id, patch) => ubah(`vendors?id=eq.${id}`, patch, 'vendor'),
+  deleteVendor: (id) => hapus(`vendors?id=eq.${id}`, 'vendor'),
+  createVendor: (v) => sisip<Vendor>('vendors', { ...v, status: v.status ?? 'aktif' }, 'vendor'),
+
+  listVendorItems: () => ambil<VendorItem[]>('vendor_items?select=*&order=nama.asc', 'katalog'),
+  createVendorItem: async (vendorId, item) => {
+    await sisip('vendor_items', { ...item, vendor_id: vendorId }, 'barang vendor')
+  },
+  deleteVendorItem: (id) => hapus(`vendor_items?id=eq.${id}`, 'barang vendor'),
+
+  listPo: () => ambil<PurchaseOrder[]>('purchase_orders?select=*&order=created_at.desc', 'purchase order'),
+  createPo: (input) => sisip<PurchaseOrder>('purchase_orders', { ...input, status: 'draft' }, 'purchase order'),
+
+  async signPo(id, peran, data, status) {
+    const patch = peran === 'pembuat'
+      ? {
+        pembuat_nama: data.nama, pembuat_jabatan: data.jabatan,
+        pembuat_signature: data.signature, pembuat_signed_at: new Date().toISOString(),
+        status,
+      }
+      : {
+        approver_nama: data.nama, approver_jabatan: data.jabatan,
+        approver_signature: data.signature, approver_signed_at: new Date().toISOString(),
+        catatan_approval: data.catatan ?? '', status,
+      }
+    await ubah(`purchase_orders?id=eq.${id}`, patch, 'purchase order')
+  },
+
+  rejectPo: (id, catatan, oleh) => ubah(`purchase_orders?id=eq.${id}`, {
+    status: 'ditolak', catatan_approval: catatan,
+    approver_nama: oleh, approver_signed_at: new Date().toISOString(),
+  }, 'purchase order'),
+
+  // Penambahan qty_dipesan dan perubahan status dilakukan dalam satu
+  // transaksi di server; kalau dipecah di klien, angka terpesan bisa
+  // separuh jalan ketika koneksi putus.
+  kirimPo: (id) => rpc<boolean>('po_tandai_terkirim', { p_po_id: id }),
+
+  deletePo: (id) => hapus(`purchase_orders?id=eq.${id}`, 'purchase order'),
+
+  async vendorToken() {
+    return (await rpc<string | null>('vendor_token_saya', {})) ?? ''
+  },
+
+  // ── Publik ──
+  async perusahaanByVendorToken(token) {
+    const rows = await rpc<Array<{ nama_perusahaan?: string }>>(
+      'perusahaan_by_vendor_token', { p_token: token }, true,
+    ).catch(() => [])
+    return rows?.[0]?.nama_perusahaan ?? ''
+  },
+
+  daftarVendor: (token, profil, items) => rpc<string | null>(
+    'vendor_daftar', { p_token: token, p_profil: profil, p_items: items }, true,
+  ),
+
+  async vendorBySelfToken(token) {
+    const rows = await rpc<Array<ProfilVendorPublik & { status: StatusVendor; items: ItemVendorPublik[] }>>(
+      'vendor_by_self_token', { p_token: token }, true,
+    )
+    return rows?.[0] ?? null
+  },
+
+  simpanItemVendor: (token, items) => rpc<boolean>(
+    'vendor_item_simpan', { p_token: token, p_items: items }, true,
+  ),
+
+  async poByToken(token) {
+    const rows = await rpc<PurchaseOrder[]>('po_get_by_token', { p_token: token }, true)
+    return rows?.[0] ?? null
+  },
+}
+
+export function procurementApi(): ProcurementApi {
+  return (window as { __procurementApiMock?: ProcurementApi }).__procurementApiMock ?? realApi
+}
+
+/** Tautan registrasi vendor yang dibagikan lewat WA/email. */
+export function vendorDaftarLink(token: string): string {
+  return `${window.location.origin}/vendor/daftar/${token}`
+}
+/** Tautan pribadi vendor untuk memperbarui daftar barangnya. */
+export function vendorItemLink(token: string): string {
+  return `${window.location.origin}/vendor/item/${token}`
+}
+/** Tautan PO yang dikirim ke vendor — WhatsApp tidak bisa melampirkan file. */
+export function poViewLink(token: string): string {
+  return `${window.location.origin}/po/${token}`
+}
