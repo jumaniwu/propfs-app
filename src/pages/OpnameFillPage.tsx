@@ -2,6 +2,7 @@
 // mengisi volume realisasi pekerjaan, lalu mengirim.
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, CheckCircle2, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import NumInput from '@/components/siteplan/NumInput'
@@ -12,6 +13,7 @@ type OpnameView = Omit<OpnameDoc, 'id' | 'fill_token'>
 
 export default function OpnameFillPage() {
   const { token = '' } = useParams()
+  const merek = useBrandingPublik(token)
   const [form, setForm] = useState<OpnameView | null>(null)
   const [items, setItems] = useState<OpnameItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,10 +57,7 @@ export default function OpnameFillPage() {
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="text-center">
-          <p className="font-serif font-bold text-xl text-navy">PropFS · Kontraktor AI</p>
-          <p className="text-xs text-muted-foreground">Form Opname Pekerjaan Lapangan</p>
-        </div>
+        <KopPublik profil={merek} subjudul="Opname Lapangan" />
 
         {loading && (
           <div className="bg-white rounded-2xl p-10 flex items-center justify-center gap-2 text-muted-foreground">

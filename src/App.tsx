@@ -29,6 +29,10 @@ const AdminStaff      = lazy(() => import('./pages/admin/AdminEmployeeManager'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const HomePage    = lazy(() => import('./pages/HomePage'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
+const KontraktorHomePage = lazy(() => import('./pages/KontraktorHomePage'))
+const KonsolidasiPage = lazy(() => import('./pages/KonsolidasiPage'))
+const MaterialLapanganPage = lazy(() => import('./pages/MaterialLapanganPage'))
+const TimPage = lazy(() => import('./pages/TimPage'))
 const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
@@ -91,6 +95,14 @@ export default function App() {
     initialize()
   }, [initialize])
 
+  // Tarik profil perusahaan sekali setelah login agar kop & logo sudah siap
+  // di cache saat pengguna mencetak laporan.
+  const userId = useAuthStore(s => s.user?.id)
+  useEffect(() => {
+    if (!userId) return
+    void import('./lib/branding').then(m => m.brandingApi().load().catch(() => { /* opsional */ }))
+  }, [userId])
+
   return (
     <BrowserRouter>
       <Suspense fallback={<LoadingScreen />}>
@@ -118,6 +130,10 @@ export default function App() {
           <Route path="/payment/:id" element={<PrivateRoute><PaymentPage /></PrivateRoute>} />
           
           {/* Cost Control Module — blocked for free plan */}
+          <Route path="/kontraktor" element={<FeatureRoute feature="cost_control"><KontraktorHomePage /></FeatureRoute>} />
+          <Route path="/kontraktor/konsolidasi" element={<FeatureRoute feature="cost_control"><KonsolidasiPage /></FeatureRoute>} />
+          <Route path="/kontraktor/material" element={<FeatureRoute feature="cost_control"><MaterialLapanganPage /></FeatureRoute>} />
+          <Route path="/kontraktor/tim" element={<FeatureRoute feature="cost_control"><TimPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 

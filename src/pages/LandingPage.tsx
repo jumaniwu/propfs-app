@@ -24,6 +24,8 @@ import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
+import { bacaKatalog, katalogTampil, FITUR_KATALOG, hargaEfektif, type KatalogPaket } from '@/lib/planCatalog'
+import { produkTercakup } from '@/lib/produk'
 
 const ICON_MAP: Record<string, any> = {
   Calculator,
@@ -94,7 +96,7 @@ export default function LandingPage() {
   }
 
   // Load promo prices from DB
-  const [catalogPlans, setCatalogPlans] = useState<any[]>([])
+  const [catalogPlans, setCatalogPlans] = useState<KatalogPaket[]>([])
   useEffect(() => {
     async function loadCatalog() {
       try {
@@ -103,18 +105,11 @@ export default function LandingPage() {
           .select('value')
           .eq('key', 'plan_catalog')
           .maybeSingle()
-        if (data?.value && Array.isArray(data.value) && data.value.length > 0) {
-          setCatalogPlans(data.value)
-        } else {
-          // Fallback to default
-          setCatalogPlans([
-            { id: 'free', name: 'Free Trial', priceIdr: 0, promoPriceIdr: null, maxProjects: 2, isVisible: true, features: { fs_projects: 2, cost_control: false, upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false, export_excel: false, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false } },
-            { id: 'starter', name: 'Starter', priceIdr: 149000, promoPriceIdr: null, maxProjects: 5, isVisible: true, features: { fs_projects: 5, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: false, multi_user: 1, api_access: false, whitelabel: false, priority_support: false, onboarding: false } },
-            { id: 'pro', name: 'Pro', priceIdr: 399000, promoPriceIdr: null, maxProjects: 50, recommended: true, isVisible: true, features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 3, api_access: false, whitelabel: false, priority_support: true, onboarding: false } },
-            { id: 'enterprise', name: 'Enterprise', priceIdr: 999000, promoPriceIdr: null, maxProjects: 999, isVisible: true, features: { fs_projects: 999, cost_control: true, upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true, export_excel: true, export_pdf: true, multi_user: 999, api_access: true, whitelabel: true, priority_support: true, onboarding: true } }
-          ])
-        }
-      } catch { /* ignore */ }
+        // bacaKatalog() memahami katalog lama maupun 3 katalog produk yang baru
+        setCatalogPlans(katalogTampil(bacaKatalog(data?.value)))
+      } catch {
+        setCatalogPlans(katalogTampil(bacaKatalog(null)))
+      }
     }
     loadCatalog()
   }, [])
@@ -330,9 +325,11 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4">
             <div className="text-center mb-16 space-y-4">
               <p className="text-gold font-black uppercase tracking-[0.3em] text-xs">PAKET BERLANGGANAN</p>
-              <h2 className="font-serif text-4xl md:text-5xl font-bold">Pilih Paket yang Sesuai</h2>
+              <h2 className="font-serif text-4xl md:text-5xl font-bold">Pilih Langganan yang Sesuai</h2>
               <p className="text-xl text-white/60 max-w-2xl mx-auto leading-relaxed">
-                Mulai gratis, upgrade kapan saja. Semua paket berbayar sudah mencakup fitur Cost Control & AI.
+                Berlangganan <strong className="text-white/80">Feasibility Study</strong> saja,{' '}
+                <strong className="text-white/80">Kontraktor AI</strong> saja, atau keduanya sekaligus —
+                jumlah proyek mengikuti katalog yang dipilih.
               </p>
             </div>
 
@@ -341,11 +338,22 @@ export default function LandingPage() {
               {catalogPlans.filter(p => p.isVisible !== false).map(plan => {
                 const isPro = plan.recommended
                 const hasPromo = plan.promoPriceIdr !== null && plan.promoPriceIdr > 0 && plan.promoPriceIdr < plan.priceIdr
-                const currentPrice = hasPromo ? plan.promoPriceIdr! : plan.priceIdr
+                const currentPrice = hargaEfektif(plan)
+                const belumBerharga = plan.id !== 'free' && currentPrice <= 0
 
-                // Calculate which features to show
-                const availableFeatures = MASTER_FEATURES.filter(f => plan.features[f.key])
-                const unavailableFeatures = MASTER_FEATURES.filter(f => !plan.features[f.key])
+                // Kuota proyek per produk yang tercakup katalog ini
+                const produk = produkTercakup(plan.product)
+                const teksProyek = (n: number, nama: string) => `${n >= 999 ? 'Tak terbatas' : n} proyek ${nama}`
+                const barisProyek: string[] = []
+                if (plan.id === 'free') {
+                  if (plan.fsProjects > 0) barisProyek.push(teksProyek(plan.fsProjects, 'Feasibility Study'))
+                } else {
+                  if (produk.includes('feasibility')) barisProyek.push(teksProyek(plan.fsProjects, 'Feasibility Study'))
+                  if (produk.includes('kontraktor')) barisProyek.push(teksProyek(plan.costProjects, 'Kontraktor AI'))
+                }
+
+                const availableFeatures = FITUR_KATALOG.filter(f => plan.features[f.key])
+                const unavailableFeatures = FITUR_KATALOG.filter(f => !plan.features[f.key])
 
                 return (
                   <div key={plan.id} className={`group relative p-8 rounded-[28px] border transition-all duration-500 flex flex-col h-full
@@ -377,7 +385,12 @@ export default function LandingPage() {
                       </div>
                       
                       <h3 className="text-2xl font-black mb-1">{plan.name}</h3>
-                      
+                      {plan.deskripsi && (
+                        <p className={`text-xs leading-relaxed ${isPro ? 'text-navy/60' : 'text-white/50'}`}>
+                          {plan.deskripsi}
+                        </p>
+                      )}
+
                       <div className="flex flex-col gap-1 mt-4">
                         {hasPromo && (
                           <span className={`text-sm line-through ${isPro ? 'text-navy/50' : 'text-white/40'}`}>
@@ -386,15 +399,22 @@ export default function LandingPage() {
                         )}
                         <div className="flex items-end gap-1">
                           <span className={`text-4xl font-black ${isPro ? 'text-navy' : 'text-gold'}`}>
-                            Rp {currentPrice.toLocaleString('id-ID')}
+                            {plan.id === 'free' ? 'Gratis' : belumBerharga ? 'Segera' : `Rp ${currentPrice.toLocaleString('id-ID')}`}
                           </span>
-                          <span className={`text-sm pb-1 ${isPro ? 'text-navy/50' : 'text-white/40'}`}>/bulan</span>
+                          {plan.id !== 'free' && !belumBerharga && (
+                            <span className={`text-sm pb-1 ${isPro ? 'text-navy/50' : 'text-white/40'}`}>/bulan</span>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Features List */}
+                    {/* Kuota proyek + fitur */}
                     <ul className="space-y-3 mb-6 flex-1 relative z-10">
+                      {barisProyek.map(t => (
+                        <li key={t} className={`text-sm flex gap-2 font-black ${isPro ? 'text-navy' : 'text-gold'}`}>
+                          ✅ {t}
+                        </li>
+                      ))}
                       {availableFeatures.map(f => {
                         const val = plan.features[f.key]
                         let text = f.label
@@ -424,9 +444,10 @@ export default function LandingPage() {
                       className={`w-full h-12 text-base font-black mt-auto relative z-10 transition-colors
                         ${isPro ? 'bg-navy text-gold hover:bg-navy/90' : 'bg-white/10 text-white border border-white/30 hover:bg-white hover:text-navy'}
                       `}
-                      onClick={() => navigate(plan.priceIdr === 0 ? '/auth' : `/auth?plan=${plan.id}`)}
+                      disabled={belumBerharga}
+                      onClick={() => navigate(plan.id === 'free' ? '/auth' : `/auth?plan=${plan.id}`)}
                     >
-                      {plan.priceIdr === 0 ? 'Daftar Gratis' : 'Pilih ' + plan.name}
+                      {plan.id === 'free' ? 'Daftar Gratis' : belumBerharga ? 'Segera Hadir' : 'Pilih ' + plan.name}
                     </Button>
                   </div>
                 )

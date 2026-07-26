@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
-import { useAuthStore } from './authStore'
 import { supabase } from '../lib/supabase'
 import { mergeNewest } from '../lib/cloudSync'
+import { dataOwnerId } from '../lib/teamApi'
 
 export interface ProjectInfo {
   id: string
@@ -77,14 +77,28 @@ interface CostStore {
   // Computed helpers (derived values, not stored separately)
   getTotalRealisasi: () => number
   getActualProgressPct: () => number
+  /** Realisasi seluruh proyek, tiap entri ditandai projectId (untuk konsolidasi). */
+  getAllRealisasi: () => Array<RealisasiEntry & { projectId: string }>
+  /** Ringkasan tiap proyek tersimpan: id, nama, nilai RAB, progress fisik. */
+  getProjectSummaries: () => Array<{ id: string; nama: string; rab: number; progressPct: number }>
+}
+
+/** Progress fisik tertimbang bobot biaya, 0–100. */
+function progressPlan(plan: BudgetPlan | null): number {
+  const comps = plan?.components ?? []
+  const total = comps.reduce((s, c) => s + c.totalPlannedCost, 0)
+  if (total <= 0) return 0
+  return comps.reduce((s, c) => s + (c.progressPercentage ?? 0) * c.totalPlannedCost, 0) / total
 }
 
 // ── SECURITY: Use user-scoped storage key to prevent data leaking between users ──
 // Each user gets their own isolated localStorage key.
 function getUserStorageKey(): string {
   try {
-    const user = useAuthStore.getState().user
-    if (user?.id) return `propfs-cost-projects:${user.id}`
+    // Saat membuka workspace perusahaan lain sebagai anggota tim, kunci mengikuti
+    // pemilik workspace agar data antar-perusahaan tidak tercampur di perangkat ini.
+    const owner = dataOwnerId()
+    if (owner) return `propfs-cost-projects:${owner}`
   } catch { /* ignore */ }
   return 'propfs-cost-projects:anonymous'
 }
@@ -105,7 +119,9 @@ function saveLocalData(projects: SavedCostProject[]) {
 
 // ── Sinkron cloud (Supabase) agar proyek terlihat di semua perangkat ────────
 function cloudUserId(): string | null {
-  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+  // Anggota tim membaca/menulis data milik pemilik workspace (diizinkan RLS
+  // lewat is_team_member); tanpa workspace terpilih = data milik sendiri.
+  return dataOwnerId()
 }
 
 async function upsertCloudProject(p: SavedCostProject): Promise<void> {
@@ -345,5 +361,43 @@ export const useCostStore = create<CostStore>((set, get) => ({
       return s + (pct * c.totalPlannedCost)
     }, 0)
     return weightedProgress / totalBudget
+  },
+
+  // ── Lintas proyek (dipakai laporan konsolidasi) ────────────────────────────
+  getAllRealisasi: () => {
+    const { savedProjects, projectInfo, realisasiEntries } = get()
+    const out: Array<RealisasiEntry & { projectId: string }> = []
+    for (const p of savedProjects) {
+      // proyek yang sedang dibuka: pakai state aktif (lebih baru dari snapshot)
+      const entries = p.info.id === projectInfo?.id ? realisasiEntries : (p.realisasiEntries ?? [])
+      for (const e of entries) out.push({ ...e, projectId: p.info.id })
+    }
+    // proyek aktif yang belum sempat tersimpan ke savedProjects
+    if (projectInfo && !savedProjects.some(p => p.info.id === projectInfo.id)) {
+      for (const e of realisasiEntries) out.push({ ...e, projectId: projectInfo.id })
+    }
+    return out
+  },
+
+  getProjectSummaries: () => {
+    const { savedProjects, projectInfo, activePlan } = get()
+    const list = savedProjects.map(p => {
+      const plan = p.info.id === projectInfo?.id ? activePlan : p.plan
+      return {
+        id: p.info.id,
+        nama: p.info.projectName,
+        rab: plan?.totalBaselineBudget ?? 0,
+        progressPct: progressPlan(plan ?? null),
+      }
+    })
+    if (projectInfo && !savedProjects.some(p => p.info.id === projectInfo.id)) {
+      list.push({
+        id: projectInfo.id,
+        nama: projectInfo.projectName,
+        rab: activePlan?.totalBaselineBudget ?? 0,
+        progressPct: progressPlan(activePlan),
+      })
+    }
+    return list
   },
 }))

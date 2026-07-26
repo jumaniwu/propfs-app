@@ -2,6 +2,7 @@
 // lapangan — tiap tanggal menampilkan kegiatan & foto laporan pekerja.
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, ChevronLeft, ChevronRight, CalendarDays, ImageIcon } from 'lucide-react'
 import { fieldApi, type FieldReport } from '@/lib/fieldReports'
 import PhotoLightbox from '@/components/PhotoLightbox'
@@ -11,6 +12,7 @@ const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', '
 
 export default function ProgressKalenderPage() {
   const { token = '' } = useParams()
+  const merek = useBrandingPublik(token)
   const [data, setData] = useState<{ project_name: string; reports: FieldReport[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -59,10 +61,7 @@ export default function ProgressKalenderPage() {
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="text-center">
-          <p className="font-serif font-bold text-xl text-navy">PropFS · Kontraktor AI</p>
-          <p className="text-xs text-muted-foreground">Kalender Progres Lapangan</p>
-        </div>
+        <KopPublik profil={merek} subjudul="Kalender Progres Lapangan" />
 
         {loading && (
           <div className="bg-white rounded-2xl p-10 flex items-center justify-center gap-2 text-muted-foreground">
@@ -156,7 +155,7 @@ export default function ProgressKalenderPage() {
             )}
           </>
         )}
-        <p className="text-center text-[10px] text-muted-foreground">Dokumen digital · propfs.id · Kontraktor AI</p>
+        <KakiPublik profil={merek} />
       </div>
 
       {lightbox && (

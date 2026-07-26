@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
 import { formatRupiah, formatPct } from '@/engine/formatter'
 import { exportToPDF } from '@/utils/export'
+import { getBrandingCache, footerLaporan, identitasLaporan } from '@/lib/branding'
+import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -17,6 +19,8 @@ export default function CostReportPage() {
   const [searchParams] = useSearchParams()
 
   const { projectInfo, activePlan, realisasiEntries, getActualProgressPct, getTotalRealisasi } = useCostStore()
+  // Identitas perusahaan pemakai; PropFS hanya dipakai bila profil belum diisi
+  const merek = identitasLaporan(getBrandingCache())
 
   useEffect(() => {
     // If we land here directly, we must ensure project is loaded.
@@ -156,9 +160,17 @@ export default function CostReportPage() {
         {/* ── Page 1: Cover ── */}
         <div className="cover-page min-h-screen flex flex-col justify-between p-16 bg-navy text-white">
           <div>
-            <div className="w-16 h-16 bg-gold rounded-2xl flex items-center justify-center mb-6">
-              <span className="font-serif font-bold text-navy text-2xl">P</span>
-            </div>
+            {merek.logo ? (
+              <img src={merek.logo} alt={merek.nama}
+                className="h-16 max-w-[220px] object-contain mb-6" />
+            ) : (
+              <div className="w-16 h-16 bg-gold rounded-2xl flex items-center justify-center mb-6">
+                <span className="font-serif font-bold text-navy text-2xl">{merek.nama.charAt(0)}</span>
+              </div>
+            )}
+            {!merek.bawaan && (
+              <div className="text-white font-bold text-lg mb-1">{merek.nama}</div>
+            )}
             <div className="text-gold text-sm font-medium uppercase tracking-widest mb-2">Cost Control Executive Report</div>
           </div>
           <div className="space-y-6">
@@ -169,7 +181,7 @@ export default function CostReportPage() {
             </div>
           </div>
           <div className="border-t border-white/20 pt-6 flex justify-between text-white/50 text-sm">
-            <span>PropFS Project Management System</span>
+            <span>{footerLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))}</span>
             <span>Dicetak: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
           </div>
         </div>

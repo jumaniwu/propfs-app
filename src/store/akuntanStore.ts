@@ -5,8 +5,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PemasukanEntry, InventoryAdjustment } from '@/lib/akuntan'
 import { supabase } from '@/lib/supabase'
-import { useAuthStore } from './authStore'
+import { useCostStore } from './costStore'
 import { unionById } from '@/lib/cloudSync'
+import { dataOwnerId } from '@/lib/teamApi'
 
 interface AkuntanStore {
   pemasukanEntries: PemasukanEntry[]
@@ -21,7 +22,16 @@ interface AkuntanStore {
 }
 
 function userId(): string | null {
-  try { return useAuthStore.getState().user?.id ?? null } catch { return null }
+  // Sama seperti costStore: anggota tim membaca data pemilik workspace aktif.
+  return dataOwnerId()
+}
+
+/**
+ * Proyek yang sedang dibuka — dipakai menandai entri baru agar laporan bisa
+ * disaring per proyek maupun dikonsolidasi.
+ */
+function proyekAktifId(): string | undefined {
+  try { return useCostStore.getState().projectInfo?.id } catch { return undefined }
 }
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null
@@ -52,7 +62,10 @@ export const useAkuntanStore = create<AkuntanStore>()(
       inventoryAdjustments: [],
       addPemasukan: (p) => {
         set(s => ({
-          pemasukanEntries: [...s.pemasukanEntries, { ...p, id: `pm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
+          pemasukanEntries: [...s.pemasukanEntries, {
+            projectId: proyekAktifId(), ...p,
+            id: `pm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          }],
         }))
         pushCloud(get())
       },
@@ -62,7 +75,10 @@ export const useAkuntanStore = create<AkuntanStore>()(
       },
       addAdjustment: (a) => {
         set(s => ({
-          inventoryAdjustments: [...s.inventoryAdjustments, { ...a, id: `ia-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }],
+          inventoryAdjustments: [...s.inventoryAdjustments, {
+            projectId: proyekAktifId(), ...a,
+            id: `ia-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          }],
         }))
         pushCloud(get())
       },

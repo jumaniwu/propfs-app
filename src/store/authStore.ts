@@ -15,6 +15,11 @@ import {
   type TrialStatus
 } from '../lib/supabase'
 import type { User, Session } from '@supabase/supabase-js'
+import {
+  langgananProduk, planProduk, produkDariFitur, produkDariJenisProyek,
+  type Produk,
+} from '../lib/produk'
+import { normalisasiPaket } from '../lib/planCatalog'
 
 
 // ── Plan feature definitions (mirrored from DB) ────────────
@@ -57,6 +62,8 @@ interface AuthStore {
   session: Session | null
   profile: Profile | null
   subscription: Subscription | null
+  /** Semua langganan aktif — satu per produk (Feasibility / Kontraktor AI). */
+  subscriptions: Subscription[]
   isSubscriptionEnabled: boolean
   globalFeatures: Record<AppFeature, boolean>
   bankDetails: BankDetails
@@ -89,6 +96,12 @@ interface AuthStore {
   getPlanLimits: (plan: PlanId) => typeof PLAN_LIMITS[PlanId]
   canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost') => boolean
   isFeatureEnabled: (feature: AppFeature) => boolean
+  /** Paket yang berlaku untuk satu produk (langganan terpisah per produk). */
+  getPlanFor: (produk: Produk) => PlanId
+  /** Batas kuota & fitur untuk satu produk. */
+  getLimitsFor: (produk: Produk) => typeof PLAN_LIMITS[PlanId]
+  /** Langganan aktif untuk satu produk, bila ada. */
+  getSubscriptionFor: (produk: Produk) => Subscription | null
 
   getTrialInfo: () => TrialInfo
   isTrialActive: () => boolean
@@ -228,6 +241,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   session: null,
   profile: null,
   subscription: null,
+  subscriptions: [],
   isSubscriptionEnabled: false,
   globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
   bankDetails: DEFAULT_BANK_DETAILS,
@@ -270,7 +284,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // Don't update user state if there's no session
         // (e.g. signUp with email confirmation pending fires SIGNED_IN but session is null)
         if (!session) {
-          set({ user: null, session: null, profile: null, subscription: null })
+          set({ user: null, session: null, profile: null, subscription: null, subscriptions: [] })
           return
         }
         set({ user: session.user, session })
@@ -375,7 +389,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           localStorage.removeItem(key)
         }
       })
-      set({ user: null, session: null, profile: null, subscription: null })
+      set({ user: null, session: null, profile: null, subscription: null, subscriptions: [] })
     }
   },
 
@@ -441,15 +455,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const { user } = get()
     if (!user) return
     try {
+      // Ambil SEMUA langganan aktif — sejak langganan dipisah per produk,
+      // satu pengguna bisa punya langganan Feasibility dan Kontraktor AI
+      // sekaligus dengan paket berbeda.
       const { data } = await supabase
         .from('subscriptions')
         .select('*, plan:subscription_plans(*)')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      set({ subscription: data as Subscription | null })
+      const list = (data ?? []) as Subscription[]
+      set({
+        subscriptions: list,
+        // `subscription` dipertahankan untuk kode lama: pakai langganan
+        // Feasibility bila ada, kalau tidak ambil yang terbaru.
+        subscription: langgananProduk(list, 'feasibility') ?? list[0] ?? null,
+      })
     } catch { /* ignore */ }
   },
 
@@ -587,43 +608,49 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   getPlanLimits: (plan: PlanId) => {
     const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['free']
     const catalog = get().planCatalog
-    const dbPlan = catalog?.find((p: any) => p.id === plan)
-    
-    if (dbPlan) {
-      // Helper to safely parse limits that might be stored as strings or booleans
-      const parseLimit = (val: any, defaultVal: number): number => {
-        if (val === undefined || val === null) return defaultVal
-        if (typeof val === 'number') return val
-        if (typeof val === 'boolean') return val ? 999 : 0
-        if (typeof val === 'string') {
-          if (val === '0' || val.toLowerCase() === 'false') return 0
-          if (val.toLowerCase() === 'true') return 999
-          return parseInt(val) || 0
-        }
-        return 0
-      }
+    const raw = catalog?.find((p: { id?: string }) => p.id === plan)
+    if (!raw) return limits
 
-      const maxFsFromCatalog = parseLimit(dbPlan.features?.fs_projects, limits.maxFsProjects)
-      const maxCostFromCatalog = parseLimit(dbPlan.features?.cost_control, 0)
+    // normalisasiPaket() memahami katalog baru (fsProjects/costProjects di
+    // tingkat atas) maupun katalog lama (features.fs_projects/cost_control).
+    const paket = normalisasiPaket(raw)
+    if (!paket) return limits
 
-      return {
-        ...limits,
-        maxProjects: dbPlan.maxProjects ?? limits.maxProjects,
-        maxFsProjects: maxFsFromCatalog,
-        maxCostProjects: maxCostFromCatalog,
-        canExportPDF: dbPlan.features?.export_pdf ?? limits.canExportPDF,
-        canAccessCashflow: maxCostFromCatalog > 0,
-        canAccessARAP: maxCostFromCatalog > 0,
-      }
+    return {
+      ...limits,
+      maxProjects: Math.max(paket.fsProjects, paket.costProjects),
+      maxFsProjects: paket.fsProjects,
+      maxCostProjects: paket.costProjects,
+      canExportPDF: paket.features?.export_pdf === true || limits.canExportPDF,
+      canAccessCashflow: paket.costProjects > 0,
+      canAccessARAP: paket.costProjects > 0,
     }
-    return limits
   },
+
+  // ── Langganan per produk (Feasibility vs Kontraktor AI) ───
+  getSubscriptionFor: (produk: Produk): Subscription | null => {
+    const { subscriptions, subscription, isSubscriptionEnabled } = get()
+    if (!isSubscriptionEnabled) return null
+    const list = subscriptions.length > 0 ? subscriptions : (subscription ? [subscription] : [])
+    return langgananProduk(list, produk)
+  },
+
+  getPlanFor: (produk: Produk): PlanId => {
+    const { subscriptions, subscription, isSubscriptionEnabled } = get()
+    if (!isSubscriptionEnabled) return 'free'
+    const list = subscriptions.length > 0 ? subscriptions : (subscription ? [subscription] : [])
+    return planProduk(list, produk) as PlanId
+  },
+
+  getLimitsFor: (produk: Produk) => get().getPlanLimits(get().getPlanFor(produk)),
 
   // ── canCreateProject ──────────────────────────────────────
   canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost'): boolean => {
     const { profile, isSubscriptionEnabled } = get()
-    
-    const plan = get().getCurrentPlan()
+
+    // Kuota dihitung dari langganan produk yang bersangkutan.
+    const produk = produkDariJenisProyek(addonType === 'cost' ? 'cost' : 'fs')
+    const plan = get().getPlanFor(produk)
     const limits = get().getPlanLimits(plan)
 
     // Bonus slots from add-on purchases
@@ -664,9 +691,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       return true
     }
 
-    // Lock cost_control dynamically based on plan limits (synced from DB)
+    // Kunci fitur berdasarkan langganan PRODUK pemilik fitur tersebut, bukan
+    // satu langganan global — Feasibility & Kontraktor AI dilanggan terpisah.
     if ((feature === 'cost_control' || feature === 'cost_rab' || feature === 'cost_realisasi') && get().isSubscriptionEnabled) {
-      const limits = get().getPlanLimits(get().getCurrentPlan())
+      const limits = get().getLimitsFor(produkDariFitur(feature) ?? 'kontraktor')
       if (!limits.canAccessCashflow) return false
     }
 
