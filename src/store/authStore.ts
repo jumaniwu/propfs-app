@@ -19,6 +19,7 @@ import {
   langgananProduk, planProduk, produkDariFitur, produkDariJenisProyek,
   type Produk,
 } from '../lib/produk'
+import { normalisasiPaket } from '../lib/planCatalog'
 
 
 // ── Plan feature definitions (mirrored from DB) ────────────
@@ -607,36 +608,23 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   getPlanLimits: (plan: PlanId) => {
     const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['free']
     const catalog = get().planCatalog
-    const dbPlan = catalog?.find((p: any) => p.id === plan)
-    
-    if (dbPlan) {
-      // Helper to safely parse limits that might be stored as strings or booleans
-      const parseLimit = (val: any, defaultVal: number): number => {
-        if (val === undefined || val === null) return defaultVal
-        if (typeof val === 'number') return val
-        if (typeof val === 'boolean') return val ? 999 : 0
-        if (typeof val === 'string') {
-          if (val === '0' || val.toLowerCase() === 'false') return 0
-          if (val.toLowerCase() === 'true') return 999
-          return parseInt(val) || 0
-        }
-        return 0
-      }
+    const raw = catalog?.find((p: { id?: string }) => p.id === plan)
+    if (!raw) return limits
 
-      const maxFsFromCatalog = parseLimit(dbPlan.features?.fs_projects, limits.maxFsProjects)
-      const maxCostFromCatalog = parseLimit(dbPlan.features?.cost_control, 0)
+    // normalisasiPaket() memahami katalog baru (fsProjects/costProjects di
+    // tingkat atas) maupun katalog lama (features.fs_projects/cost_control).
+    const paket = normalisasiPaket(raw)
+    if (!paket) return limits
 
-      return {
-        ...limits,
-        maxProjects: dbPlan.maxProjects ?? limits.maxProjects,
-        maxFsProjects: maxFsFromCatalog,
-        maxCostProjects: maxCostFromCatalog,
-        canExportPDF: dbPlan.features?.export_pdf ?? limits.canExportPDF,
-        canAccessCashflow: maxCostFromCatalog > 0,
-        canAccessARAP: maxCostFromCatalog > 0,
-      }
+    return {
+      ...limits,
+      maxProjects: Math.max(paket.fsProjects, paket.costProjects),
+      maxFsProjects: paket.fsProjects,
+      maxCostProjects: paket.costProjects,
+      canExportPDF: paket.features?.export_pdf === true || limits.canExportPDF,
+      canAccessCashflow: paket.costProjects > 0,
+      canAccessARAP: paket.costProjects > 0,
     }
-    return limits
   },
 
   // ── Langganan per produk (Feasibility vs Kontraktor AI) ───

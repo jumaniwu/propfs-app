@@ -10,7 +10,21 @@
 
 import type { AppFeature } from './supabase'
 
+/** Produk yang bisa dipakai pelanggan. */
 export type Produk = 'feasibility' | 'kontraktor'
+
+/**
+ * Cakupan sebuah katalog langganan. `bundle` mencakup kedua produk sekaligus.
+ * Katalog Free Trial memakai `null` (aturan trial diatur terpisah).
+ */
+export type CakupanKatalog = Produk | 'bundle' | null
+
+/** Produk apa saja yang tercakup sebuah katalog. */
+export function produkTercakup(cakupan: CakupanKatalog): Produk[] {
+  if (cakupan === 'bundle') return ['feasibility', 'kontraktor']
+  if (cakupan === 'feasibility' || cakupan === 'kontraktor') return [cakupan]
+  return []
+}
 
 export interface ProdukInfo {
   key: Produk
@@ -58,7 +72,7 @@ export function produkDariJenisProyek(jenis: 'fs' | 'cost'): Produk {
 
 export interface LanggananRingkas {
   /** null pada langganan lama yang belum ditandai produknya. */
-  product?: Produk | null
+  product?: CakupanKatalog
   plan_id: string
   status: string
   expired_at?: string | null
@@ -66,11 +80,13 @@ export interface LanggananRingkas {
 
 /**
  * Apakah sebuah baris langganan berlaku untuk produk tertentu.
- * Langganan tanpa `product` (data lama) dianggap mencakup semua produk.
+ * - `bundle` berlaku untuk kedua produk.
+ * - Langganan tanpa `product` (data lama) dianggap mencakup semua produk.
  */
 export function langgananUntuk(sub: LanggananRingkas, produk: Produk): boolean {
   if (sub.status !== 'active') return false
   if (!sub.product) return true
+  if (sub.product === 'bundle') return true
   return sub.product === produk
 }
 
