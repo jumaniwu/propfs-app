@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import {
-  KATALOG_DEFAULT, FITUR_KATALOG, bacaKatalog, urutkanKatalog, hargaEfektif,
+  KATALOG_DEFAULT, FITUR_KATALOG, bacaKatalog, urutkanKatalog, muatKatalog, hargaEfektif,
   type KatalogPaket,
 } from '@/lib/planCatalog'
 
@@ -47,11 +47,10 @@ export default function AdminPlans() {
   useEffect(() => {
     async function loadCatalog() {
       try {
-        const { data: catalogData } = await supabase
-          .from('app_settings').select('value').eq('key', 'plan_catalog').maybeSingle()
-        // bacaKatalog() memahami katalog lama (Starter/Pro) dan melengkapi
-        // katalog baru yang belum ada, jadi editor tidak pernah kosong.
-        setPlans(urutkanKatalog(bacaKatalog(catalogData?.value)))
+        // muatKatalog() memakai REST langsung + batas waktu; bacaKatalog() di
+        // dalamnya memahami katalog lama (Starter/Pro) dan melengkapi katalog
+        // baru yang belum ada, jadi editor tidak pernah kosong.
+        setPlans(urutkanKatalog(await muatKatalog()))
 
         const { data: addonRows } = await supabase
           .from('app_settings').select('key, value')

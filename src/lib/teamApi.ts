@@ -103,12 +103,25 @@ const realApi: TeamApi = {
       })
       const data = await res.json().catch(() => ({})) as { error?: string; member?: TeamMember; sudah_punya_akun?: boolean }
       if (!res.ok) {
-        throw new Error(data.error
-          || `Gagal membuat pengguna (HTTP ${res.status}). Pastikan Edge Function create-team-user sudah di-deploy.`)
+        if (res.status === 404) {
+          throw new Error('Edge Function "create-team-user" belum ditemukan. Deploy dulu di Supabase → Edge Functions (nama harus persis create-team-user).')
+        }
+        throw new Error(data.error || `Gagal membuat pengguna (HTTP ${res.status}).`)
       }
       return { member: data.member as TeamMember, sudahPunyaAkun: !!data.sudah_punya_akun }
     } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw new Error('Waktu habis saat membuat pengguna.')
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        throw new Error('Waktu habis saat membuat pengguna — periksa koneksi lalu coba lagi.')
+      }
+      // fetch() melempar TypeError bila permintaan tidak pernah sampai:
+      // fungsi belum di-deploy, atau preflight CORS ditolak gateway.
+      if (e instanceof TypeError) {
+        throw new Error(
+          'Tidak bisa menghubungi Edge Function "create-team-user". Periksa di Supabase → Edge Functions: '
+          + '(1) fungsi sudah ter-deploy dengan nama persis create-team-user, dan '
+          + '(2) setelan "Verify JWT" pada fungsi ini DIMATIKAN — fungsi sudah memeriksa sesi login sendiri.',
+        )
+      }
       throw e
     } finally { clearTimeout(timer) }
   },
