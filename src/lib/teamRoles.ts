@@ -102,5 +102,5 @@ export const MENU_KE_MODUL: Record<string, Modul> = {
   spk: 'spk',
   lapangan: 'lapangan', kalender: 'lapangan', link_pekerja: 'lapangan',
   pakai_bahan: 'material', req_bahan: 'material',
-  tim: 'tim', tim_undang: 'tim', tim_role: 'tim', settings: 'tim', drive: 'tim',
+  tim: 'tim', tim_undang: 'tim', tim_role: 'tim', settings: 'tim',
 }

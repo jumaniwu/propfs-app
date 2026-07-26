@@ -11,6 +11,7 @@ import {
   Building2, MapPin, X, ReceiptIcon, Info,
 } from 'lucide-react'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import HomePanelLapangan from '@/components/cost/HomePanelLapangan'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore, type SavedCostProject } from '@/store/costStore'
 import {
@@ -124,6 +125,23 @@ export default function KontraktorHomePage() {
     }
     navigate(targetUrl(item))
   }
+
+  // ── Bahan untuk panel dashboard (progres & stok) ──────────────────────────
+  const proyekProgres = useMemo(
+    () => urut.map(p => ({
+      id: p.info.id,
+      nama: p.info.projectName,
+      progressPct: ringkasProyek(p).progress,
+      startDate: p.info.startDate,
+      durasiBulan: p.info.targetDurationMonths,
+    })),
+    [urut],
+  )
+  // sisa stok dihitung terhadap gabungan Material Schedule seluruh proyek
+  const rencanaMaterial = useMemo(
+    () => urut.flatMap(p => p.materialSchedule ?? []),
+    [urut],
+  )
 
   // ── Aktivitas terbaru: diturunkan dari data lokal (tanpa loading) ──────────
   const aktivitas = useMemo(() => {
@@ -320,6 +338,16 @@ export default function KontraktorHomePage() {
             </div>
           )}
         </div>
+
+        {/* ── Panel lapangan: approval material, progres, stok menipis ── */}
+        <HomePanelLapangan
+          role={role}
+          proyek={proyekProgres}
+          rencanaMaterial={rencanaMaterial}
+          approverNama={profile?.full_name || 'Manajemen'}
+          onBukaProyek={id => { loadProject(id); navigate('/cost-control?tab=overview') }}
+          onBukaMaterial={sub => navigate(`/kontraktor/material?sub=${sub}`)}
+        />
 
         {/* ── Aktivitas terbaru ───────────────────────────────────────── */}
         <div className="rounded-2xl bg-white border border-border p-4">

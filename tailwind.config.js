@@ -17,7 +17,17 @@ export default {
         'green-lt': '#E8F5E9',
         'red-dk':   '#B71C1C',
         'red-lt':   '#FFEBEE',
-        amber:     '#E65100',
+        // `amber` dipakai sebagai warna merek (oranye tua). Dulu ditulis
+        // sebagai satu nilai datar sehingga menimpa palet bawaan Tailwind dan
+        // membuat semua kelas amber-50…amber-900 di aplikasi tidak menghasilkan
+        // warna apa pun. DEFAULT menjaga `text-amber`/`bg-amber` tetap sama,
+        // sisanya mengembalikan skala bawaan.
+        amber: {
+          DEFAULT: '#E65100',
+          50:  '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d',
+          400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309',
+          800: '#92400e', 900: '#78350f', 950: '#451a03',
+        },
         'amber-lt':'#FFF3E0',
         'blue-dk': '#0D47A1',
         'blue-lt': '#E3F2FD',

@@ -6,9 +6,9 @@
 // ============================================================
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
-  FileDown, Settings2, Scale, FileSignature, HardHat, CalendarDays, Link2,
+  FileDown, Scale, FileSignature, HardHat, CalendarDays, Link2,
   ClipboardList, Boxes, ShoppingCart, Users, UserPlus, ShieldCheck,
-  BarChart3, CloudUpload, type LucideIcon,
+  BarChart3, Settings, type LucideIcon,
 } from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -63,7 +63,6 @@ export const MENU_ITEMS: MenuItem[] = [
   { key: 'kurva_s',   label: 'Kurva S',          icon: TrendingUp,      kategori: 'proyek', tab: 'kurva_s',   tone: TONE.emerald, feature: 'scurve', alias: 'progress kurva' },
   { key: 'realisasi', label: 'Realisasi Biaya',  icon: ReceiptIcon,     kategori: 'proyek', tab: 'realisasi', tone: TONE.rose,    feature: 'cost_realisasi', alias: 'pengeluaran nota ai' },
   { key: 'laporan',   label: 'Laporan & Export', icon: FileDown,        kategori: 'proyek', tab: 'laporan',   tone: TONE.slate },
-  { key: 'settings',  label: 'Pengaturan',       icon: Settings2,       kategori: 'proyek', tab: 'settings',  tone: TONE.slate,   alias: 'setting proyek' },
 
   // ── Keuangan ──────────────────────────────────────────────────────────────
   { key: 'akuntan',     label: 'Laba Rugi',      icon: Scale,       kategori: 'keuangan', tab: 'akuntan', sub: 'labarugi',  tone: TONE.navy,    alias: 'akuntan neraca' },
@@ -79,12 +78,16 @@ export const MENU_ITEMS: MenuItem[] = [
   { key: 'pakai_bahan',  label: 'Pakai Material',  icon: PackageOpen,   kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.blue, tag: 'BARU', alias: 'penggunaan material lapangan' },
   { key: 'req_bahan',    label: 'Request Material', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material?sub=request', tone: TONE.rose, tag: 'BARU', alias: 'permintaan bahan kekurangan' },
   { key: 'link_pekerja', label: 'Link Pekerja',    icon: Link2,         kategori: 'lapangan', tab: 'lapangan', tone: TONE.slate,  alias: 'bagikan link laporan' },
-  { key: 'drive',        label: 'Google Drive',    icon: CloudUpload,   kategori: 'lapangan', tab: 'settings', tone: TONE.slate,  alias: 'auto upload foto' },
 
   // ── Tim ───────────────────────────────────────────────────────────────────
   { key: 'tim',        label: 'Anggota Tim',   icon: Users,       kategori: 'tim', path: '/kontraktor/tim', tone: TONE.navy,   tag: 'BARU' },
   { key: 'tim_undang', label: 'Undang Anggota', icon: UserPlus,   kategori: 'tim', path: '/kontraktor/tim?aksi=undang', tone: TONE.emerald, tag: 'BARU', alias: 'invite karyawan' },
   { key: 'tim_role',   label: 'Role & Akses',  icon: ShieldCheck, kategori: 'tim', path: '/kontraktor/tim?tab=role', tone: TONE.violet, tag: 'BARU', alias: 'hak akses jabatan' },
+
+  // ── Selalu paling belakang ────────────────────────────────────────────────
+  // Berisi profil perusahaan (kop & logo laporan) dan auto-upload Google Drive.
+  { key: 'settings', label: 'Pengaturan', icon: Settings, kategori: 'proyek', tab: 'settings', tone: TONE.slate,
+    alias: 'setting proyek google drive auto upload foto profil perusahaan logo kop' },
 ]
 
 /** Menu yang membutuhkan proyek aktif (tujuannya sebuah tab workspace). */

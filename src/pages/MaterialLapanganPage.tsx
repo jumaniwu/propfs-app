@@ -34,7 +34,10 @@ export default function MaterialLapanganPage() {
   const { materialSchedule, projectInfo, loadProjects } = useCostStore()
   const { profile } = useAuthStore()
 
-  const [sub, setSub] = useState<Sub>(() => (params.get('sub') === 'request' ? 'request' : 'pakai'))
+  const [sub, setSub] = useState<Sub>(() => {
+    const s = params.get('sub')
+    return s === 'request' || s === 'kurang' ? s : 'pakai'
+  })
   const [usage, setUsage] = useState<MaterialUsage[]>([])
   const [requests, setRequests] = useState<MaterialRequest[]>([])
   const [loading, setLoading] = useState(true)
