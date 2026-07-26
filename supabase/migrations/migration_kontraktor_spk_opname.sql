@@ -56,19 +56,37 @@ create policy "opname_owner_all" on public.opname_forms
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- ── Akses publik via token (tanpa login) — SECURITY DEFINER ──
-create or replace function public.spk_get_by_token(p_token text)
-returns table (
-  nomor text, project_name text, vendor_name text,
-  lingkup jsonb, nilai_kontrak numeric, termin jsonb,
-  tgl_mulai date, durasi_hari int, denda_permil numeric, catatan text,
-  status text, signature_data text, signed_name text, signed_at timestamptz,
-  created_at timestamptz
-) language sql security definer set search_path = public as $$
-  select nomor, project_name, vendor_name, lingkup, nilai_kontrak, termin,
-         tgl_mulai, durasi_hari, denda_permil, catatan,
-         status, signature_data, signed_name, signed_at, created_at
-  from spk_docs where sign_token = p_token;
-$$;
+--
+-- Bentuk hasil fungsi ini DIPERLUAS oleh migration_spk_pemberi_pasal.sql
+-- (tanda tangan pemberi kerja, pasal, lampiran). Postgres menolak
+-- `create or replace` yang mengubah daftar kolom (ERROR 42P13), jadi versi
+-- dasar ini hanya dibuat bila fungsinya belum ada — supaya migrasi ini aman
+-- dijalankan ulang tanpa error dan tanpa menurunkan versi yang lebih baru.
+do $do$
+begin
+  if not exists (
+    select 1 from pg_proc pr
+    join pg_namespace ns on ns.oid = pr.pronamespace
+    where ns.nspname = 'public' and pr.proname = 'spk_get_by_token'
+  ) then
+    execute $ddl$
+      create function public.spk_get_by_token(p_token text)
+      returns table (
+        nomor text, project_name text, vendor_name text,
+        lingkup jsonb, nilai_kontrak numeric, termin jsonb,
+        tgl_mulai date, durasi_hari int, denda_permil numeric, catatan text,
+        status text, signature_data text, signed_name text, signed_at timestamptz,
+        created_at timestamptz
+      ) language sql security definer set search_path = public as $fn$
+        select nomor, project_name, vendor_name, lingkup, nilai_kontrak, termin,
+               tgl_mulai, durasi_hari, denda_permil, catatan,
+               status, signature_data, signed_name, signed_at, created_at
+        from spk_docs where sign_token = p_token;
+      $fn$;
+    $ddl$;
+  end if;
+end
+$do$;
 
 create or replace function public.spk_sign_by_token(p_token text, p_signature text, p_name text)
 returns boolean language plpgsql security definer set search_path = public as $$

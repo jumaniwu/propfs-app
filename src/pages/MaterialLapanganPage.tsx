@@ -22,9 +22,9 @@ import {
 } from '@/lib/materialApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
-import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
+import { teamApi, roleSaatIni, dataOwnerId, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
-import { sisaQty } from '@/lib/procurement'
+import { sisaQty, milikWorkspace } from '@/lib/procurement'
 
 type Sub = 'pakai' | 'request' | 'kurang'
 
@@ -445,13 +445,13 @@ function FormRequest({ projectName, pemohon, onSukses }: {
     if (qty <= 0) { toast({ title: 'Jumlah harus lebih dari 0', variant: 'destructive' }); return }
     setKirim(true)
     try {
-      await materialApi().createRequest({
+      await materialApi().createRequest(milikWorkspace({
         tanggal: new Date().toISOString().slice(0, 10),
         pemohon: pemohon || 'Tim',
         nama: nama.trim(), satuan: satuan.trim(), qty,
         urgensi, butuh_tanggal: butuh || null,
         catatan: catatan.trim(), project_name: projectName,
-      })
+      }, dataOwnerId()))
       toast({ title: 'Permintaan dikirim', description: 'Menunggu persetujuan Owner / Manajemen / Project Manager.' })
       setNama(''); setSatuan(''); setQty(0); setCatatan(''); setButuh(''); setUrgensi('normal')
       setBuka(false)

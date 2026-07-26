@@ -168,6 +168,29 @@ export function hitungTotalPo(items: PoItem[], ppnPct = 0): TotalPo {
   return { subtotal, ppn, total: subtotal + ppn, items: baris }
 }
 
+// ── Kepemilikan baris ───────────────────────────────────────────────────────
+
+/**
+ * Menempelkan pemilik data pada baris yang akan disisipkan.
+ *
+ * Tabel vendors / vendor_items / purchase_orders memakai RLS
+ * `auth.uid() = user_id or is_team_member(user_id)`. Baris tanpa `user_id`
+ * membuat pemeriksaan itu bernilai NULL — bukan true — sehingga PostgREST
+ * menolak dengan HTTP 403, bukan pesan kolom kosong yang lebih jelas.
+ *
+ * Nilainya adalah pemilik WORKSPACE aktif (dataOwnerId), bukan uid penyisip.
+ * Kalau anggota tim menyimpan atas namanya sendiri, barisnya tak akan terlihat
+ * oleh pemilik perusahaan dan data vendor jadi terpecah per orang.
+ */
+export function milikWorkspace<T extends object>(
+  baris: T, ownerId: string | null | undefined,
+): T & { user_id: string } {
+  if (!ownerId) {
+    throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+  }
+  return { ...baris, user_id: ownerId }
+}
+
 // ── Sambungan ke Material Request ───────────────────────────────────────────
 
 /** Qty request yang masih belum dipesan. Tidak pernah negatif. */

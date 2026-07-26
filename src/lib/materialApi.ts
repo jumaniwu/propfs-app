@@ -54,10 +54,18 @@ export interface MaterialApi {
    * Buat permintaan material dari dalam aplikasi (anggota tim yang login).
    * Sebelum ini, permintaan hanya bisa lahir dari link publik pekerja —
    * PM dan logistik tidak punya jalan sama sekali.
+   *
+   * `user_id` WAJIB ada: RLS material_requests memakai
+   * `auth.uid() = user_id or is_team_member(user_id)`, dan baris tanpa user_id
+   * membuat pemeriksaan itu bernilai NULL — PostgREST menolaknya sebagai
+   * HTTP 403, bukan pesan kolom kosong yang lebih jelas. Isinya pemilik
+   * WORKSPACE (dataOwnerId), bukan uid penyisip, supaya permintaan anggota tim
+   * tetap terlihat oleh pemilik perusahaan.
    */
   createRequest(r: {
     tanggal: string; pemohon: string; nama: string; satuan: string; qty: number
     urgensi: Urgensi; butuh_tanggal: string | null; catatan: string; project_name: string
+    user_id: string
   }): Promise<MaterialRequest>
   setRequestStatus(id: string, status: StatusRequest, approver: string, catatan: string): Promise<void>
   deleteUsage(id: string): Promise<void>
@@ -128,7 +136,12 @@ const realApi: MaterialApi = {
       headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ ...r, status: 'menunggu', photos: [] }),
     })
-    if (!res.ok) throw new Error(`Gagal menyimpan permintaan (HTTP ${res.status}).`)
+    if (!res.ok) {
+      throw new Error(
+        `Gagal menyimpan permintaan (HTTP ${res.status}).`
+        + (res.status === 403 ? ' Akses ditolak — coba keluar lalu masuk lagi.' : ''),
+      )
+    }
     const rows = await res.json() as MaterialRequest[]
     return rows[0]
   },
