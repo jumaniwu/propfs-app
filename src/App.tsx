@@ -33,6 +33,7 @@ const KontraktorHomePage = lazy(() => import('./pages/KontraktorHomePage'))
 const KonsolidasiPage = lazy(() => import('./pages/KonsolidasiPage'))
 const MaterialLapanganPage = lazy(() => import('./pages/MaterialLapanganPage'))
 const TimPage = lazy(() => import('./pages/TimPage'))
+const TimLoginPage = lazy(() => import('./pages/TimLoginPage'))
 const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
@@ -110,6 +111,8 @@ export default function App() {
           {/* ── Public Routes ── */}
           <Route path="/" element={<OpenRoute><LandingPage /></OpenRoute>} />
           <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
+          {/* Pintu masuk karyawan: Kode Perusahaan + User ID, terpisah dari akun utama */}
+          <Route path="/tim/masuk" element={<AuthRoute><TimLoginPage /></AuthRoute>} />
           <Route path="/legal/:type" element={<OpenRoute><LegalPage /></OpenRoute>} />
           <Route path="/reset-password" element={<OpenRoute><ResetPasswordPage /></OpenRoute>} />
           {/* Halaman publik Kontraktor AI: vendor/tukang tanpa login */}

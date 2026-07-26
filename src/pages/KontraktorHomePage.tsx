@@ -19,8 +19,9 @@ import {
   type MenuItem, type MenuKategori,
 } from '@/lib/kontraktorMenu'
 import {
-  teamApi, getWorkspaceOwner, setWorkspaceOwner, roleSaatIni, type Workspace,
+  teamApi, getWorkspaceOwner, setWorkspaceOwner, roleSaatIni, sesiTim, type Workspace,
 } from '@/lib/teamApi'
+import { aksesLewatPerusahaan } from '@/lib/teamLogin'
 import { can, MENU_KE_MODUL, ROLES } from '@/lib/teamRoles'
 
 const HIDE_KEY = 'propfs-kontraktor-hide-amount'
@@ -72,11 +73,16 @@ export default function KontraktorHomePage() {
   const [bannerTutup, setBannerTutup] = useState(false)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [wsOwner, setWsOwner] = useState<string | null>(() => getWorkspaceOwner())
+  const [wsDimuat, setWsDimuat] = useState(false)
+  const timSession = sesiTim()
 
   useEffect(() => {
     loadProjects()
     // daftar workspace perusahaan tempat pengguna ini menjadi anggota tim
-    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+    teamApi().myWorkspaces()
+      .then(setWorkspaces)
+      .catch(() => setWorkspaces([]))
+      .finally(() => setWsDimuat(true))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const role = roleSaatIni(workspaces)
@@ -170,13 +176,43 @@ export default function KontraktorHomePage() {
     return list
   }, [savedProjects])
 
+  // Akun tim tidak punya langganan sendiri — aksesnya menumpang langganan
+  // Kontraktor AI perusahaan. Diperiksa di sini karena penjaga rute tidak bisa
+  // menunggu data workspace yang datang dari jaringan.
+  if (timSession && wsDimuat && !aksesLewatPerusahaan(wsAktif ?? workspaces[0])) {
+    return (
+      <div className="min-h-screen bg-navy flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 text-center space-y-4 shadow-2xl">
+          <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center mx-auto">
+            <Info className="w-7 h-7 text-amber-600" />
+          </div>
+          <h1 className="font-serif text-xl font-bold text-navy">Langganan Perusahaan Berakhir</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {wsAktif?.perusahaan || workspaces[0]?.perusahaan || 'Perusahaan Anda'} belum
+            memperpanjang langganan Kontraktor AI, jadi akun tim untuk sementara tidak bisa dipakai.
+            Silakan hubungi admin perusahaan Anda.
+          </p>
+          <button onClick={() => useAuthStore.getState().signOut().then(() => navigate('/tim/masuk'))}
+            className="w-full h-11 rounded-xl bg-navy text-white font-bold text-sm hover:bg-navy/90">
+            Keluar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-slate-100/70">
       {/* ══ HEADER — komponen yang sama dipakai seluruh halaman Kontraktor AI ══ */}
       <KontraktorHeader
         pbExtra
         adaNotifikasi={banner.length > 0}
-        identitas={workspaces.length > 0 ? (
+        identitas={timSession ? (
+          // sesi tim dikunci ke satu perusahaan — tidak ada penukar workspace
+          <p className="mt-0.5 text-[11px] text-white/70">
+            {wsAktif?.perusahaan || 'Perusahaan'} · {ROLES.find(r => r.key === role)?.label ?? role}
+          </p>
+        ) : workspaces.length > 0 ? (
           // pengguna ini anggota tim di perusahaan lain → bisa berpindah workspace
           <select
             value={wsOwner ?? ''} onChange={e => gantiWorkspace(e.target.value || null)}

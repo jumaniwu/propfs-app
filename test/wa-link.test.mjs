@@ -1,6 +1,7 @@
 // Test tautan WhatsApp: normalisasi nomor Indonesia & isi pesan akun.
 import {
   nomorWaInternasional, waKe, pesanAkunBaru, pesanIngatkanAkun,
+  pesanPasswordBaru, JALUR_LOGIN_TIM,
 } from '../src/lib/waLink.ts'
 
 let ok = 0
@@ -36,21 +37,39 @@ assert(l3.includes('%0A') && l3.includes('%26'), 'baris baru dan & ter-encode de
 
 // ── Isi pesan ──────────────────────────────────────────────────────────────
 const baru = pesanAkunBaru({
-  nama: 'Jumani', jabatan: 'Manager', email: 'jumani.wu93@gmail.com',
-  password: 'qwerty123', origin: 'https://propfs.id',
+  nama: 'Jumani', jabatan: 'Manager', username: 'jumani', kode: 'PFS-4K7M',
+  password: 'qwerty123', origin: 'https://propfs.id', perusahaan: 'PT Cyrus Mobile',
 })
-assert(baru.includes('jumani.wu93@gmail.com'), 'pesan akun baru memuat User ID')
+assert(baru.includes('PFS-4K7M'), 'pesan akun baru memuat Kode Perusahaan')
+assert(baru.includes('jumani'), 'pesan akun baru memuat User ID')
 assert(baru.includes('qwerty123'), 'pesan akun baru memuat password')
-assert(baru.includes('https://propfs.id/auth'), 'pesan akun baru memuat tautan login')
+assert(baru.includes(`https://propfs.id${JALUR_LOGIN_TIM}`), 'pesan akun baru memuat tautan login tim')
+assert(!baru.includes('https://propfs.id/auth'), 'pesan akun baru TIDAK mengarah ke login akun utama')
 assert(baru.includes('Manager'), 'pesan akun baru memuat jabatan')
-assert(baru.includes('ganti password'), 'pesan akun baru mengingatkan ganti password')
+assert(baru.includes('PT Cyrus Mobile'), 'pesan akun baru menyebut nama perusahaan')
+
+// tanpa nama perusahaan pesan tetap utuh
+const tanpaPt = pesanAkunBaru({
+  nama: 'Budi', jabatan: 'Pengawas', username: 'budi', kode: 'PFS-9XQZ',
+  password: 'abcd1234', origin: 'https://propfs.id',
+})
+assert(tanpaPt.includes('PFS-9XQZ') && tanpaPt.includes('abcd1234'), 'tanpa nama perusahaan tetap lengkap')
 
 const ingat = pesanIngatkanAkun({
-  nama: 'Jumani', jabatan: 'Manager', email: 'jumani.wu93@gmail.com', origin: 'https://propfs.id',
+  nama: 'Jumani', jabatan: 'Manager', username: 'jumani', kode: 'PFS-4K7M',
+  origin: 'https://propfs.id',
 })
-assert(ingat.includes('jumani.wu93@gmail.com'), 'pengingat memuat User ID')
-assert(ingat.includes('https://propfs.id/auth'), 'pengingat memuat tautan login')
+assert(ingat.includes('jumani') && ingat.includes('PFS-4K7M'), 'pengingat memuat User ID & kode')
+assert(ingat.includes(`https://propfs.id${JALUR_LOGIN_TIM}`), 'pengingat memuat tautan login tim')
 assert(!ingat.toLowerCase().includes('qwerty'), 'pengingat TIDAK memuat password')
-assert(ingat.includes('Lupa Password'), 'pengingat mengarahkan ke Lupa Password')
+assert(ingat.includes('admin perusahaan'), 'pengingat mengarahkan ke admin perusahaan')
+
+const reset = pesanPasswordBaru({
+  nama: 'Budi', username: 'budi', kode: 'PFS-9XQZ',
+  password: 'Zx9kQm2p', origin: 'https://propfs.id',
+})
+assert(reset.includes('Zx9kQm2p'), 'pesan reset memuat password baru')
+assert(reset.includes('PFS-9XQZ') && reset.includes('budi'), 'pesan reset memuat kode & User ID')
+assert(reset.includes(`https://propfs.id${JALUR_LOGIN_TIM}`), 'pesan reset memuat tautan login tim')
 
 console.log(`✅ waLink: ${ok} assertion lolos`)
