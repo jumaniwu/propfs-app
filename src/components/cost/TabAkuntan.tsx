@@ -47,6 +47,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   const {
     pemasukanEntries, inventoryAdjustments,
     addPemasukan, deletePemasukan, addAdjustment, deleteAdjustment,
+    setPemasukanProject,
   } = useAkuntanStore()
 
   const [sub, setSub] = useState<SubTab>(
@@ -237,7 +238,18 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
 
       {sub === 'labarugi' && <SubLabaRugi labaRugi={labaRugi} neraca={neraca} />}
       {sub === 'pemasukan' && (
-        <SubPemasukan entries={pemasukanLingkup} onAdd={addPemasukan} onDelete={deletePemasukan} />
+        <SubPemasukan
+          entries={pemasukanLingkup}
+          // Entri baru ikut lingkup yang sedang dilihat. Saat lingkupnya
+          // Konsolidasi, dipakai proyek yang sedang dibuka — bila tidak ada
+          // pun, entri masuk "Umum" dan bisa dipindahkan lewat pilihan proyek
+          // di tiap baris.
+          projectIdBaru={konsolidasi ? projectInfo?.id : lingkupId}
+          daftarProyek={daftarProyek.map(p => ({ id: p.info.id, nama: p.info.projectName }))}
+          onAdd={addPemasukan}
+          onDelete={deletePemasukan}
+          onPindah={setPemasukanProject}
+        />
       )}
       {sub === 'inventori' && (
         <SubInventori inventori={inventori} adjustments={adjustmentsLingkup}
@@ -345,10 +357,14 @@ function SubLabaRugi({ labaRugi, neraca }: {
 }
 
 // ── Sub: Pemasukan ──────────────────────────────────────────────────────────
-function SubPemasukan({ entries, onAdd, onDelete }: {
+function SubPemasukan({ entries, projectIdBaru, daftarProyek, onAdd, onDelete, onPindah }: {
   entries: PemasukanEntry[]
+  /** Proyek yang akan ditempeli entri baru; undefined = Umum (Non Proyek). */
+  projectIdBaru?: string
+  daftarProyek: Array<{ id: string; nama: string }>
   onAdd: (p: Omit<PemasukanEntry, 'id'>) => void
   onDelete: (id: string) => void
+  onPindah: (id: string, projectId?: string) => void
 }) {
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().slice(0, 10))
   const [sumber, setSumber] = useState('')
@@ -390,10 +406,18 @@ function SubPemasukan({ entries, onAdd, onDelete }: {
         <Button
           className="gap-2 bg-navy hover:bg-navy/90 font-bold"
           disabled={!sumber.trim() || jumlah <= 0}
-          onClick={() => { onAdd({ tanggal, sumber: sumber.trim(), kategori, jumlah }); setSumber(''); setJumlah(0) }}
+          onClick={() => {
+            onAdd({ tanggal, sumber: sumber.trim(), kategori, jumlah, projectId: projectIdBaru })
+            setSumber(''); setJumlah(0)
+          }}
         >
           <Plus className="w-4 h-4" /> Tambah Pemasukan
         </Button>
+        <p className="text-[11px] text-muted-foreground">
+          Akan dicatat untuk{' '}
+          <b>{daftarProyek.find(p => p.id === projectIdBaru)?.nama ?? LABEL_PROYEK_UMUM}</b>.
+          Tersimpan otomatis, tidak perlu menekan tombol simpan.
+        </p>
       </div>
 
       <div className="bg-white rounded-3xl border border-border p-5 space-y-2">
@@ -406,17 +430,32 @@ function SubPemasukan({ entries, onAdd, onDelete }: {
         ) : (
           <div className="space-y-2 max-h-[50vh] overflow-y-auto overscroll-contain">
             {[...entries].reverse().map(p => (
-              <div key={p.id} className="flex items-center justify-between gap-2 border border-border rounded-xl p-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-navy truncate">{p.sumber}</p>
-                  <p className="text-[11px] text-muted-foreground">📅 {p.tanggal} · {p.kategori}</p>
+              <div key={p.id} className="border border-border rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-navy truncate">{p.sumber}</p>
+                    <p className="text-[11px] text-muted-foreground">📅 {p.tanggal} · {p.kategori}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm font-bold text-emerald-700">{fmt(p.jumlah)}</span>
+                    <button onClick={() => onDelete(p.id)} className="p-1.5 text-muted-foreground hover:text-red-600">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm font-bold text-emerald-700">{fmt(p.jumlah)}</span>
-                  <button onClick={() => onDelete(p.id)} className="p-1.5 text-muted-foreground hover:text-red-600">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Pemindahan proyek langsung di sini — entri lama yang masuk
+                    "Umum" tidak perlu dihapus lalu diketik ulang. */}
+                <select
+                  value={p.projectId ?? ''}
+                  onChange={e => onPindah(p.id, e.target.value || undefined)}
+                  aria-label={`Proyek untuk ${p.sumber}`}
+                  className={`w-full h-8 rounded-lg border px-2 text-[11px] font-semibold ${
+                    p.projectId ? 'border-border text-navy' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+                  <option value="">{LABEL_PROYEK_UMUM}</option>
+                  {daftarProyek.map(pr => (
+                    <option key={pr.id} value={pr.id}>{pr.nama}</option>
+                  ))}
+                </select>
               </div>
             ))}
           </div>
