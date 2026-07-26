@@ -12,7 +12,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Store, Package, ShoppingCart, Loader2, RefreshCw, Trash2, Plus, Copy,
   Send, Check, X, Link2, PenLine, Download, FileText, Search, AlertTriangle,
+  ReceiptIcon,
 } from 'lucide-react'
+import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import SignaturePad from '@/components/cost/SignaturePad'
@@ -30,7 +32,7 @@ import { downloadPoPdf } from '@/lib/poPdf'
 import { waKe } from '@/lib/waLink'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
-  ringkasKatalog, hargaVendorUntuk, teksTerm,
+  ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
   LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
   type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
 } from '@/lib/procurement'
@@ -45,6 +47,9 @@ export default function ProcurementPage() {
   const { toast } = useToast()
   const { profile } = useAuthStore()
   const { projectInfo } = useCostStore()
+  // Nota material yang sudah dicatat di Realisasi Biaya ikut mengisi katalog,
+  // jadi harga acuan sudah ada bahkan sebelum satu vendor pun mendaftar.
+  const semuaRealisasi = useCostStore(s => s.getAllRealisasi)
 
   const [sub, setSub] = useState<Sub>(() => {
     const s = new URLSearchParams(window.location.search).get('sub')
@@ -137,7 +142,10 @@ export default function ProcurementPage() {
                 vendors={vendors} items={items} token={token} bolehUbah={bolehUbah}
                 onUbah={muat} />
             )}
-            {sub === 'katalog' && <TabKatalog items={items} vendors={vendors} />}
+            {sub === 'katalog' && (
+              <TabKatalog items={items} vendors={vendors} realisasi={semuaRealisasi()}
+                bolehUbah={bolehUbah} onUbah={muat} />
+            )}
             {sub === 'po' && (
               <TabPo
                 pos={pos} requests={siapDipesan} vendors={vendorAktif} items={items}
@@ -367,30 +375,97 @@ function FormVendor({ onBatal, onSukses }: { onBatal: () => void; onSukses: () =
 }
 
 // ══ TAB KATALOG ═════════════════════════════════════════════════════════════
-function TabKatalog({ items, vendors }: { items: VendorItem[]; vendors: Vendor[] }) {
+// Harga datang dari dua sumber: yang didaftarkan vendor lewat link, dan yang
+// dibaca otomatis dari nota material di Realisasi Biaya. Admin juga bisa
+// mengisi manual tanpa menunggu vendor.
+function TabKatalog({ items, vendors, realisasi, bolehUbah, onUbah }: {
+  items: VendorItem[]
+  vendors: Vendor[]
+  realisasi: RealisasiEntry[]
+  bolehUbah: boolean
+  onUbah: () => void
+}) {
+  const { toast } = useToast()
   const [cari, setCari] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [proses, setProses] = useState('')
+
   const namaVendor = useMemo(() => new Map(vendors.map(v => [v.id, v.nama])), [vendors])
+  const dariNota = useMemo(() => katalogDariNota(realisasi), [realisasi])
   const katalog = useMemo(
-    () => ringkasKatalog(items.map(i => ({ ...i, vendor_nama: namaVendor.get(i.vendor_id) })), vendors),
-    [items, vendors, namaVendor],
+    () => ringkasKatalog(
+      items.map(i => ({ ...i, vendor_nama: namaVendor.get(i.vendor_id) })), vendors, dariNota,
+    ),
+    [items, vendors, namaVendor, dariNota],
   )
+  const tokoBaru = useMemo(() => tokoBelumJadiVendor(dariNota, vendors), [dariNota, vendors])
   const tersaring = katalog.filter(b => b.nama.toLowerCase().includes(cari.trim().toLowerCase()))
+
+  /** Daftarkan toko yang selama ini hanya muncul di nota sebagai vendor. */
+  async function jadikanVendor(nama: string) {
+    setProses(nama)
+    try {
+      await procurementApi().createVendor({
+        nama, pic: '', no_wa: '', email: '', alamat: '', npwp: '',
+        kategori: '', term: 'cash', term_hari: 0,
+        catatan: 'Dibuat otomatis dari nota pembelian.', status: 'aktif',
+      })
+      toast({ title: `${nama} jadi vendor`, description: 'Lengkapi nomor WA-nya agar bisa dikirimi PO.' })
+      onUbah()
+    } catch (e) {
+      toast({ title: 'Gagal', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setProses('') }
+  }
 
   return (
     <div className="space-y-4">
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input value={cari} onChange={e => setCari(e.target.value)}
-          placeholder="Cari barang…"
-          className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm" />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input value={cari} onChange={e => setCari(e.target.value)}
+            placeholder="Cari barang…"
+            className="w-full h-10 pl-9 pr-3 rounded-xl border border-border bg-white text-sm" />
+        </div>
+        {bolehUbah && (
+          <Button onClick={() => setFormOpen(v => !v)} size="sm"
+            className="gap-1.5 bg-navy hover:bg-navy/90 font-bold shrink-0 h-10">
+            <Plus className="w-4 h-4" /> Barang
+          </Button>
+        )}
       </div>
+
+      {formOpen && (
+        <FormBarangManual vendors={vendors}
+          onBatal={() => setFormOpen(false)}
+          onSukses={() => { setFormOpen(false); onUbah() }} />
+      )}
+
+      {/* Toko yang selama ini hanya muncul di nota — sekali klik jadi vendor */}
+      {bolehUbah && tokoBaru.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gold/40 p-4">
+          <p className="text-xs font-bold text-navy">Toko dari nota pembelian</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 mb-2.5 leading-relaxed">
+            {tokoBaru.length} toko ini sudah pernah Anda beli barangnya tapi belum terdaftar
+            sebagai vendor. Daftarkan agar bisa dipilih saat membuat PO.
+          </p>
+          <div className="flex gap-1.5 flex-wrap">
+            {tokoBaru.map(t => (
+              <button key={t} disabled={proses === t} onClick={() => jadikanVendor(t)}
+                className="h-8 px-3 rounded-lg bg-navy/8 text-navy text-[11px] font-bold hover:bg-navy/15 disabled:opacity-50 inline-flex items-center gap-1.5">
+                {proses === t ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {tersaring.length === 0 ? (
         <div className="bg-white rounded-2xl border border-border p-12 text-center">
           <Package className="w-10 h-10 mx-auto opacity-30 mb-3" />
           <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            {items.length === 0
-              ? 'Katalog masih kosong. Barang muncul di sini setelah vendor mengisi daftar barangnya lewat link registrasi.'
+            {katalog.length === 0
+              ? 'Katalog masih kosong. Barang muncul otomatis dari nota material yang Anda catat di Realisasi Biaya, dari vendor yang mengisi link registrasi, atau bisa Anda tambahkan sendiri lewat tombol Barang.'
               : `Barang "${cari}" tidak ditemukan.`}
           </p>
         </div>
@@ -416,7 +491,7 @@ function TabKatalog({ items, vendors }: { items: VendorItem[]; vendors: Vendor[]
                 {b.penawaran.map((p, i) => {
                   const termurah = p.harga > 0 && p.harga === b.hargaTermurah
                   return (
-                    <div key={`${p.vendor_id}-${i}`}
+                    <div key={`${p.vendor_id}-${p.sumber}-${i}`}
                       className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs ${
                         termurah ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}`}>
                       <div className="min-w-0">
@@ -424,8 +499,21 @@ function TabKatalog({ items, vendors }: { items: VendorItem[]; vendors: Vendor[]
                           {p.vendor_nama}
                           {termurah && <span className="ml-1.5 text-[9px] font-black text-emerald-700">TERMURAH</span>}
                         </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {p.merek && `${p.merek} · `}{p.term}
+                        <p className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                          {p.sumber === 'nota' ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                              <ReceiptIcon className="w-2.5 h-2.5" /> dari nota
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">
+                              vendor
+                            </span>
+                          )}
+                          {p.merek && <span>{p.merek}</span>}
+                          {p.term && <span>{p.term}</span>}
+                          {p.sumber === 'nota' && p.terakhir && (
+                            <span>beli terakhir {p.terakhir}{(p.jumlahBeli ?? 0) > 1 ? ` · ${p.jumlahBeli}×` : ''}</span>
+                          )}
                         </p>
                       </div>
                       <span className={`font-bold tabular-nums shrink-0 ${termurah ? 'text-emerald-700' : 'text-navy'}`}>
@@ -438,6 +526,90 @@ function TabKatalog({ items, vendors }: { items: VendorItem[]; vendors: Vendor[]
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Tambah barang manual (tanpa menunggu vendor mengisi) ────────────────────
+function FormBarangManual({ vendors, onBatal, onSukses }: {
+  vendors: Vendor[]
+  onBatal: () => void
+  onSukses: () => void
+}) {
+  const { toast } = useToast()
+  const [vendorId, setVendorId] = useState('')
+  const [nama, setNama] = useState('')
+  const [satuan, setSatuan] = useState('')
+  const [harga, setHarga] = useState(0)
+  const [merek, setMerek] = useState('')
+  const [kirim, setKirim] = useState(false)
+
+  async function simpan() {
+    if (!vendorId) { toast({ title: 'Pilih vendor dulu', variant: 'destructive' }); return }
+    if (nama.trim().length < 2) { toast({ title: 'Nama barang wajib diisi', variant: 'destructive' }); return }
+    setKirim(true)
+    try {
+      await procurementApi().createVendorItem(vendorId, {
+        nama: nama.trim(), satuan: satuan.trim(), harga: Number(harga) || 0,
+        merek: merek.trim(), min_order: 0, catatan: '',
+      })
+      toast({ title: 'Barang ditambahkan ke katalog' })
+      onSukses()
+    } catch (e) {
+      toast({ title: 'Gagal menyimpan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setKirim(false) }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border-2 border-gold/40 p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-navy text-sm">Tambah Barang ke Katalog</h3>
+        <button onClick={onBatal} className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
+      </div>
+      {vendors.length === 0 ? (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
+          Belum ada vendor. Tambahkan vendor lebih dulu di tab Vendor, atau daftarkan toko
+          dari nota pembelian yang muncul di halaman ini.
+        </p>
+      ) : (
+        <>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-[10px] font-medium text-muted-foreground">Vendor / Toko *</label>
+              <select value={vendorId} onChange={e => setVendorId(e.target.value)}
+                className={`${inputCls} font-semibold`}>
+                <option value="">— pilih vendor —</option>
+                {vendors.map(v => <option key={v.id} value={v.id}>{v.nama}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-[10px] font-medium text-muted-foreground">Nama Barang *</label>
+              <input value={nama} onChange={e => setNama(e.target.value)}
+                placeholder="mis. Semen Portland 50kg" className={inputCls} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground">Satuan</label>
+              <input value={satuan} onChange={e => setSatuan(e.target.value)}
+                placeholder="sak" className={inputCls} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground">Harga (Rp)</label>
+              <input type="number" min={0} value={harga || ''}
+                onChange={e => setHarga(Number(e.target.value) || 0)}
+                inputMode="numeric" className={inputCls} />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-[10px] font-medium text-muted-foreground">Merek</label>
+              <input value={merek} onChange={e => setMerek(e.target.value)}
+                placeholder="Opsional" className={inputCls} />
+            </div>
+          </div>
+          <Button onClick={simpan} disabled={kirim} className="gap-2 bg-navy hover:bg-navy/90 font-bold">
+            {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Simpan Barang
+          </Button>
+        </>
       )}
     </div>
   )

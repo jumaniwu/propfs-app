@@ -8,6 +8,7 @@
 // ============================================================
 
 import type { MaterialRequest } from './materialApi'
+import type { RealisasiEntry } from './ai-realisasi'
 
 // ── Vendor & katalog ────────────────────────────────────────────────────────
 
@@ -217,23 +218,109 @@ export function statusPoSetelah(po: Pick<PurchaseOrder,
 
 // ── Katalog: perbandingan harga antar vendor ────────────────────────────────
 
+/** Asal sebuah harga: didaftarkan vendor, atau dibaca dari nota pembelian. */
+export type SumberHarga = 'vendor' | 'nota'
+
+export interface PenawaranKatalog {
+  /** Kosong bila tokonya berasal dari nota dan belum terdaftar sebagai vendor. */
+  vendor_id: string
+  vendor_nama: string
+  harga: number
+  merek: string
+  term: string
+  sumber: SumberHarga
+  /** Tanggal pembelian terakhir — hanya untuk sumber 'nota'. */
+  terakhir?: string
+  /** Berapa kali barang ini dibeli dari toko tersebut — hanya untuk 'nota'. */
+  jumlahBeli?: number
+}
+
 export interface BarisKatalog {
   nama: string
   satuan: string
-  /** Penawaran dari tiap vendor, termurah lebih dulu. */
-  penawaran: Array<{
-    vendor_id: string
-    vendor_nama: string
-    harga: number
-    merek: string
-    term: string
-  }>
+  /** Penawaran dari tiap vendor/toko, termurah lebih dulu. */
+  penawaran: PenawaranKatalog[]
   hargaTermurah: number
-  /** Nama vendor dengan harga termurah. */
+  /** Nama vendor/toko dengan harga termurah. */
   vendorTermurah: string
 }
 
 const kunci = (s: string) => (s ?? '').trim().toLowerCase()
+
+/** Satu barang yang pernah dibeli dari satu toko, diringkas dari nota. */
+export interface ItemNota {
+  nama: string
+  satuan: string
+  supplier: string
+  /** Harga satuan pada pembelian TERAKHIR. */
+  harga: number
+  terakhir: string
+  jumlahBeli: number
+}
+
+export const TOKO_TIDAK_DICATAT = '(toko tidak dicatat)'
+
+/**
+ * Ringkas riwayat pembelian material dari nota yang sudah dicatat di Realisasi
+ * Biaya, dikelompokkan per (toko × barang). Harga yang dipakai adalah harga
+ * pembelian TERAKHIR — harga material bergerak, jadi yang paling baru yang
+ * paling berguna sebagai acuan.
+ *
+ * Nota yang tidak mencantumkan harga satuan tetap dipakai dengan menghitung
+ * jumlah ÷ volume, karena banyak nota hanya menulis totalnya.
+ */
+export function katalogDariNota(realisasi: RealisasiEntry[]): ItemNota[] {
+  const map = new Map<string, ItemNota>()
+
+  for (const r of realisasi ?? []) {
+    if (r?.tipe !== 'material') continue
+    const nama = (r.namaMaterial ?? '').trim()
+    if (!nama) continue
+
+    const volume = Number(r.volume) || 0
+    const satuanHarga = Number(r.hargaSatuan) || 0
+    const harga = satuanHarga > 0
+      ? satuanHarga
+      : volume > 0 ? Math.round((Number(r.jumlah) || 0) / volume) : 0
+    if (harga <= 0) continue
+
+    const supplier = (r.namaSupplier ?? '').trim() || TOKO_TIDAK_DICATAT
+    const k = `${kunci(supplier)}|${kunci(nama)}`
+    const tanggal = r.tanggal ?? ''
+    const ada = map.get(k)
+
+    if (!ada) {
+      map.set(k, {
+        nama, satuan: (r.satuan ?? '').trim() || '-', supplier,
+        harga, terakhir: tanggal, jumlahBeli: 1,
+      })
+      continue
+    }
+    ada.jumlahBeli += 1
+    // Hanya pembelian yang lebih baru yang boleh menggeser harga acuan.
+    if (tanggal >= ada.terakhir) {
+      ada.harga = harga
+      ada.terakhir = tanggal
+      if (!ada.satuan || ada.satuan === '-') ada.satuan = (r.satuan ?? '').trim() || '-'
+    }
+  }
+
+  return [...map.values()].sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
+}
+
+/** Toko dari nota yang belum terdaftar sebagai vendor — bisa didaftarkan sekali klik. */
+export function tokoBelumJadiVendor(
+  dariNota: ItemNota[], vendors: Array<Pick<Vendor, 'nama'>>,
+): string[] {
+  const sudah = new Set(vendors.map(v => kunci(v.nama)))
+  const keluar = new Map<string, string>()
+  for (const n of dariNota) {
+    if (n.supplier === TOKO_TIDAK_DICATAT) continue
+    const k = kunci(n.supplier)
+    if (!sudah.has(k) && !keluar.has(k)) keluar.set(k, n.supplier)
+  }
+  return [...keluar.values()].sort((a, b) => a.localeCompare(b, 'id'))
+}
 
 /**
  * Kelompokkan barang vendor menurut namanya agar harga bisa dibandingkan.
@@ -243,28 +330,56 @@ const kunci = (s: string) => (s ?? '').trim().toLowerCase()
 export function ringkasKatalog(
   items: Array<VendorItem & { vendor_nama?: string }>,
   vendors: Array<Pick<Vendor, 'id' | 'nama' | 'term' | 'term_hari'>> = [],
+  dariNota: ItemNota[] = [],
 ): BarisKatalog[] {
   const petaVendor = new Map(vendors.map(v => [v.id, v]))
+  // Toko pada nota dicocokkan ke vendor lewat namanya, supaya harga dari nota
+  // dan harga yang didaftarkan vendor muncul di baris yang sama.
+  const vendorPerNama = new Map(vendors.map(v => [kunci(v.nama), v]))
   const map = new Map<string, BarisKatalog>()
+
+  const ambilBaris = (nama: string, satuan: string): BarisKatalog => {
+    const k = kunci(nama)
+    const ada = map.get(k)
+    if (ada) {
+      if (!ada.satuan || ada.satuan === '-') ada.satuan = satuan || '-'
+      return ada
+    }
+    const baru: BarisKatalog = {
+      nama, satuan: satuan || '-', penawaran: [], hargaTermurah: 0, vendorTermurah: '',
+    }
+    map.set(k, baru)
+    return baru
+  }
 
   for (const it of items ?? []) {
     const nama = (it.nama ?? '').trim()
     if (!nama) continue
-    const k = kunci(nama)
     const v = petaVendor.get(it.vendor_id)
-    const baris = map.get(k) ?? {
-      nama, satuan: it.satuan || '-', penawaran: [],
-      hargaTermurah: 0, vendorTermurah: '',
-    }
-    if (!baris.satuan || baris.satuan === '-') baris.satuan = it.satuan || '-'
-    baris.penawaran.push({
+    ambilBaris(nama, it.satuan).penawaran.push({
       vendor_id: it.vendor_id,
       vendor_nama: it.vendor_nama || v?.nama || 'Vendor',
       harga: Number(it.harga) || 0,
       merek: it.merek || '',
       term: v ? teksTerm(v.term, v.term_hari) : '',
+      sumber: 'vendor',
     })
-    map.set(k, baris)
+  }
+
+  for (const n of dariNota ?? []) {
+    const nama = (n.nama ?? '').trim()
+    if (!nama) continue
+    const v = vendorPerNama.get(kunci(n.supplier))
+    ambilBaris(nama, n.satuan).penawaran.push({
+      vendor_id: v?.id ?? '',
+      vendor_nama: n.supplier,
+      harga: Number(n.harga) || 0,
+      merek: '',
+      term: v ? teksTerm(v.term, v.term_hari) : '',
+      sumber: 'nota',
+      terakhir: n.terakhir,
+      jumlahBeli: n.jumlahBeli,
+    })
   }
 
   return [...map.values()]
