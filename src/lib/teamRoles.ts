@@ -97,10 +97,9 @@ export const IZIN_LABEL: Record<Izin, string> = {
 export const MENU_KE_MODUL: Record<string, Modul> = {
   overview: 'rab', rab: 'rab', material: 'rab',
   realisasi: 'realisasi', kurva_s: 'realisasi', laporan: 'realisasi',
-  akuntan: 'akuntan', pemasukan: 'akuntan', inventori: 'akuntan',
-  opname: 'akuntan', konsolidasi: 'akuntan',
+  akuntan: 'akuntan', konsolidasi: 'akuntan',
   spk: 'spk',
-  lapangan: 'lapangan', kalender: 'lapangan', link_pekerja: 'lapangan',
-  pakai_bahan: 'material', req_bahan: 'material',
-  tim: 'tim', tim_undang: 'tim', tim_role: 'tim', settings: 'tim',
+  lapangan: 'lapangan',
+  material_lapangan: 'material',
+  tim: 'tim', settings: 'tim',
 }

@@ -6,8 +6,7 @@
 // ============================================================
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
-  FileDown, Scale, FileSignature, HardHat, CalendarDays, Link2,
-  ClipboardList, Boxes, ShoppingCart, Users, UserPlus, ShieldCheck,
+  FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
   BarChart3, Settings, type LucideIcon,
 } from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
@@ -55,6 +54,10 @@ const TONE = {
   slate: 'bg-slate-100 text-slate-600',
 } as const
 
+// Satu ikon = satu halaman. Menu yang dulu terpisah tetapi bermuara ke
+// halaman yang sama sudah digabung, karena halaman tujuannya memang sudah
+// punya sub-tab sendiri. Label lama tetap dicantumkan sebagai `alias` supaya
+// pencarian "opname", "undang", "kalender", dsb. tetap menemukannya.
 export const MENU_ITEMS: MenuItem[] = [
   // ── Proyek ────────────────────────────────────────────────────────────────
   { key: 'overview',  label: 'Dashboard Proyek', icon: LayoutDashboard, kategori: 'proyek', tab: 'overview',  tone: TONE.navy },
@@ -65,24 +68,28 @@ export const MENU_ITEMS: MenuItem[] = [
   { key: 'laporan',   label: 'Laporan & Export', icon: FileDown,        kategori: 'proyek', tab: 'laporan',   tone: TONE.slate },
 
   // ── Keuangan ──────────────────────────────────────────────────────────────
-  { key: 'akuntan',     label: 'Laba Rugi',      icon: Scale,       kategori: 'keuangan', tab: 'akuntan', sub: 'labarugi',  tone: TONE.navy,    alias: 'akuntan neraca' },
-  { key: 'pemasukan',   label: 'Pemasukan',      icon: TrendingUp,  kategori: 'keuangan', tab: 'akuntan', sub: 'pemasukan', tone: TONE.emerald, alias: 'termin masuk' },
-  { key: 'inventori',   label: 'Inventori',      icon: Boxes,       kategori: 'keuangan', tab: 'akuntan', sub: 'inventori', tone: TONE.amber,   alias: 'stok gudang' },
-  { key: 'opname',      label: 'Opname',         icon: ClipboardList, kategori: 'keuangan', tab: 'akuntan', sub: 'opname',  tone: TONE.violet,  alias: 'progres pekerjaan' },
-  { key: 'konsolidasi', label: 'Konsolidasi',    icon: BarChart3,   kategori: 'keuangan', path: '/kontraktor/konsolidasi', tone: TONE.gold, tag: 'BARU', alias: 'laporan semua proyek gabungan' },
+  // Halaman Akuntan sudah memuat Laba Rugi & Neraca, Pemasukan, Inventori,
+  // dan Opname sebagai sub-tab — dulu empat ikon terpisah.
+  { key: 'akuntan', label: 'Akuntan', icon: Scale, kategori: 'keuangan', tab: 'akuntan', tone: TONE.navy,
+    alias: 'laba rugi neraca pemasukan termin inventori stok gudang opname progres pekerjaan' },
+  { key: 'konsolidasi', label: 'Konsolidasi', icon: BarChart3, kategori: 'keuangan', path: '/kontraktor/konsolidasi', tone: TONE.gold,
+    alias: 'laporan semua proyek gabungan' },
 
   // ── Lapangan ──────────────────────────────────────────────────────────────
-  { key: 'spk',          label: 'SPK Digital',     icon: FileSignature, kategori: 'lapangan', tab: 'spk',      tone: TONE.violet, alias: 'kontrak tanda tangan' },
-  { key: 'lapangan',     label: 'Laporan Harian',  icon: HardHat,       kategori: 'lapangan', tab: 'lapangan', tone: TONE.amber,  alias: 'laporan pekerja mandor' },
-  { key: 'kalender',     label: 'Kalender Progres', icon: CalendarDays, kategori: 'lapangan', tab: 'lapangan', tone: TONE.emerald, alias: 'progres harian owner' },
-  { key: 'pakai_bahan',  label: 'Pakai Material',  icon: PackageOpen,   kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.blue, tag: 'BARU', alias: 'penggunaan material lapangan' },
-  { key: 'req_bahan',    label: 'Request Material', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material?sub=request', tone: TONE.rose, tag: 'BARU', alias: 'permintaan bahan kekurangan' },
-  { key: 'link_pekerja', label: 'Link Pekerja',    icon: Link2,         kategori: 'lapangan', tab: 'lapangan', tone: TONE.slate,  alias: 'bagikan link laporan' },
+  { key: 'spk', label: 'SPK Digital', icon: FileSignature, kategori: 'lapangan', tab: 'spk', tone: TONE.violet,
+    alias: 'kontrak tanda tangan' },
+  // Satu halaman memuat laporan harian, link pekerja, dan link owner untuk
+  // kalender progres — dulu tiga ikon yang tujuannya sama.
+  { key: 'lapangan', label: 'Laporan Lapangan', icon: HardHat, kategori: 'lapangan', tab: 'lapangan', tone: TONE.amber,
+    alias: 'laporan harian pekerja mandor kalender progres link bagikan owner' },
+  // Satu halaman memuat Pakai Material, Request Material, dan Kekurangan.
+  { key: 'material_lapangan', label: 'Material Lapangan', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.rose,
+    alias: 'pakai penggunaan request permintaan bahan kekurangan stok menipis' },
 
   // ── Tim ───────────────────────────────────────────────────────────────────
-  { key: 'tim',        label: 'Anggota Tim',   icon: Users,       kategori: 'tim', path: '/kontraktor/tim', tone: TONE.navy,   tag: 'BARU' },
-  { key: 'tim_undang', label: 'Undang Anggota', icon: UserPlus,   kategori: 'tim', path: '/kontraktor/tim?aksi=undang', tone: TONE.emerald, tag: 'BARU', alias: 'invite karyawan' },
-  { key: 'tim_role',   label: 'Role & Akses',  icon: ShieldCheck, kategori: 'tim', path: '/kontraktor/tim?tab=role', tone: TONE.violet, tag: 'BARU', alias: 'hak akses jabatan' },
+  // Satu halaman memuat daftar pengguna, pembuatan akun, dan matriks role.
+  { key: 'tim', label: 'User Team', icon: Users, kategori: 'tim', path: '/kontraktor/tim', tone: TONE.navy,
+    alias: 'anggota tim undang invite karyawan pengguna role hak akses jabatan kode perusahaan' },
 
   // ── Selalu paling belakang ────────────────────────────────────────────────
   // Berisi profil perusahaan (kop & logo laporan) dan auto-upload Google Drive.
@@ -105,13 +112,18 @@ export function targetUrl(item: MenuItem, projectId?: string): string {
   return `/cost-control?${q.toString()}`
 }
 
-/** Pencarian sederhana berdasarkan label + alias + kategori. */
+/**
+ * Pencarian berdasarkan label + alias + kategori.
+ * Tiap kata dicari terpisah, jadi "material request" dan "request material"
+ * sama-sama menemukan Material Lapangan. Kalau seluruh kata dicocokkan
+ * sebagai satu frasa utuh, urutan kata pada alias jadi ikut menentukan —
+ * itu membuat pencarian terasa rusak tanpa sebab yang jelas.
+ */
 export function cariMenu(items: MenuItem[], q: string): MenuItem[] {
-  const t = q.trim().toLowerCase()
-  if (!t) return items
-  return items.filter(i =>
-    i.label.toLowerCase().includes(t) ||
-    (i.alias ?? '').toLowerCase().includes(t) ||
-    i.kategori.includes(t),
-  )
+  const kata = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (kata.length === 0) return items
+  return items.filter(i => {
+    const teks = `${i.label} ${i.alias ?? ''} ${i.kategori}`.toLowerCase()
+    return kata.every(k => teks.includes(k))
+  })
 }
