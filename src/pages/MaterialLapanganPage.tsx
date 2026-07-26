@@ -20,6 +20,7 @@ import {
   type MaterialUsage, type MaterialRequest, type StatusRequest,
 } from '@/lib/materialApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
+import { getBrandingCache, kopLaporan } from '@/lib/branding'
 
 type Sub = 'pakai' | 'request' | 'kurang'
 
@@ -82,10 +83,12 @@ export default function MaterialLapanganPage() {
 
   function exportExcel() {
     const wb = reportXlsx.utils.book_new()
+    const kop = kopLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
     const subtitle = `Proyek: ${projectInfo?.projectName ?? 'Semua'} · Dicetak: ${printed}`
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'RINGKASAN KEKURANGAN MATERIAL',
       subtitle,
       headers: ['No', 'Material', 'Satuan', 'Rencana', 'Terpakai', 'Sisa Rencana', 'Diterima', 'Dalam Proses', 'Status'],
@@ -97,6 +100,7 @@ export default function MaterialLapanganPage() {
     }), 'Kekurangan')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'PENGGUNAAN MATERIAL LAPANGAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Material', 'Jumlah', 'Satuan', 'Lokasi', 'Pelapor', 'Catatan'],
@@ -105,6 +109,7 @@ export default function MaterialLapanganPage() {
     }), 'Penggunaan')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'PERMINTAAN MATERIAL',
       subtitle,
       headers: ['No', 'Tanggal', 'Material', 'Jumlah', 'Satuan', 'Urgensi', 'Butuh Tgl', 'Pemohon', 'Status', 'Disetujui Oleh'],

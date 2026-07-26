@@ -2,6 +2,7 @@
 // lalu menandatangani secara digital.
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, CheckCircle2, FileSignature } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SignaturePad from '@/components/cost/SignaturePad'
@@ -13,6 +14,7 @@ const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
 export default function SpkSignPage() {
   const { token = '' } = useParams()
+  const merek = useBrandingPublik(token)
   const [spk, setSpk] = useState<SpkView | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -50,10 +52,7 @@ export default function SpkSignPage() {
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
       <div className="max-w-2xl mx-auto space-y-4">
-        <div className="text-center">
-          <p className="font-serif font-bold text-xl text-navy">PropFS · Kontraktor AI</p>
-          <p className="text-xs text-muted-foreground">Penandatanganan Dokumen Digital</p>
-        </div>
+        <KopPublik profil={merek} subjudul="Dokumen Kontrak Digital" />
 
         {loading && (
           <div className="bg-white rounded-2xl p-10 flex items-center justify-center gap-2 text-muted-foreground">

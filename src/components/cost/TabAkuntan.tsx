@@ -28,6 +28,8 @@ import {
 } from '@/lib/akuntan'
 import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
+import { getBrandingCache, kopLaporan } from '@/lib/branding'
+import { useAuthStore } from '@/store/authStore'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 const fmtJt = (n: number) => `Rp ${(n / 1_000_000).toFixed(2)} Jt`
@@ -102,6 +104,8 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   // ── Export Excel: Laporan Akuntan lengkap ─────────────────────────────
   const exportAkuntan = () => {
     const wb = reportXlsx.utils.book_new()
+    // kop perusahaan + watermark (watermark hanya untuk paket gratis)
+    const kop = kopLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))
     const projectName = konsolidasi
       ? 'Konsolidasi Semua Proyek'
       : lingkupId === PROYEK_UMUM
@@ -112,6 +116,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     const subtitle = `${konsolidasi ? 'Lingkup' : 'Proyek'}: ${projectName} · Dicetak: ${printed}`
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'NERACA (SEDERHANA)',
       subtitle,
       headers: ['Pos', 'Jumlah (Rp)'],
@@ -125,6 +130,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     }), 'Neraca')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'LAPORAN LABA RUGI',
       subtitle,
       headers: ['Uraian', 'Jumlah (Rp)'],
@@ -139,6 +145,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     }), 'Laba Rugi')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'DAFTAR PEMASUKAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Sumber', 'Kategori', 'Jumlah (Rp)', 'Keterangan'],
@@ -147,6 +154,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     }), 'Pemasukan')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'DAFTAR PENGELUARAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Jumlah (Rp)'],
@@ -155,6 +163,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     }), 'Pengeluaran')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'DATA INVENTORI MATERIAL',
       subtitle,
       headers: ['No', 'Material', 'Satuan', 'Masuk', 'Keluar/Terpakai', 'Stok', 'Harga Rata (Rp)', 'Nilai Stok (Rp)'],
@@ -163,6 +172,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
     }), 'Inventori')
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'LAPORAN OPNAME LAPANGAN',
       subtitle,
       headers: ['No', 'Tanggal', 'Judul', 'Status', 'Diisi Oleh', 'Progres (%)'],

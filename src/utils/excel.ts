@@ -112,10 +112,20 @@ export interface ReportSheetSpec {
   rows: Array<Array<string | number>>;
   /** indeks kolom (0-based) yang dijumlahkan pada baris TOTAL dengan rumus SUM */
   sumCols: number[];
+  /**
+   * Kop laporan: nama perusahaan pemakai. Bila diisi, baris kop muncul di atas
+   * judul dan identitas PropFS tidak lagi dicetak pada laporan.
+   */
+  kop?: string;
+  /** Baris kontak perusahaan (alamat · telepon · email) di bawah kop. */
+  kopKontak?: string;
+  /** Diisi HANYA untuk paket gratis — dicetak sebagai catatan kaki. */
+  watermark?: string;
 }
 
 const NAVY = '0D1B2A';
 const GOLD_LT = 'F0E6CE';
+const GOLD_DK = '8A6D1F';
 const BORDER = { style: 'thin', color: { rgb: 'C9CFD6' } };
 const BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
 
@@ -127,21 +137,35 @@ const BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
  * Sel angka diberi format ribuan #,##0 dan lebar kolom otomatis.
  */
 export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet {
-  const { title, subtitle, headers, rows, sumCols } = spec;
+  const { title, subtitle, headers, rows, sumCols, kop, kopKontak, watermark } = spec;
   const totalRow: Array<string | number> = headers.map(() => '');
   totalRow[0] = 'TOTAL';
-  const aoa: Array<Array<string | number>> = [[title], [subtitle], [], headers, ...rows, totalRow];
+
+  // Kop perusahaan (bila diisi) berada di atas judul dan menggeser seluruh
+  // baris di bawahnya sebanyak `off` baris.
+  const barisKop: Array<Array<string | number>> = [];
+  if (kop) {
+    barisKop.push([kop]);
+    if (kopKontak) barisKop.push([kopKontak]);
+  }
+  const off = barisKop.length;
+
+  const aoa: Array<Array<string | number>> = [
+    ...barisKop, [title], [subtitle], [], headers, ...rows, totalRow,
+  ];
+  if (watermark) aoa.push([], [watermark]);
   const ws = reportXlsx.utils.aoa_to_sheet(aoa);
 
   const nCols = headers.length;
+  const lebarPenuh = (r: number) => ({ s: { r, c: 0 }, e: { r, c: Math.max(0, nCols - 1) } });
   ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: Math.max(0, nCols - 1) } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: Math.max(0, nCols - 1) } },
+    ...barisKop.map((_, i) => lebarPenuh(i)),
+    lebarPenuh(off), lebarPenuh(off + 1),
   ];
 
-  // baris (1-indexed): header=4, data=5..4+n, TOTAL=5+n
-  const dataFirst = 5;
-  const dataLast = 4 + rows.length;
+  // baris (1-indexed): header=4+off, data=(5+off)..(4+off+n), TOTAL=5+off+n
+  const dataFirst = 5 + off;
+  const dataLast = 4 + off + rows.length;
   const totalIdx = dataLast + 1;
   for (const c of sumCols) {
     const col = reportXlsx.utils.encode_col(c);
@@ -152,11 +176,23 @@ export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet 
       : { t: 'n', v: 0, z: '#,##0' };
   }
 
-  // gaya sel: judul, subjudul, header, data (zebra), TOTAL
-  ws['A1'].s = { font: { bold: true, sz: 14, color: { rgb: NAVY } } };
-  ws['A2'].s = { font: { sz: 10, color: { rgb: '5A6673' } } };
+  // gaya sel: kop, judul, subjudul, header, data (zebra), TOTAL
+  if (kop) {
+    ws['A1'].s = { font: { bold: true, sz: 13, color: { rgb: GOLD_DK } } };
+    if (kopKontak && ws['A2']) ws['A2'].s = { font: { sz: 9, color: { rgb: '5A6673' } } };
+  }
+  const selJudul = ws[reportXlsx.utils.encode_cell({ r: off, c: 0 })];
+  if (selJudul) selJudul.s = { font: { bold: true, sz: 14, color: { rgb: NAVY } } };
+  const selSub = ws[reportXlsx.utils.encode_cell({ r: off + 1, c: 0 })];
+  if (selSub) selSub.s = { font: { sz: 10, color: { rgb: '5A6673' } } };
+
+  if (watermark) {
+    const selWm = ws[reportXlsx.utils.encode_cell({ r: totalIdx + 1, c: 0 })];
+    if (selWm) selWm.s = { font: { sz: 9, italic: true, color: { rgb: '9AA4B0' } } };
+  }
+
   for (let c = 0; c < nCols; c++) {
-    const head = ws[reportXlsx.utils.encode_cell({ r: 3, c })];
+    const head = ws[reportXlsx.utils.encode_cell({ r: 3 + off, c })];
     if (head) {
       head.s = {
         font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } },
@@ -165,7 +201,7 @@ export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet 
         border: BORDERS,
       };
     }
-    for (let r = 4; r <= totalIdx - 1; r++) {
+    for (let r = 4 + off; r <= totalIdx - 1; r++) {
       const cell = ws[reportXlsx.utils.encode_cell({ r, c })];
       if (!cell) continue;
       cell.s = {
@@ -197,6 +233,9 @@ export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet 
     });
   }
   ws['!cols'] = widths.map(wch => ({ wch: wch + 3 }));
-  ws['!rows'] = [{ hpt: 20 }, { hpt: 14 }, { hpt: 6 }, { hpt: 24 }];
+  ws['!rows'] = [
+    ...barisKop.map((_, i) => ({ hpt: i === 0 ? 22 : 13 })),
+    { hpt: 20 }, { hpt: 14 }, { hpt: 6 }, { hpt: 24 },
+  ];
   return ws;
 }

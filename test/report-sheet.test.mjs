@@ -34,4 +34,44 @@ assert(ws2['A1'].v === 'LAPORAN UJI', 'judul bertahan setelah roundtrip')
 // sheet kosong tidak error
 const empty = buildReportSheet({ title: 'X', subtitle: 'Y', headers: ['A', 'B'], rows: [], sumCols: [1] })
 assert(empty['B5'].v === 0, 'sheet kosong: TOTAL 0 tanpa rumus')
+
+// ── Kop perusahaan & watermark ────────────────────────────────────────────
+const dataUji = [['a', 1], ['b', 2]]
+
+// tanpa kop: susunan lama tidak berubah
+const polos = buildReportSheet({ title: 'JUDUL', subtitle: 'SUB', headers: ['Nama', 'Nilai'], rows: dataUji, sumCols: [1] })
+assert(polos['A1'].v === 'JUDUL', 'tanpa kop: judul tetap di A1')
+assert(polos['A4'].v === 'Nama', 'tanpa kop: header tetap di baris 4')
+assert(polos['B7'].f.includes('SUM(B5:B6)'), 'tanpa kop: rumus SUM menunjuk baris data yang benar')
+
+// dengan kop dua baris: semuanya bergeser 2 baris, rumus ikut menyesuaikan
+const berkop = buildReportSheet({
+  title: 'JUDUL', subtitle: 'SUB', headers: ['Nama', 'Nilai'], rows: dataUji, sumCols: [1],
+  kop: 'PT Propfs Karya Utama', kopKontak: 'Bekasi · 021-1234567',
+})
+assert(berkop['A1'].v === 'PT Propfs Karya Utama', 'kop perusahaan di baris 1')
+assert(berkop['A2'].v === 'Bekasi · 021-1234567', 'kontak perusahaan di baris 2')
+assert(berkop['A3'].v === 'JUDUL', 'judul bergeser ke baris 3')
+assert(berkop['A6'].v === 'Nama', 'header bergeser ke baris 6')
+assert(berkop['B9'].f.includes('SUM(B7:B8)'), 'rumus SUM ikut bergeser mengikuti kop')
+assert(berkop['B9'].v === 3, 'nilai TOTAL tetap benar setelah bergeser')
+assert(berkop['!merges'].length === 4, 'kop, kontak, judul, dan subjudul sama-sama di-merge')
+
+// kop tanpa baris kontak hanya menggeser 1 baris
+const kopSaja = buildReportSheet({
+  title: 'JUDUL', subtitle: 'SUB', headers: ['Nama', 'Nilai'], rows: dataUji, sumCols: [1],
+  kop: 'CV Maju',
+})
+assert(kopSaja['A2'].v === 'JUDUL', 'kop tanpa kontak: judul bergeser 1 baris')
+assert(kopSaja['B8'].f.includes('SUM(B6:B7)'), 'kop tanpa kontak: rumus SUM benar')
+
+// watermark hanya ditulis bila diminta (paket gratis)
+assert(!berkop['A11'], 'tanpa watermark: tidak ada baris tambahan di bawah TOTAL')
+const berWm = buildReportSheet({
+  title: 'JUDUL', subtitle: 'SUB', headers: ['Nama', 'Nilai'], rows: dataUji, sumCols: [1],
+  kop: 'PT Uji', kopKontak: 'Kontak', watermark: 'PropFS — Versi Gratis',
+})
+assert(berWm['A11'].v === 'PropFS — Versi Gratis', 'watermark dicetak dua baris di bawah TOTAL')
+assert(berWm['B9'].f.includes('SUM(B7:B8)'), 'watermark tidak mengganggu rumus TOTAL')
+
 console.log('buildReportSheet:', ok, 'assert lulus')

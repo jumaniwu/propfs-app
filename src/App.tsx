@@ -95,6 +95,14 @@ export default function App() {
     initialize()
   }, [initialize])
 
+  // Tarik profil perusahaan sekali setelah login agar kop & logo sudah siap
+  // di cache saat pengguna mencetak laporan.
+  const userId = useAuthStore(s => s.user?.id)
+  useEffect(() => {
+    if (!userId) return
+    void import('./lib/branding').then(m => m.brandingApi().load().catch(() => { /* opsional */ }))
+  }, [userId])
+
   return (
     <BrowserRouter>
       <Suspense fallback={<LoadingScreen />}>

@@ -14,6 +14,8 @@ import { useAkuntanStore } from '@/store/akuntanStore'
 import { useToast } from '@/hooks/use-toast'
 import { ringkasPerProyek, totalKonsolidasi, PROYEK_UMUM } from '@/lib/akuntan'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
+import { getBrandingCache, kopLaporan } from '@/lib/branding'
+import { useAuthStore } from '@/store/authStore'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 const fmtJt = (n: number) => {
@@ -46,10 +48,12 @@ export default function KonsolidasiPage() {
 
   function exportExcel() {
     const wb = reportXlsx.utils.book_new()
+    const kop = kopLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
     const subtitle = `Seluruh proyek · Dicetak: ${printed}`
 
     reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
       title: 'LAPORAN KONSOLIDASI SELURUH PROYEK',
       subtitle,
       headers: ['No', 'Proyek', 'Nilai RAB (Rp)', 'Pemasukan (Rp)', 'Pengeluaran (Rp)', 'Laba (Rp)', 'Progress (%)', 'Terpakai (%)', 'Deviasi (%)'],
@@ -68,6 +72,7 @@ export default function KonsolidasiPage() {
       const rows = semua.filter(e => e.projectId === b.projectId)
       const nama = b.namaProyek.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 28) || 'Proyek'
       reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
+      ...kop,
         title: `RINCIAN PENGELUARAN — ${b.namaProyek.toUpperCase()}`,
         subtitle,
         headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Jumlah (Rp)'],

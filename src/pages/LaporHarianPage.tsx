@@ -5,6 +5,7 @@
 // Ketiganya memakai satu link yang sama (report_token).
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import {
   Loader2, CheckCircle2, Camera, Plus, Trash2, HardHat, PackageOpen, ShoppingCart,
 } from 'lucide-react'
@@ -22,6 +23,7 @@ interface Header { project_name: string; drive_webhook: string }
 
 export default function LaporHarianPage() {
   const { token = '' } = useParams()
+  const merek = useBrandingPublik(token)
   const [header, setHeader] = useState<Header | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -44,10 +46,7 @@ export default function LaporHarianPage() {
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
       <div className="max-w-lg mx-auto space-y-4">
-        <div className="text-center">
-          <p className="font-serif font-bold text-xl text-navy">PropFS · Kontraktor AI</p>
-          <p className="text-xs text-muted-foreground">Laporan Lapangan Harian</p>
-        </div>
+        <KopPublik profil={merek} subjudul="Laporan Lapangan Harian" />
 
         {loading && (
           <div className="bg-white rounded-2xl p-10 flex items-center justify-center gap-2 text-muted-foreground">
@@ -98,7 +97,7 @@ export default function LaporHarianPage() {
             )}
           </div>
         )}
-        <p className="text-center text-[10px] text-muted-foreground">Dokumen digital · propfs.id · Kontraktor AI</p>
+        <KakiPublik profil={merek} />
       </div>
     </div>
   )
