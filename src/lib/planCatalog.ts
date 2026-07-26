@@ -62,7 +62,9 @@ export const KATALOG_DEFAULT: KatalogPaket[] = [
     priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0, isVisible: true,
     features: {
       upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true,
-      export_excel: true, export_pdf: true, multi_user: 3, akuntan: true, spk: true,
+      // Kuota pengguna tim yang ditegakkan backend ada di
+      // app_settings.max_team_users; angka di sini agar katalog cocok dengannya.
+      export_excel: true, export_pdf: true, multi_user: 5, akuntan: true, spk: true,
       lapangan: true, material_lapangan: true, api_access: false, whitelabel: false,
       priority_support: false, onboarding: false,
     },

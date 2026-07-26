@@ -79,6 +79,10 @@ interface AuthStore {
   addonFeaturesEnabled: boolean
   addonFsPrice: number
   addonCostPrice: number
+  /** Harga slot pengguna tim tambahan, per pengguna per bulan. */
+  addonUserPrice: number
+  /** Jumlah pengguna tim yang sudah termasuk paket langganan. */
+  maxTeamUsers: number
   isAffiliateEnabled: boolean
 
   initialize: () => Promise<void>
@@ -256,6 +260,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   addonFeaturesEnabled: false,
   addonFsPrice: 75000,
   addonCostPrice: 50000,
+  addonUserPrice: 50000,
+  maxTeamUsers: 5,
   isAffiliateEnabled: false,
   // ── initialize ────────────────────────────────────────────
   initialize: async () => {
@@ -487,7 +493,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'affiliate_enabled'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'addon_user_price', 'max_team_users', 'affiliate_enabled'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
@@ -498,6 +504,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const addonEnabled = data?.find(i => i.key === 'addon_features_enabled')?.value
       const addonFsPriceRaw = data?.find(i => i.key === 'addon_fs_price')?.value
       const addonCostPriceRaw = data?.find(i => i.key === 'addon_cost_price')?.value
+      const addonUserPriceRaw = data?.find(i => i.key === 'addon_user_price')?.value
+      const maxTeamUsersRaw = data?.find(i => i.key === 'max_team_users')?.value
 
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
@@ -508,6 +516,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         addonFeaturesEnabled: addonEnabled === true || addonEnabled === 'true',
         addonFsPrice: addonFsPriceRaw ? Number(addonFsPriceRaw) : 75000,
         addonCostPrice: addonCostPriceRaw ? Number(addonCostPriceRaw) : 50000,
+        addonUserPrice: addonUserPriceRaw ? Number(addonUserPriceRaw) : 50000,
+        maxTeamUsers: maxTeamUsersRaw ? Number(maxTeamUsersRaw) : 5,
         isAffiliateEnabled: data?.find(i => i.key === 'affiliate_enabled')?.value === 'true' || data?.find(i => i.key === 'affiliate_enabled')?.value === true,
       })
 

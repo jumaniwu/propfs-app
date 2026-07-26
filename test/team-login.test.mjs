@@ -73,6 +73,13 @@ assert(balik?.username === 'logistik.1' && balik?.kode === 'PFS-7HJK', 'bolak-ba
 
 // ── aksesLewatPerusahaan ───────────────────────────────────────────────────
 const kini = new Date('2026-07-26T00:00:00Z')
+
+// Keputusan backend selalu menang — termasuk perusahaan yang haknya datang
+// dari superadmin/custom_features sehingga tidak punya baris langganan.
+assert(aksesLewatPerusahaan({ owner_akses: true, owner_plan: 'free' }, kini),
+  'owner_akses true memberi akses walau paket terbaca free')
+assert(!aksesLewatPerusahaan({ owner_akses: false, owner_plan: 'pro', owner_plan_expires: '2027-01-01' }, kini),
+  'owner_akses false menolak walau paket terlihat aktif')
 assert(aksesLewatPerusahaan({ owner_plan: 'pro', owner_plan_expires: '2027-01-01' }, kini),
   'paket berbayar yang belum lewat memberi akses')
 assert(aksesLewatPerusahaan({ owner_plan: 'pro', owner_plan_expires: null }, kini),

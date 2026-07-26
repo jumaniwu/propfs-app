@@ -29,6 +29,11 @@ const ROLES = ['pemilik', 'manajemen', 'keuangan', 'pm', 'pengawas', 'logistik',
 const DOMAIN_TIM = 'tim.propfs.id'
 const HURUF_KODE = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 
+// Batas & harga bawaan bila admin belum mengaturnya di app_settings.
+// Harus sama dengan src/lib/kuotaTim.ts.
+const BATAS_ANGGOTA_DEFAULT = 5
+const HARGA_SLOT_USER_DEFAULT = 50_000
+
 interface Body {
   aksi?: 'buat' | 'reset'
   // aksi 'buat'
@@ -82,6 +87,41 @@ async function kodePerusahaan(admin: any, ownerId: string): Promise<string> {
     if (!error) return kode
   }
   throw new Error('Gagal membuat Kode Perusahaan. Coba lagi.')
+}
+
+/** Angka dari app_settings; nilainya bisa berupa JSON number maupun string. */
+// deno-lint-ignore no-explicit-any
+async function setelanAngka(admin: any, key: string, bawaan: number): Promise<number> {
+  const { data } = await admin.from('app_settings').select('value').eq('key', key).maybeSingle()
+  const n = Math.floor(Number(String(data?.value ?? '').replace(/"/g, '')))
+  return Number.isFinite(n) && n >= 0 ? n : bawaan
+}
+
+/**
+ * Kuota pengguna tim perusahaan: batas dari paket + slot tambahan yang sudah
+ * dibeli. Diperiksa di server karena batas yang hanya dijaga di antarmuka
+ * bisa dilewati dengan memanggil fungsi ini langsung.
+ */
+// deno-lint-ignore no-explicit-any
+async function periksaKuota(admin: any, ownerId: string): Promise<string | null> {
+  const batasDasar = await setelanAngka(admin, 'max_team_users', BATAS_ANGGOTA_DEFAULT)
+  const harga = await setelanAngka(admin, 'addon_user_price', HARGA_SLOT_USER_DEFAULT)
+
+  const { data: profil } = await admin
+    .from('profiles').select('addon_user_slots').eq('id', ownerId).maybeSingle()
+  const tambahan = Math.max(0, Math.floor(Number(profil?.addon_user_slots ?? 0)) || 0)
+
+  // Pengguna nonaktif tidak ikut dihitung — perusahaan boleh mengganti orang
+  // tanpa harus membeli slot baru.
+  const { count } = await admin
+    .from('team_members').select('id', { count: 'exact', head: true })
+    .eq('owner_id', ownerId).neq('status', 'nonaktif')
+
+  const batas = batasDasar + tambahan
+  if ((count ?? 0) < batas) return null
+  return `Kuota pengguna tim sudah penuh (${batas} pengguna). `
+    + `Beli slot tambahan Rp ${harga.toLocaleString('id-ID')} per pengguna per bulan, `
+    + 'atau nonaktifkan pengguna yang tidak lagi dipakai.'
 }
 
 serve(async (req) => {
@@ -149,6 +189,10 @@ serve(async (req) => {
     if (nama.length < 2) return jsonRes({ error: 'Nama wajib diisi.' }, 400)
     if (jabatan.length < 2) return jsonRes({ error: 'Jabatan wajib diisi.' }, 400)
     if (noWa.length < 8) return jsonRes({ error: 'Nomor WhatsApp wajib diisi.' }, 400)
+
+    // ── 3a. Kuota pengguna tim ─────────────────────────────────────────────
+    const penuh = await periksaKuota(admin, pemilik.id)
+    if (penuh) return jsonRes({ error: penuh, kuota_penuh: true }, 409)
 
     const kode = await kodePerusahaan(admin, pemilik.id)
     const loginEmail = `${username}@${kode.toLowerCase()}.${DOMAIN_TIM}`

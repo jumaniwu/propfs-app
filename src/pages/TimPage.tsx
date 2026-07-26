@@ -14,6 +14,8 @@ import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { useToast } from '@/hooks/use-toast'
 import { teamApi, passwordAcak, type TeamMember, type BuatPenggunaInput } from '@/lib/teamApi'
 import { normalUsername, usernameValid } from '@/lib/teamLogin'
+import { ringkasKuota, biayaSlotUser, type RingkasanKuota } from '@/lib/kuotaTim'
+import { useAuthStore } from '@/store/authStore'
 import { ROLES, ringkasIzin, IZIN_LABEL, MODUL_LABEL, type TeamRole, type Modul } from '@/lib/teamRoles'
 import {
   waKe, pesanAkunBaru, pesanIngatkanAkun, pesanPasswordBaru, JALUR_LOGIN_TIM,
@@ -38,7 +40,17 @@ export default function TimPage() {
   /** Kredensial pengguna yang baru dibuat — password hanya ada di memori ini. */
   const [akunBaru, setAkunBaru] = useState<(BuatPenggunaInput & { kode: string }) | null>(null)
   const [kode, setKode] = useState('')
+  const [kuota, setKuota] = useState<RingkasanKuota | null>(null)
   const perusahaan = getBrandingCache().nama
+  const { addonUserPrice, addonFeaturesEnabled, maxTeamUsers } = useAuthStore()
+
+  function muatKuota() {
+    teamApi().kuotaTim()
+      .then(k => setKuota(ringkasKuota(k ? {
+        batasDasar: k.batas_dasar, slotTambahan: k.slot_tambahan, terpakai: k.terpakai,
+      } : { batasDasar: maxTeamUsers })))
+      .catch(() => setKuota(null))
+  }
 
   function muat() {
     setLoading(true); setError('')
@@ -49,6 +61,7 @@ export default function TimPage() {
   }
   useEffect(() => {
     muat()
+    muatKuota()
     // Kode Perusahaan dibuatkan otomatis pada panggilan pertama.
     teamApi().kodePerusahaan().then(setKode).catch(() => setKode(''))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,6 +98,8 @@ export default function TimPage() {
     try {
       await teamApi().updateMember(m.id, { status })
       setMembers(prev => prev.map(x => x.id === m.id ? { ...x, status } : x))
+      // pengguna nonaktif tidak menghabiskan kuota, jadi angkanya ikut berubah
+      muatKuota()
       toast({ title: status === 'aktif' ? 'Pengguna diaktifkan' : 'Pengguna dinonaktifkan' })
     } catch (e) {
       toast({ title: 'Gagal', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
@@ -96,6 +111,7 @@ export default function TimPage() {
     try {
       await teamApi().deleteMember(m.id)
       setMembers(prev => prev.filter(x => x.id !== m.id))
+      muatKuota()
       toast({ title: 'Pengguna dikeluarkan dari tim' })
     } catch (e) {
       toast({ title: 'Gagal menghapus', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
@@ -139,6 +155,10 @@ export default function TimPage() {
           <>
             <KartuKodePerusahaan kode={kode} perusahaan={perusahaan} />
 
+            {kuota && (
+              <KartuKuota kuota={kuota} harga={addonUserPrice} addonAktif={addonFeaturesEnabled} />
+            )}
+
             {/* Kartu kredensial setelah pengguna dibuat — password hanya ada di
                 sini, sistem tidak menyimpannya, jadi jangan ditutup otomatis. */}
             {akunBaru && (
@@ -153,6 +173,7 @@ export default function TimPage() {
                   setMembers(prev => [m, ...prev])
                   setFormOpen(false)
                   setKode(kodePakai)
+                  muatKuota()
                   setAkunBaru({ ...input, kode: kodePakai })
                   toast({
                     title: '✅ Pengguna dibuat!',
@@ -299,6 +320,57 @@ function KartuKodePerusahaan({ kode, perusahaan }: { kode: string; perusahaan: s
             <Copy className="w-3.5 h-3.5" /> Salin Tautan Login
           </button>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ── Kartu kuota pengguna tim ────────────────────────────────────────────────
+// Batas dasar diatur admin di backend (app_settings.max_team_users) dan bisa
+// ditambah dengan membeli slot per pengguna per bulan.
+function KartuKuota({ kuota, harga, addonAktif }: {
+  kuota: RingkasanKuota
+  harga: number
+  addonAktif: boolean
+}) {
+  const navigate = useNavigate()
+
+  return (
+    <div className={`rounded-2xl border p-4 ${
+      kuota.penuh ? 'bg-rose-50 border-rose-200' : 'bg-white border-border'}`}>
+      <div className="flex items-end justify-between gap-3 mb-2">
+        <div>
+          <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold">
+            Kuota Pengguna Tim
+          </p>
+          <p className="font-bold text-navy text-lg tabular-nums">
+            {kuota.terpakai} <span className="text-muted-foreground font-semibold text-sm">/ {kuota.batas} pengguna</span>
+          </p>
+        </div>
+        <p className="text-[11px] text-muted-foreground text-right">
+          {kuota.batasDasar} termasuk paket
+          {kuota.slotTambahan > 0 && <><br />+{kuota.slotTambahan} slot tambahan</>}
+        </p>
+      </div>
+
+      <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${
+          kuota.penuh ? 'bg-rose-500' : kuota.pakaiPct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          style={{ width: `${kuota.pakaiPct}%` }} />
+      </div>
+
+      <p className={`text-[11px] mt-2 leading-relaxed ${kuota.penuh ? 'text-rose-700' : 'text-muted-foreground'}`}>
+        {kuota.penuh
+          ? 'Kuota sudah penuh. Beli slot tambahan, atau nonaktifkan pengguna yang tidak lagi dipakai — pengguna nonaktif tidak menghabiskan kuota.'
+          : `Sisa ${kuota.sisa} slot. Slot tambahan Rp ${harga.toLocaleString('id-ID')} per pengguna per bulan.`}
+      </p>
+
+      {addonAktif && (
+        <button
+          onClick={() => navigate(`/payment?plan_id=addon_user&amount=${biayaSlotUser(1, harga)}`)}
+          className="mt-3 h-9 px-4 rounded-xl bg-gold text-navy text-xs font-bold hover:bg-gold/90">
+          ➕ Beli 1 Slot Pengguna — Rp {biayaSlotUser(1, harga).toLocaleString('id-ID')}/bulan
+        </button>
       )}
     </div>
   )

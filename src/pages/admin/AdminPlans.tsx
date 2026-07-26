@@ -42,6 +42,8 @@ export default function AdminPlans() {
   const [addonEnabled, setAddonEnabled] = useState(false)
   const [addonFsPrice, setAddonFsPrice] = useState(75000)
   const [addonCostPrice, setAddonCostPrice] = useState(50000)
+  const [addonUserPrice, setAddonUserPrice] = useState(50000)
+  const [maxTeamUsers, setMaxTeamUsers] = useState(5)
   const [savingAddon, setSavingAddon] = useState(false)
 
   useEffect(() => {
@@ -54,14 +56,18 @@ export default function AdminPlans() {
 
         const { data: addonRows } = await supabase
           .from('app_settings').select('key, value')
-          .in('key', ['addon_features_enabled', 'addon_fs_price', 'addon_cost_price'])
+          .in('key', ['addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'addon_user_price', 'max_team_users'])
         if (addonRows) {
           const enabledRow = addonRows.find(r => r.key === 'addon_features_enabled')
           const fsPriceRow = addonRows.find(r => r.key === 'addon_fs_price')
           const costPriceRow = addonRows.find(r => r.key === 'addon_cost_price')
+          const userPriceRow = addonRows.find(r => r.key === 'addon_user_price')
+          const maxUsersRow = addonRows.find(r => r.key === 'max_team_users')
           if (enabledRow) setAddonEnabled(enabledRow.value === true || enabledRow.value === 'true')
           if (fsPriceRow) setAddonFsPrice(Number(fsPriceRow.value) || 75000)
           if (costPriceRow) setAddonCostPrice(Number(costPriceRow.value) || 50000)
+          if (userPriceRow) setAddonUserPrice(Number(userPriceRow.value) || 50000)
+          if (maxUsersRow) setMaxTeamUsers(Number(maxUsersRow.value) || 5)
         }
       } catch {
         setPlans(urutkanKatalog(bacaKatalog(null)))
@@ -119,6 +125,8 @@ export default function AdminPlans() {
         { key: 'addon_features_enabled', value: addonEnabled },
         { key: 'addon_fs_price', value: addonFsPrice },
         { key: 'addon_cost_price', value: addonCostPrice },
+        { key: 'addon_user_price', value: addonUserPrice },
+        { key: 'max_team_users', value: maxTeamUsers },
       ]
       for (const u of updates) {
         const { data: existing } = await supabase.from('app_settings').select('key').eq('key', u.key).maybeSingle()
@@ -378,6 +386,24 @@ export default function AdminPlans() {
                 className="w-full h-14 pl-12 pr-4 rounded-2xl font-bold text-xl bg-white border-2 border-slate-100 focus:border-navy/30 text-navy"
                 value={addonCostPrice} onChange={e => setAddonCostPrice(parseInt(e.target.value) || 0)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">Harga 1 Pengguna Tim Ekstra — per bulan (IDR)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-4 font-bold text-slate-400">Rp</span>
+              <input type="number"
+                className="w-full h-14 pl-12 pr-4 rounded-2xl font-bold text-xl bg-white border-2 border-slate-100 focus:border-navy/30 text-navy"
+                value={addonUserPrice} onChange={e => setAddonUserPrice(parseInt(e.target.value) || 0)} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">Pengguna Tim Termasuk Paket (orang)</label>
+            <input type="number"
+              className="w-full h-14 px-4 rounded-2xl font-bold text-xl bg-white border-2 border-slate-100 focus:border-navy/30 text-navy"
+              value={maxTeamUsers} onChange={e => setMaxTeamUsers(parseInt(e.target.value) || 0)} />
+            <p className="text-[11px] text-slate-500">
+              Batas ini berlaku untuk semua perusahaan. Kelebihannya dibeli sebagai slot pengguna ekstra.
+            </p>
           </div>
         </div>
 

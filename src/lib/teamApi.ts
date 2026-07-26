@@ -46,10 +46,19 @@ export interface Workspace {
   role: TeamRole
   /** Kode Perusahaan workspace ini, mis. "PFS-4K7M". */
   kode?: string
-  /** Paket Kontraktor AI milik pemilik workspace — anggota menumpang ini. */
+  /** Keputusan akses Kontraktor AI perusahaan, dihitung backend. */
+  owner_akses?: boolean | null
+  /** Paket Kontraktor AI milik pemilik workspace — untuk ditampilkan. */
   owner_plan?: string | null
   owner_plan_expires?: string | null
   owner_trial_expires?: string | null
+}
+
+/** Kuota pengguna tim milik perusahaan, apa adanya dari backend. */
+export interface KuotaTimMentah {
+  batas_dasar: number
+  slot_tambahan: number
+  terpakai: number
 }
 
 export interface TeamApi {
@@ -62,6 +71,8 @@ export interface TeamApi {
   myWorkspaces(): Promise<Workspace[]>
   /** Kode Perusahaan milik pengguna yang sedang login; dibuatkan bila belum ada. */
   kodePerusahaan(): Promise<string>
+  /** Kuota pengguna tim: batas dasar, slot tambahan yang dibeli, dan terpakai. */
+  kuotaTim(): Promise<KuotaTimMentah | null>
 }
 
 // ── REST langsung (pola sama dengan fieldReports.ts / materialApi.ts) ───────
@@ -224,6 +235,15 @@ const realApi: TeamApi = {
       )
     }
     return (await res.json() as string | null) ?? ''
+  },
+
+  async kuotaTim() {
+    const res = await restFetch('rpc/kuota_tim_saya', { method: 'POST', body: '{}' })
+    // Halaman Tim tetap berguna walau migrasi kuota belum dijalankan —
+    // null membuat pemanggil memakai batas bawaan.
+    if (!res.ok) return null
+    const rows = await res.json() as KuotaTimMentah[] | KuotaTimMentah | null
+    return Array.isArray(rows) ? rows[0] ?? null : rows
   },
 }
 
