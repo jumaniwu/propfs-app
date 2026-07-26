@@ -9,6 +9,7 @@ import { useState, useMemo, useEffect } from 'react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import IndikatorSimpan from '@/components/cost/IndikatorSimpan'
 import { buatInvoiceAddon } from '@/lib/invoice'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
@@ -533,11 +534,10 @@ export default function CostDashboard() {
                 className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/10 text-white/90 text-xs font-bold hover:bg-white/20 transition-colors shrink-0">
                 <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
               </button>
-              <Button
-                onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })}
-                className="bg-gold text-navy hover:bg-gold/90 font-bold px-5 flex-1 sm:flex-none">
-                Simpan Data
-              </Button>
+              {/* Tidak ada lagi tombol "Simpan Data": setiap perubahan sudah
+                  langsung ditulis ke localStorage dan disinkronkan ke Supabase.
+                  Yang ditampilkan sekarang adalah keadaan penyimpanan itu. */}
+              <IndikatorSimpan terang />
             </div>
           }
         />

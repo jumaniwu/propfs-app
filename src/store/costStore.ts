@@ -4,6 +4,7 @@ import { RealisasiEntry } from '../lib/ai-realisasi'
 import { supabase } from '../lib/supabase'
 import { mergeNewest } from '../lib/cloudSync'
 import { dataOwnerId } from '../lib/teamApi'
+import { tandaiMenyimpan, tandaiTersimpan, tandaiGagal } from '../lib/syncStatus'
 
 export interface ProjectInfo {
   id: string
@@ -126,13 +127,21 @@ function cloudUserId(): string | null {
 
 async function upsertCloudProject(p: SavedCostProject): Promise<void> {
   const user_id = cloudUserId()
-  if (!user_id) return
+  // Belum login: data tetap aman di localStorage, bukan kegagalan.
+  if (!user_id) { tandaiTersimpan(); return }
+  tandaiMenyimpan()
   try {
-    await supabase.from('cost_projects').upsert(
+    const { error } = await supabase.from('cost_projects').upsert(
       { user_id, id: p.info.id, data: p, updated_at: p.updatedAt },
       { onConflict: 'user_id,id' },
     )
-  } catch (e) { console.warn('[cost] gagal sinkron proyek ke cloud:', e) }
+    if (error) throw error
+    tandaiTersimpan()
+  } catch (e) {
+    const pesan = e instanceof Error ? e.message : String(e)
+    console.warn('[cost] gagal sinkron proyek ke cloud:', pesan)
+    tandaiGagal(pesan)
+  }
 }
 
 async function deleteCloudProject(id: string): Promise<void> {
