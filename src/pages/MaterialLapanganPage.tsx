@@ -11,6 +11,7 @@ import {
   Download, Check, X, Truck, PackageCheck, Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import PhotoLightbox from '@/components/PhotoLightbox'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
@@ -133,34 +134,23 @@ export default function MaterialLapanganPage() {
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-10">
-      <div className="bg-navy text-white">
-        <div className="max-w-5xl mx-auto px-4 py-5">
-          <button onClick={() => navigate('/kontraktor')}
-            className="flex items-center gap-1.5 text-xs font-bold text-white/70 hover:text-white mb-2">
-            <ArrowLeft className="w-4 h-4" /> Home Kontraktor AI
-          </button>
-          <div className="flex items-end justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="font-serif text-xl md:text-2xl font-bold flex items-center gap-2">
-                <PackageOpen className="w-6 h-6" /> Material Lapangan
-              </h1>
-              <p className="text-white/60 text-xs mt-1">
-                Penggunaan, permintaan, dan kekurangan material dari lapangan
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={muat} variant="outline" size="sm"
-                className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20">
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
-              </Button>
-              <Button onClick={exportExcel} variant="outline" size="sm"
-                className="gap-1.5 font-bold bg-white text-navy hover:bg-white/90 border-0">
-                <Download className="w-3.5 h-3.5" /> Excel
-              </Button>
-            </div>
+      <KontraktorHeader
+        judul="Material Lapangan"
+        subjudul="Penggunaan, permintaan, dan kekurangan material dari lapangan"
+        kembaliKe="/kontraktor"
+        aksi={
+          <div className="flex gap-2">
+            <Button onClick={muat} variant="outline" size="sm"
+              className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20">
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
+            </Button>
+            <Button onClick={exportExcel} variant="outline" size="sm"
+              className="gap-1.5 font-bold bg-white text-navy hover:bg-white/90 border-0">
+              <Download className="w-3.5 h-3.5" /> Excel
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
         {/* Sub-tab */}

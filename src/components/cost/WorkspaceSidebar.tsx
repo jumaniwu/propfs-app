@@ -22,6 +22,9 @@ interface SidebarItem {
 interface WorkspaceSidebarProps {
   activeTab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
+  /** Bila diisi, drawer dikendalikan halaman induk (tombol ☰ ada di header). */
+  mobileOpen?: boolean
+  onMobileOpenChange?: (open: boolean) => void
 }
 
 const NAV_ITEMS: SidebarItem[] = [
@@ -40,14 +43,21 @@ const NAV_ITEMS: SidebarItem[] = [
 // ── Mobile Bottom Nav (shows 5 main items) ──
 const MOBILE_ITEMS: WorkspaceTab[] = ['overview', 'realisasi', 'akuntan', 'spk', 'lapangan']
 
-export default function WorkspaceSidebar({ activeTab, onTabChange }: WorkspaceSidebarProps) {
+export default function WorkspaceSidebar({
+  activeTab, onTabChange, mobileOpen: mobileOpenLuar, onMobileOpenChange,
+}: WorkspaceSidebarProps) {
   const { isFeatureEnabled } = useAuthStore()
   const { projectInfo } = useCostStore()
   const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [mobileOpenInternal, setMobileOpenInternal] = useState(false)
+
+  const dikendalikanLuar = mobileOpenLuar !== undefined
+  const mobileOpen = dikendalikanLuar ? mobileOpenLuar : mobileOpenInternal
+  const setMobileOpen = (v: boolean) =>
+    dikendalikanLuar ? onMobileOpenChange?.(v) : setMobileOpenInternal(v)
 
   // Close mobile drawer on tab change
-  useEffect(() => { setMobileOpen(false) }, [activeTab])
+  useEffect(() => { setMobileOpen(false) }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isItemVisible = (item: SidebarItem) => {
     if (!item.feature) return true
@@ -148,13 +158,15 @@ export default function WorkspaceSidebar({ activeTab, onTabChange }: WorkspaceSi
 
       {/* ══ MOBILE: Hamburger + Drawer ════════════════════════════════════ */}
       {/* Hamburger Button (top left, shown on mobile only) */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-[62px] left-3 z-30 w-9 h-9 bg-white border border-border rounded-xl flex items-center justify-center shadow-sm"
-        aria-label="Buka Menu"
-      >
-        <Menu className="w-4 h-4 text-navy" />
-      </button>
+      {!dikendalikanLuar && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="md:hidden fixed top-[62px] left-3 z-30 w-9 h-9 bg-white border border-border rounded-xl flex items-center justify-center shadow-sm"
+          aria-label="Buka Menu"
+        >
+          <Menu className="w-4 h-4 text-navy" />
+        </button>
+      )}
 
       {/* Backdrop */}
       {mobileOpen && (

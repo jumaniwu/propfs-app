@@ -10,11 +10,12 @@ import {
   Copy, Send, Eye, EyeOff, Shuffle, Check, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
 import { teamApi, passwordAcak, type TeamMember, type BuatPenggunaInput } from '@/lib/teamApi'
 import { ROLES, ringkasIzin, IZIN_LABEL, MODUL_LABEL, type TeamRole, type Modul } from '@/lib/teamRoles'
-import { waShare } from '@/lib/fieldReports'
+import { waKe, pesanAkunBaru, pesanIngatkanAkun } from '@/lib/waLink'
 
 type Tab = 'anggota' | 'role'
 
@@ -33,6 +34,8 @@ export default function TimPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [formOpen, setFormOpen] = useState(() => params.get('aksi') === 'undang')
+  /** Kredensial pengguna yang baru dibuat — password hanya ada di memori ini. */
+  const [akunBaru, setAkunBaru] = useState<(BuatPenggunaInput & { sudahAda: boolean }) | null>(null)
 
   function muat() {
     setLoading(true); setError('')
@@ -77,34 +80,23 @@ export default function TimPage() {
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-10">
-      <div className="bg-navy text-white">
-        <div className="max-w-5xl mx-auto px-4 py-5">
-          <button onClick={() => navigate('/kontraktor')}
-            className="flex items-center gap-1.5 text-xs font-bold text-white/70 hover:text-white mb-2">
-            <ArrowLeft className="w-4 h-4" /> Home Kontraktor AI
-          </button>
-          <div className="flex items-end justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="font-serif text-xl md:text-2xl font-bold flex items-center gap-2">
-                <Users className="w-6 h-6" /> Tim & Pengguna
-              </h1>
-              <p className="text-white/60 text-xs mt-1">
-                {profile?.company || 'Perusahaan Anda'} · {members.length} pengguna terdaftar
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={muat} variant="outline" size="sm"
-                className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20">
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
-              </Button>
-              <Button onClick={() => { setTab('anggota'); setFormOpen(true) }} size="sm"
-                className="gap-1.5 font-bold bg-gold text-navy hover:bg-gold/90">
-                <UserPlus className="w-3.5 h-3.5" /> Buat Pengguna
-              </Button>
-            </div>
+      <KontraktorHeader
+        judul="Tim & Pengguna"
+        subjudul={`${members.length} pengguna terdaftar`}
+        kembaliKe="/kontraktor"
+        aksi={
+          <div className="flex gap-2">
+            <Button onClick={muat} variant="outline" size="sm"
+              className="gap-1.5 bg-white/10 text-white border-white/20 hover:bg-white/20">
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
+            </Button>
+            <Button onClick={() => { setTab('anggota'); setFormOpen(true) }} size="sm"
+              className="gap-1.5 font-bold bg-gold text-navy hover:bg-gold/90">
+              <UserPlus className="w-3.5 h-3.5" /> Buat Pengguna
+            </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="max-w-5xl mx-auto px-4 py-5 space-y-4">
         <div className="flex gap-1.5">
@@ -121,17 +113,24 @@ export default function TimPage() {
 
         {tab === 'anggota' && (
           <>
+            {/* Kartu kredensial setelah pengguna dibuat — password hanya ada di
+                sini, sistem tidak menyimpannya, jadi jangan ditutup otomatis. */}
+            {akunBaru && (
+              <KartuAkunBaru akun={akunBaru} onTutup={() => setAkunBaru(null)} />
+            )}
+
             {formOpen && (
               <FormBuatPengguna
                 onBatal={() => setFormOpen(false)}
-                onSukses={(m, sudahAda) => {
+                onSukses={(m, input, sudahAda) => {
                   setMembers(prev => [m, ...prev])
                   setFormOpen(false)
+                  setAkunBaru({ ...input, sudahAda })
                   toast({
                     title: '✅ Pengguna dibuat!',
                     description: sudahAda
                       ? 'Email ini sudah punya akun PropFS — akun lama ditautkan ke tim Anda (password tidak diubah).'
-                      : 'Bagikan User ID & password ke karyawan Anda.',
+                      : 'Kirim User ID & password ke karyawan Anda sekarang.',
                   })
                 }}
               />
@@ -181,8 +180,13 @@ export default function TimPage() {
                       {m.no_wa && (
                         <p className="flex items-center gap-1">
                           📱 {m.no_wa}
-                          <button onClick={() => window.open(waShare(`Halo ${m.nama}, ini akun PropFS Kontraktor AI Anda.`), '_blank')}
-                            className="text-navy hover:underline font-semibold">kirim WA</button>
+                          <button
+                            title="Kirim pengingat User ID & tautan login (password tidak disimpan sistem)"
+                            onClick={() => window.open(waKe(m.no_wa, pesanIngatkanAkun({
+                              nama: m.nama, jabatan: m.jabatan,
+                              email: m.member_email, origin: window.location.origin,
+                            })), '_blank')}
+                            className="text-navy hover:underline font-semibold">kirim data akun</button>
                         </p>
                       )}
                     </div>
@@ -221,10 +225,75 @@ export default function TimPage() {
   )
 }
 
+// ── Kartu kredensial pengguna baru ──────────────────────────────────────────
+// Password TIDAK disimpan di database. Kartu ini satu-satunya kesempatan
+// mengirimkannya, jadi hanya hilang bila ditutup sendiri oleh admin.
+function KartuAkunBaru({ akun, onTutup }: {
+  akun: BuatPenggunaInput & { sudahAda: boolean }
+  onTutup: () => void
+}) {
+  const { toast } = useToast()
+  const origin = window.location.origin
+  const pesan = akun.sudahAda
+    ? pesanIngatkanAkun({ nama: akun.nama, jabatan: akun.jabatan, email: akun.email, origin })
+    : pesanAkunBaru({ nama: akun.nama, jabatan: akun.jabatan, email: akun.email, password: akun.password, origin })
+
+  return (
+    <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-bold text-emerald-900 text-sm flex items-center gap-2">
+            <Check className="w-4 h-4" /> Akun {akun.nama} siap dikirim
+          </h2>
+          <p className="text-[11px] text-emerald-800/80 mt-1">
+            {akun.sudahAda
+              ? 'Email ini sudah punya akun PropFS, jadi password lamanya tetap dipakai dan tidak ditampilkan.'
+              : 'Password hanya tampil sekali di sini — sistem tidak menyimpannya. Kirim sekarang sebelum menutup kartu ini.'}
+          </p>
+        </div>
+        <button onClick={onTutup} className="text-emerald-700/60 hover:text-emerald-900 shrink-0">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-emerald-200 p-3 text-xs space-y-1.5">
+        {[
+          ['Nama', akun.nama],
+          ['Jabatan', akun.jabatan],
+          ['Nomor WA', akun.no_wa],
+          ['User ID', akun.email],
+          ...(akun.sudahAda ? [] : [['Password', akun.password]]),
+        ].map(([k, v]) => (
+          <div key={k} className="flex gap-2">
+            <span className="text-muted-foreground w-20 shrink-0">{k}</span>
+            <span className={`font-bold text-navy break-all ${k === 'Password' ? 'font-mono' : ''}`}>{v}</span>
+          </div>
+        ))}
+        <div className="flex gap-2 pt-1 border-t border-emerald-100 mt-1">
+          <span className="text-muted-foreground w-20 shrink-0">Login di</span>
+          <span className="font-bold text-navy break-all">{origin}/auth</span>
+        </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        <Button className="font-bold bg-emerald-600 hover:bg-emerald-700 gap-2"
+          onClick={() => window.open(waKe(akun.no_wa, pesan), '_blank')}>
+          <Send className="w-4 h-4" /> Kirim ke WhatsApp {akun.no_wa}
+        </Button>
+        <Button variant="outline" className="gap-2"
+          onClick={() => { navigator.clipboard?.writeText(pesan); toast({ title: 'Data akun disalin' }) }}>
+          <Copy className="w-4 h-4" /> Salin Data Akun
+        </Button>
+        <Button variant="ghost" onClick={onTutup}>Sudah dikirim</Button>
+      </div>
+    </div>
+  )
+}
+
 // ── Form buat pengguna baru ─────────────────────────────────────────────────
 function FormBuatPengguna({ onBatal, onSukses }: {
   onBatal: () => void
-  onSukses: (m: TeamMember, sudahPunyaAkun: boolean) => void
+  onSukses: (m: TeamMember, input: BuatPenggunaInput, sudahPunyaAkun: boolean) => void
 }) {
   const { toast } = useToast()
   const [f, setF] = useState<BuatPenggunaInput>({ ...kosong, password: passwordAcak() })
@@ -235,9 +304,12 @@ function FormBuatPengguna({ onBatal, onSukses }: {
   const set = <K extends keyof BuatPenggunaInput>(k: K, v: BuatPenggunaInput[K]) =>
     setF(prev => ({ ...prev, [k]: v }))
 
+  const pesanAkun = () => pesanAkunBaru({
+    nama: f.nama, jabatan: f.jabatan, email: f.email,
+    password: f.password, origin: window.location.origin,
+  })
   const salinAkun = () => {
-    navigator.clipboard?.writeText(
-      `PropFS · Kontraktor AI\nNama: ${f.nama}\nJabatan: ${f.jabatan}\nUser ID (email): ${f.email}\nPassword: ${f.password}\nLogin di: ${window.location.origin}/auth`)
+    navigator.clipboard?.writeText(pesanAkun())
     toast({ title: 'Data akun disalin' })
   }
 
@@ -251,11 +323,12 @@ function FormBuatPengguna({ onBatal, onSukses }: {
 
     setSubmitting(true)
     try {
-      const { member, sudahPunyaAkun } = await teamApi().createUser({
+      const bersih = {
         ...f, email: f.email.trim().toLowerCase(), nama: f.nama.trim(),
         jabatan: f.jabatan.trim(), no_wa: f.no_wa.trim(),
-      })
-      onSukses(member, sudahPunyaAkun)
+      }
+      const { member, sudahPunyaAkun } = await teamApi().createUser(bersih)
+      onSukses(member, bersih, sudahPunyaAkun)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setSubmitting(false) }
@@ -336,8 +409,7 @@ function FormBuatPengguna({ onBatal, onSukses }: {
           <Copy className="w-4 h-4" /> Salin Data Akun
         </Button>
         <Button variant="outline" className="gap-2"
-          onClick={() => window.open(waShare(
-            `PropFS · Kontraktor AI\n\nHalo ${f.nama}, berikut akun Anda:\n\nUser ID: ${f.email}\nPassword: ${f.password}\n\nLogin di ${window.location.origin}/auth\nMohon ganti password setelah login pertama.`), '_blank')}>
+          onClick={() => window.open(waKe(f.no_wa, pesanAkun()), '_blank')}>
           <Send className="w-4 h-4" /> Kirim via WhatsApp
         </Button>
         <Button variant="ghost" onClick={onBatal}>Batal</Button>

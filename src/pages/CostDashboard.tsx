@@ -8,7 +8,7 @@ import {
 import { useState, useMemo, useEffect } from 'react'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import Header from '@/components/layout/Header'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
 import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
@@ -54,6 +54,7 @@ export default function CostDashboard() {
   } = useCostStore()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
 
   // ── Deep-link dari Home Kontraktor AI: /cost-control?tab=…&sub=…&project=… ──
@@ -506,18 +507,40 @@ export default function CostDashboard() {
 
   return (
     <div className="min-h-screen bg-muted/30">
-      <Header />
+      {/* Header Kontraktor AI — sama dengan halaman Home agar satu konsep.
+          Di workspace, judulnya mengikuti menu yang sedang dibuka. */}
+      {projectInfo && activePlan ? (
+        <KontraktorHeader
+          onMenu={() => setDrawerOpen(true)}
+          judul={JUDUL_TAB[activeTab]}
+          subjudul={<>
+            <Building2 className="inline h-3 w-3 mr-1" />
+            {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
+          </>}
+          kembaliKe="/kontraktor"
+          aksi={
+            <Button
+              onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })}
+              className="bg-gold text-navy hover:bg-gold/90 font-bold px-5 w-full sm:w-auto">
+              Simpan Data
+            </Button>
+          }
+        />
+      ) : (
+        <KontraktorHeader
+          judul={projectInfo ? 'Workspace Proyek' : 'Dashboard Kontraktor AI'}
+          subjudul={projectInfo
+            ? <><Building2 className="inline h-3 w-3 mr-1" />{projectInfo.projectName}</>
+            : `${savedProjects.length} proyek tersimpan`}
+          kembaliKe="/kontraktor"
+        />
+      )}
 
       {/* ── STATE 1: No project → Dashboard Mode ── */}
       {!projectInfo && (
         <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 md:mb-8">
             <div>
-              <button onClick={() => navigate('/kontraktor')}
-                className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
-                <ArrowLeft className="h-4 w-4" /> Home Kontraktor AI
-              </button>
-              <h1 className="font-serif text-2xl md:text-3xl font-bold">Dashboard Kontraktor AI</h1>
               {isSubscriptionEnabled ? (
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`text-sm font-bold ${canAdd ? 'text-muted-foreground' : 'text-red-500'}`}>
@@ -578,22 +601,11 @@ export default function CostDashboard() {
       {/* ── STATE 2: Project open, no RAB yet ── */}
       {projectInfo && !activePlan && (
         <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 md:mb-8">
-            <div>
-              <button onClick={() => clearProject()}
-                className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-2">
-                <ArrowLeft className="h-4 w-4" /> Kembali ke Dashboard
-              </button>
-              <h1 className="font-serif text-2xl md:text-3xl font-bold">Workspace Proyek</h1>
-              <p className="text-muted-foreground text-sm mt-1">
-                <Building2 className="inline h-3.5 w-3.5 mr-1" />
-                {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
-              </p>
-            </div>
-            <Button onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })} className="bg-navy text-white hover:bg-navy/90 font-bold px-6 w-full sm:w-auto">
-              Simpan Data
-            </Button>
-          </div>
+          {/* Judul & nama proyek sudah tampil di KontraktorHeader di atas. */}
+          <button onClick={() => clearProject()}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-muted-foreground text-xs font-bold hover:text-navy hover:bg-muted transition-colors mb-5">
+            <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
+          </button>
           {/* KPI bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <KpiCard title="Total Anggaran (RAB)" value="Rp 0" icon={<Calculator className="h-5 w-5 text-blue-600" />} />
@@ -610,36 +622,11 @@ export default function CostDashboard() {
       {projectInfo && activePlan && (
         <div className="flex relative">
           {/* Sidebar */}
-          <WorkspaceSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          <WorkspaceSidebar activeTab={activeTab} onTabChange={setActiveTab}
+            mobileOpen={drawerOpen} onMobileOpenChange={setDrawerOpen} />
 
           {/* Main Content */}
           <main className="flex-1 min-w-0 px-3 md:px-8 py-4 md:py-6 pb-24 md:pb-6">
-            {/* Header ringkas: kembali ke Home Kontraktor AI + nama menu aktif.
-                Ringkasan proyek (KPI) hanya ditampilkan di tab Dashboard Proyek
-                agar membuka menu langsung memperlihatkan fungsinya. */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
-              <div className="pl-10 md:pl-0 min-w-0">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <button onClick={() => navigate('/kontraktor')}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-navy/8 text-navy text-xs font-bold hover:bg-navy/15 transition-colors">
-                    <ArrowLeft className="h-3.5 w-3.5" /> Home Kontraktor AI
-                  </button>
-                  <button onClick={() => clearProject()}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-muted-foreground text-xs font-bold hover:text-navy hover:bg-muted transition-colors">
-                    <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
-                  </button>
-                </div>
-                <h1 className="font-serif text-xl md:text-2xl font-bold truncate">{JUDUL_TAB[activeTab]}</h1>
-                <p className="text-muted-foreground text-xs mt-0.5 truncate">
-                  <Building2 className="inline h-3 w-3 mr-1" />
-                  {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
-                </p>
-              </div>
-              <Button onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })} className="bg-navy text-white hover:bg-navy/90 font-bold px-5 shadow-md w-full sm:w-auto">
-                Simpan Data
-              </Button>
-            </div>
-
             {/* ── KPI Cards — hanya di Dashboard Proyek ── */}
             {activeTab === 'overview' && (
               <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mb-5">
