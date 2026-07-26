@@ -99,6 +99,13 @@ alter table public.team_members drop constraint if exists team_members_owner_id_
 -- Anggota tim tidak punya langganan sendiri; hak akses Kontraktor AI-nya
 -- menumpang langganan perusahaan. Tanpa data ini, penjaga rute di aplikasi
 -- akan menendang anggota keluar dari /kontraktor.
+--
+-- Fungsi lama mengembalikan 4 kolom, versi ini 8. Postgres menolak
+-- `create or replace` yang mengubah bentuk hasil (ERROR 42P13), jadi fungsi
+-- lamanya harus dibuang lebih dulu. Tidak ada policy yang bergantung padanya
+-- — hanya dipanggil dari aplikasi — sehingga drop ini aman.
+drop function if exists public.my_workspaces();
+
 create or replace function public.my_workspaces()
 returns table (
   owner_id uuid, nama text, perusahaan text, role text,
