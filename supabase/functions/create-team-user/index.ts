@@ -14,6 +14,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 }
 
 const ROLES = ['pemilik', 'manajemen', 'keuangan', 'pm', 'pengawas', 'logistik', 'viewer']
@@ -34,7 +36,9 @@ function jsonRes(body: unknown, status = 200) {
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  // Preflight harus dijawab lebih dulu, sebelum pemeriksaan apa pun — kalau
+  // tidak, browser melaporkan "Failed to fetch" tanpa pesan yang berguna.
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders })
 
   try {
     const url = Deno.env.get('SUPABASE_URL')!

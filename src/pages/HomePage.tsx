@@ -226,7 +226,7 @@ export default function HomePage() {
       title: 'Kontraktor AI',
       desc: 'RAB vs realisasi, akuntan, SPK digital.',
       icon: <BarChart3 className="h-6 w-6" />,
-      path: '/cost-control',
+      path: '/kontraktor',
       visible: true,
       available: isFeatureEnabled('cost_control')
     },

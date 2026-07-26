@@ -17,7 +17,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePPNRate } from '@/hooks/usePPNRate'
 import {
-  bacaKatalog, katalogTampil, FITUR_KATALOG, hargaEfektif, totalHarga,
+  bacaKatalog, katalogTampil, muatKatalog, FITUR_KATALOG, hargaEfektif, totalHarga,
   type KatalogPaket,
 } from '@/lib/planCatalog'
 import { produkTercakup } from '@/lib/produk'
@@ -68,16 +68,12 @@ export default function PricingPage() {
   const planKontraktor = getPlanFor('kontraktor')
 
   useEffect(() => {
-    async function load() {
-      try {
-        const { data } = await supabase
-          .from('app_settings').select('value').eq('key', 'plan_catalog').maybeSingle()
-        setKatalog(bacaKatalog(data?.value))
-      } catch {
-        setKatalog(bacaKatalog(null))
-      } finally { setLoading(false) }
-    }
-    load()
+    // muatKatalog() memakai REST langsung + batas waktu, dan selalu jatuh ke
+    // katalog bawaan bila gagal, sehingga halaman harga tidak pernah kosong.
+    muatKatalog()
+      .then(setKatalog)
+      .catch(() => setKatalog(bacaKatalog(null)))
+      .finally(() => setLoading(false))
   }, [])
 
   const daftar = useMemo(() => {

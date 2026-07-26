@@ -178,6 +178,50 @@ export function bacaKatalog(raw: unknown): KatalogPaket[] {
   return lengkap
 }
 
+/**
+ * Ambil katalog dari app_settings lewat REST langsung.
+ *
+ * Tidak memakai supabase-js karena klien itu bisa MENGGANTUNG saat mencoba
+ * menyegarkan token (mis. pengunjung yang masih punya sesi lama). Kalau
+ * promise-nya tidak pernah selesai, halaman harga jadi kosong sama sekali.
+ * Di sini permintaan dibatasi waktu dan SELALU jatuh ke katalog bawaan bila
+ * gagal, sehingga daftar harga tidak pernah kosong.
+ */
+export async function muatKatalog(ms = 8000): Promise<KatalogPaket[]> {
+  try {
+    const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env
+    const url = env.VITE_SUPABASE_URL || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
+    const key = env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD'
+
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), ms)
+    const head = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }
+    try {
+      // 1) RPC publik — jalan juga untuk pengunjung yang belum login, walau
+      //    RLS app_settings tertutup.
+      const rpc = await fetch(`${url}/rest/v1/rpc/public_plan_catalog`, {
+        method: 'POST', signal: ctrl.signal, headers: head, body: '{}',
+      })
+      if (rpc.ok) {
+        const nilai = await rpc.json()
+        if (Array.isArray(nilai) && nilai.length > 0) return bacaKatalog(nilai)
+      }
+
+      // 2) Fallback: baca tabel langsung (untuk database yang belum
+      //    menjalankan migration_public_plan_catalog.sql).
+      const res = await fetch(
+        `${url}/rest/v1/app_settings?select=value&key=eq.plan_catalog`,
+        { signal: ctrl.signal, headers: head },
+      )
+      if (!res.ok) return bacaKatalog(null)
+      const rows = await res.json() as Array<{ value?: unknown }>
+      return bacaKatalog(rows[0]?.value)
+    } finally { clearTimeout(timer) }
+  } catch {
+    return bacaKatalog(null)
+  }
+}
+
 /** Urutan tampil: Free Trial, FS, Kontraktor AI, Bundle, lalu sisanya. */
 const URUTAN = ['free', 'fs', 'kontraktor', 'bundle']
 export function urutkanKatalog(list: KatalogPaket[]): KatalogPaket[] {

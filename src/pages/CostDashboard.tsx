@@ -20,6 +20,9 @@ import TabAkuntan from '@/components/cost/TabAkuntan'
 import TabSPK from '@/components/cost/TabSPK'
 import TabLaporanLapangan, { DriveSettingCard } from '@/components/cost/TabLaporanLapangan'
 import ProfilPerusahaanCard from '@/components/cost/ProfilPerusahaanCard'
+import {
+  getBrandingCache, identitasLaporan, perluWatermark, TEKS_WATERMARK,
+} from '@/lib/branding'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import WorkspaceSidebar, { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -27,6 +30,20 @@ import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
+
+/** Judul yang tampil di header workspace, mengikuti menu yang sedang dibuka. */
+const JUDUL_TAB: Record<WorkspaceTab, string> = {
+  overview: 'Dashboard Proyek',
+  rab: 'RAB Proyek',
+  material: 'Material Schedule',
+  realisasi: 'Realisasi Biaya',
+  kurva_s: 'Kurva S & Progress',
+  akuntan: 'Akuntan',
+  spk: 'SPK Digital',
+  lapangan: 'Laporan Lapangan',
+  laporan: 'Laporan & Export',
+  settings: 'Pengaturan Proyek',
+}
 
 export default function CostDashboard() {
   const navigate = useNavigate()
@@ -153,22 +170,39 @@ export default function CostDashboard() {
 
   // ── Global Header Helper ─────────────────────────────────────────
   const addGlobalHeader = (ws: ExcelJS.Worksheet, reportName: string, colCount: number) => {
+    // Kop mengikuti profil perusahaan; PropFS hanya dipakai bila belum diisi.
+    const merek = identitasLaporan(getBrandingCache())
+
     ws.mergeCells(1, 1, 1, colCount)
     const titleCell = ws.getCell(1, 1)
-    titleCell.value = `PROPFS — ${reportName.toUpperCase()}`
+    titleCell.value = `${merek.nama.toUpperCase()} — ${reportName.toUpperCase()}`
     titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FF1a2744' } }
-    
-    ws.mergeCells(2, 1, 2, colCount)
-    ws.getCell(2, 1).value = `Nama Proyek  : ${projectInfo?.projectName || '-'}`
-    ws.getCell(2, 1).font = { name: 'Calibri', size: 10 }
 
-    ws.mergeCells(3, 1, 3, colCount)
-    ws.getCell(3, 1).value = `Lokasi       : ${projectInfo?.location || '-'}`
-    ws.getCell(3, 1).font = { name: 'Calibri', size: 10 }
+    if (!merek.bawaan && merek.kontak) {
+      ws.mergeCells(2, 1, 2, colCount)
+      ws.getCell(2, 1).value = merek.kontak
+      ws.getCell(2, 1).font = { name: 'Calibri', size: 9, color: { argb: 'FF5A6673' } }
+    }
+    const off = !merek.bawaan && merek.kontak ? 1 : 0
 
-    ws.mergeCells(4, 1, 4, colCount)
-    ws.getCell(4, 1).value = `Dicetak      : ${new Date().toLocaleString('id-ID')}`
-    ws.getCell(4, 1).font = { name: 'Calibri', size: 10 }
+    ws.mergeCells(2 + off, 1, 2 + off, colCount)
+    ws.getCell(2 + off, 1).value = `Nama Proyek  : ${projectInfo?.projectName || '-'}`
+    ws.getCell(2 + off, 1).font = { name: 'Calibri', size: 10 }
+
+    ws.mergeCells(3 + off, 1, 3 + off, colCount)
+    ws.getCell(3 + off, 1).value = `Lokasi       : ${projectInfo?.location || '-'}`
+    ws.getCell(3 + off, 1).font = { name: 'Calibri', size: 10 }
+
+    ws.mergeCells(4 + off, 1, 4 + off, colCount)
+    ws.getCell(4 + off, 1).value = `Dicetak      : ${new Date().toLocaleString('id-ID')}`
+    ws.getCell(4 + off, 1).font = { name: 'Calibri', size: 10 }
+
+    // Watermark hanya untuk paket gratis
+    if (perluWatermark(useAuthStore.getState().getPlanFor('kontraktor'))) {
+      ws.mergeCells(5 + off, 1, 5 + off, colCount)
+      ws.getCell(5 + off, 1).value = TEKS_WATERMARK
+      ws.getCell(5 + off, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF9AA4B0' } }
+    }
   }
 
   const formatHeaderRow = (row: ExcelJS.Row) => {
@@ -580,15 +614,23 @@ export default function CostDashboard() {
 
           {/* Main Content */}
           <main className="flex-1 min-w-0 px-3 md:px-8 py-4 md:py-6 pb-24 md:pb-6">
-            {/* Workspace Header */}
+            {/* Header ringkas: kembali ke Home Kontraktor AI + nama menu aktif.
+                Ringkasan proyek (KPI) hanya ditampilkan di tab Dashboard Proyek
+                agar membuka menu langsung memperlihatkan fungsinya. */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
-              <div className="pl-10 md:pl-0">
-                <button onClick={() => clearProject()}
-                  className="flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors mb-1">
-                  <ArrowLeft className="h-4 w-4" /> Kembali ke Dashboard
-                </button>
-                <h1 className="font-serif text-xl md:text-2xl font-bold">Workspace Proyek</h1>
-                <p className="text-muted-foreground text-xs mt-0.5">
+              <div className="pl-10 md:pl-0 min-w-0">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <button onClick={() => navigate('/kontraktor')}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-navy/8 text-navy text-xs font-bold hover:bg-navy/15 transition-colors">
+                    <ArrowLeft className="h-3.5 w-3.5" /> Home Kontraktor AI
+                  </button>
+                  <button onClick={() => clearProject()}
+                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-muted-foreground text-xs font-bold hover:text-navy hover:bg-muted transition-colors">
+                    <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
+                  </button>
+                </div>
+                <h1 className="font-serif text-xl md:text-2xl font-bold truncate">{JUDUL_TAB[activeTab]}</h1>
+                <p className="text-muted-foreground text-xs mt-0.5 truncate">
                   <Building2 className="inline h-3 w-3 mr-1" />
                   {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
                 </p>
@@ -598,50 +640,52 @@ export default function CostDashboard() {
               </Button>
             </div>
 
-            {/* ── KPI Cards (real-time) ── */}
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mb-5">
-              <KpiCard
-                title="Total Anggaran (RAB)"
-                value={`Rp ${totalRAB.toLocaleString('id-ID')}`}
-                icon={<Calculator className="h-5 w-5 text-blue-600" />}
-              />
-              <KpiCard
-                title="Realisasi Biaya"
-                value={`Rp ${totalRealisasi.toLocaleString('id-ID')}`}
-                icon={<ReceiptIcon className="h-5 w-5 text-orange-600" />}
-                sub={totalRAB > 0 ? `${((totalRealisasi / totalRAB) * 100).toFixed(1)}% dari RAB` : undefined}
-              />
-              {/* Enhanced Deviasi Card */}
-              <div className={`border rounded-2xl p-5 shadow-sm ${
-                deviasiPct > 0 ? 'bg-red-50 border-red-200' :
-                deviasiPct < 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-card border-border'
-              }`}>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
-                    {deviasiPct > 0 ? <ArrowUpRight className="h-5 w-5 text-red-500" /> :
-                     deviasiPct < 0 ? <ArrowDownRight className="h-5 w-5 text-emerald-600" /> :
-                     <Minus className="h-5 w-5 text-muted-foreground" />}
+            {/* ── KPI Cards — hanya di Dashboard Proyek ── */}
+            {activeTab === 'overview' && (
+              <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 mb-5">
+                <KpiCard
+                  title="Total Anggaran (RAB)"
+                  value={`Rp ${totalRAB.toLocaleString('id-ID')}`}
+                  icon={<Calculator className="h-5 w-5 text-blue-600" />}
+                />
+                <KpiCard
+                  title="Realisasi Biaya"
+                  value={`Rp ${totalRealisasi.toLocaleString('id-ID')}`}
+                  icon={<ReceiptIcon className="h-5 w-5 text-orange-600" />}
+                  sub={totalRAB > 0 ? `${((totalRealisasi / totalRAB) * 100).toFixed(1)}% dari RAB` : undefined}
+                />
+                {/* Enhanced Deviasi Card */}
+                <div className={`border rounded-2xl p-5 shadow-sm ${
+                  deviasiPct > 0 ? 'bg-red-50 border-red-200' :
+                  deviasiPct < 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-card border-border'
+                }`}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center">
+                      {deviasiPct > 0 ? <ArrowUpRight className="h-5 w-5 text-red-500" /> :
+                       deviasiPct < 0 ? <ArrowDownRight className="h-5 w-5 text-emerald-600" /> :
+                       <Minus className="h-5 w-5 text-muted-foreground" />}
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground">Deviasi Progress</span>
                   </div>
-                  <span className="text-sm font-medium text-muted-foreground">Deviasi Progress</span>
-                </div>
-                <div className={`text-2xl font-bold mb-2 ${
-                  deviasiPct > 0 ? 'text-red-700' : deviasiPct < 0 ? 'text-emerald-700' : ''
-                }`}>{deviasiPct >= 0 ? '+' : ''}{deviasiPct}%</div>
-                {/* Progress bar */}
-                <div className="w-full bg-muted rounded-full h-1.5 mb-2">
-                  <div className={`h-1.5 rounded-full transition-all ${
-                    deviasiPct > 0 ? 'bg-red-500' : 'bg-emerald-500'
-                  }`} style={{ width: `${Math.min(Math.abs(deviasiPct) * 5, 100)}%` }} />
-                </div>
-                <div className="space-y-0.5 text-xs text-muted-foreground">
-                  <p>📊 Biaya terpakai: {totalRAB > 0 ? ((totalRealisasi/totalRAB)*100).toFixed(1) : 0}% RAB</p>
-                  <p>🏗️ Fisik selesai: {actualProgressPct.toFixed(1)}% RAB</p>
-                  <p className={deviasiPct > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
-                    ⚡ {deviasiPct > 0 ? 'Perlu perhatian' : deviasiPct < 0 ? 'Efisien' : 'On Track'}
-                  </p>
+                  <div className={`text-2xl font-bold mb-2 ${
+                    deviasiPct > 0 ? 'text-red-700' : deviasiPct < 0 ? 'text-emerald-700' : ''
+                  }`}>{deviasiPct >= 0 ? '+' : ''}{deviasiPct}%</div>
+                  {/* Progress bar */}
+                  <div className="w-full bg-muted rounded-full h-1.5 mb-2">
+                    <div className={`h-1.5 rounded-full transition-all ${
+                      deviasiPct > 0 ? 'bg-red-500' : 'bg-emerald-500'
+                    }`} style={{ width: `${Math.min(Math.abs(deviasiPct) * 5, 100)}%` }} />
+                  </div>
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
+                    <p>📊 Biaya terpakai: {totalRAB > 0 ? ((totalRealisasi/totalRAB)*100).toFixed(1) : 0}% RAB</p>
+                    <p>🏗️ Fisik selesai: {actualProgressPct.toFixed(1)}% RAB</p>
+                    <p className={deviasiPct > 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                      ⚡ {deviasiPct > 0 ? 'Perlu perhatian' : deviasiPct < 0 ? 'Efisien' : 'On Track'}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* ── Tab Content ── */}
             <div className="bg-white border border-border rounded-2xl md:rounded-3xl shadow-sm overflow-hidden">
@@ -649,8 +693,7 @@ export default function CostDashboard() {
                 {/* Overview Tab */}
                 {activeTab === 'overview' && (
                   <div className="space-y-5">
-                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Dashboard Proyek</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div className="bg-muted/30 rounded-2xl p-5 space-y-2">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Info Proyek</p>
                         <table className="w-full text-sm">
@@ -731,7 +774,7 @@ export default function CostDashboard() {
                   <div className="space-y-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <div>
-                        <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Data RAB Proyek</h2>
+                        <h2 className="text-base font-bold text-navy">Data RAB Proyek</h2>
                         <p className="text-muted-foreground text-sm mt-1">
                           {activePlan.components.length} item pekerjaan · Klik ✏️ untuk edit.
                         </p>
@@ -759,8 +802,7 @@ export default function CostDashboard() {
                 {/* Laporan & Export */}
                 {activeTab === 'laporan' && (
                   <div className="space-y-5">
-                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Laporan & Export</h2>
-                    <div className="grid grid-cols-1 gap-3">
+                                        <div className="grid grid-cols-1 gap-3">
                       {[
                         { label: 'Export RAB ke Excel', desc: `RAB_${projName}_${dateStr()}.xlsx · Grouping per kategori + Summary`, icon: <FileSpreadsheet className="w-6 h-6" />, action: exportRAB, color: 'bg-blue-50 border-blue-200 hover:bg-blue-100' },
                         { label: 'Export Realisasi Biaya', desc: `Realisasi_${projName}_${dateStr()}.xlsx · Material + Upah + Deviasi`, icon: <ReceiptIcon className="w-6 h-6" />, action: exportRealisasi, color: 'bg-orange-50 border-orange-200 hover:bg-orange-100' },
@@ -824,8 +866,7 @@ export default function CostDashboard() {
                 {/* Pengaturan */}
                 {activeTab === 'settings' && (
                   <div className="space-y-5">
-                    <h2 className="text-xl md:text-2xl font-serif font-bold text-navy">Pengaturan Proyek</h2>
-                    <div className="max-w-2xl"><ProfilPerusahaanCard /></div>
+                                        <div className="max-w-2xl"><ProfilPerusahaanCard /></div>
                     <div className="max-w-md"><DriveSettingCard /></div>
                     <div className="bg-muted/30 rounded-2xl p-5 space-y-2 max-w-md">
                       <p className="text-sm font-semibold mb-3">Info Proyek</p>

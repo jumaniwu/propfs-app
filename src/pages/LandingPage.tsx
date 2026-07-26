@@ -24,7 +24,9 @@ import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
-import { bacaKatalog, katalogTampil, FITUR_KATALOG, hargaEfektif, type KatalogPaket } from '@/lib/planCatalog'
+import {
+  bacaKatalog, katalogTampil, muatKatalog, FITUR_KATALOG, hargaEfektif, type KatalogPaket,
+} from '@/lib/planCatalog'
 import { produkTercakup } from '@/lib/produk'
 
 const ICON_MAP: Record<string, any> = {
@@ -98,20 +100,12 @@ export default function LandingPage() {
   // Load promo prices from DB
   const [catalogPlans, setCatalogPlans] = useState<KatalogPaket[]>([])
   useEffect(() => {
-    async function loadCatalog() {
-      try {
-        const { data } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'plan_catalog')
-          .maybeSingle()
-        // bacaKatalog() memahami katalog lama maupun 3 katalog produk yang baru
-        setCatalogPlans(katalogTampil(bacaKatalog(data?.value)))
-      } catch {
-        setCatalogPlans(katalogTampil(bacaKatalog(null)))
-      }
-    }
-    loadCatalog()
+    // Tampilkan katalog bawaan lebih dulu supaya bagian harga tidak pernah
+    // kosong, lalu timpa dengan katalog dari backend begitu datang.
+    setCatalogPlans(katalogTampil(bacaKatalog(null)))
+    muatKatalog()
+      .then(k => setCatalogPlans(katalogTampil(k)))
+      .catch(() => { /* katalog bawaan tetap dipakai */ })
   }, [])
 
   useEffect(() => {
