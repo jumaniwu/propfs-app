@@ -519,11 +519,19 @@ export default function CostDashboard() {
           </>}
           kembaliKe="/kontraktor"
           aksi={
-            <Button
-              onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })}
-              className="bg-gold text-navy hover:bg-gold/90 font-bold px-5 w-full sm:w-auto">
-              Simpan Data
-            </Button>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Pintasan kembali ke daftar proyek — dulu ada di bawah header,
+                  dipindah ke sini saat header disatukan agar tidak hilang. */}
+              <button onClick={() => clearProject()}
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/10 text-white/90 text-xs font-bold hover:bg-white/20 transition-colors shrink-0">
+                <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
+              </button>
+              <Button
+                onClick={() => toast({ title: 'Data Berhasil Disimpan', description: 'Perubahan pada proyek telah disimpan.', variant: 'success' as any })}
+                className="bg-gold text-navy hover:bg-gold/90 font-bold px-5 flex-1 sm:flex-none">
+                Simpan Data
+              </Button>
+            </div>
           }
         />
       ) : (
