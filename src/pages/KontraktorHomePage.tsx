@@ -7,9 +7,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Search, Bell, Users, Eye, EyeOff, Plus, ChevronRight, ArrowRight,
+  Search, Eye, EyeOff, Plus, ChevronRight, ArrowRight,
   Building2, MapPin, X, ReceiptIcon, Info,
 } from 'lucide-react'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import HomePanelLapangan from '@/components/cost/HomePanelLapangan'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore, type SavedCostProject } from '@/store/costStore'
 import {
@@ -124,6 +126,23 @@ export default function KontraktorHomePage() {
     navigate(targetUrl(item))
   }
 
+  // ── Bahan untuk panel dashboard (progres & stok) ──────────────────────────
+  const proyekProgres = useMemo(
+    () => urut.map(p => ({
+      id: p.info.id,
+      nama: p.info.projectName,
+      progressPct: ringkasProyek(p).progress,
+      startDate: p.info.startDate,
+      durasiBulan: p.info.targetDurationMonths,
+    })),
+    [urut],
+  )
+  // sisa stok dihitung terhadap gabungan Material Schedule seluruh proyek
+  const rencanaMaterial = useMemo(
+    () => urut.flatMap(p => p.materialSchedule ?? []),
+    [urut],
+  )
+
   // ── Aktivitas terbaru: diturunkan dari data lokal (tanpa loading) ──────────
   const aktivitas = useMemo(() => {
     const items: { id: string; ikon: 'biaya' | 'proyek'; teks: string; sub: string; waktu: string }[] = []
@@ -153,62 +172,39 @@ export default function KontraktorHomePage() {
 
   return (
     <div className="min-h-screen bg-slate-100/70">
-      {/* ══ HEADER ══════════════════════════════════════════════════════ */}
-      <div className="bg-gradient-to-b from-navy to-navy/95 text-white pb-20">
-        <div className="max-w-5xl mx-auto px-4 pt-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-serif font-bold text-lg leading-tight">Kontraktor AI</p>
-              {workspaces.length > 0 ? (
-                // pengguna ini anggota tim di perusahaan lain → bisa berpindah workspace
-                <select
-                  value={wsOwner ?? ''} onChange={e => gantiWorkspace(e.target.value || null)}
-                  aria-label="Pilih workspace"
-                  className="mt-0.5 bg-white/10 text-white/90 text-[11px] rounded-lg px-2 py-1 max-w-[210px] border border-white/20">
-                  <option value="" className="text-navy">Workspace Saya</option>
-                  {workspaces.map(w => (
-                    <option key={w.owner_id} value={w.owner_id} className="text-navy">
-                      {w.perusahaan || w.nama || 'Perusahaan'} ({ROLES.find(r => r.key === w.role)?.label ?? w.role})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-white/60 text-[11px] truncate">
-                  {profile?.company || 'Workspace Saya'}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => navigate('/kontraktor/tim')}
-                className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center" title="Tim">
-                <Users className="w-[18px] h-[18px]" />
-              </button>
-              <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center relative" title="Notifikasi">
-                <Bell className="w-[18px] h-[18px]" />
-                {banner.length > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-gold" />}
-              </button>
-              <button onClick={() => navigate('/profile')}
-                className="w-9 h-9 rounded-full bg-gold text-navy font-black text-sm flex items-center justify-center shrink-0">
-                {(profile?.full_name || 'P').charAt(0).toUpperCase()}
-              </button>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="mt-4 relative">
-            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={q} onChange={e => setQ(e.target.value)}
-              placeholder="Cari menu, proyek, laporan…"
-              className="w-full h-11 pl-11 pr-4 rounded-full bg-white text-navy text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-gold"
-            />
-          </div>
-
-          <p className="mt-4 text-sm text-white/80">
-            {salam()}, <span className="font-bold text-white">{(profile?.full_name || 'Rekan').split(' ')[0]}</span>!
-          </p>
+      {/* ══ HEADER — komponen yang sama dipakai seluruh halaman Kontraktor AI ══ */}
+      <KontraktorHeader
+        pbExtra
+        adaNotifikasi={banner.length > 0}
+        identitas={workspaces.length > 0 ? (
+          // pengguna ini anggota tim di perusahaan lain → bisa berpindah workspace
+          <select
+            value={wsOwner ?? ''} onChange={e => gantiWorkspace(e.target.value || null)}
+            aria-label="Pilih workspace"
+            className="mt-0.5 bg-white/10 text-white/90 text-[11px] rounded-lg px-2 py-1 max-w-[210px] border border-white/20">
+            <option value="" className="text-navy">Workspace Saya</option>
+            {workspaces.map(w => (
+              <option key={w.owner_id} value={w.owner_id} className="text-navy">
+                {w.perusahaan || w.nama || 'Perusahaan'} ({ROLES.find(r => r.key === w.role)?.label ?? w.role})
+              </option>
+            ))}
+          </select>
+        ) : undefined}
+      >
+        {/* Search */}
+        <div className="mt-4 relative">
+          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={q} onChange={e => setQ(e.target.value)}
+            placeholder="Cari menu, proyek, laporan…"
+            className="w-full h-11 pl-11 pr-4 rounded-full bg-white text-navy text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-gold"
+          />
         </div>
-      </div>
+
+        <p className="mt-4 text-sm text-white/80">
+          {salam()}, <span className="font-bold text-white">{(profile?.full_name || 'Rekan').split(' ')[0]}</span>!
+        </p>
+      </KontraktorHeader>
 
       {/* ══ KONTEN (naik menimpa header) ═════════════════════════════════ */}
       <div className="max-w-5xl mx-auto px-4 -mt-14 pb-10 space-y-5">
@@ -342,6 +338,16 @@ export default function KontraktorHomePage() {
             </div>
           )}
         </div>
+
+        {/* ── Panel lapangan: approval material, progres, stok menipis ── */}
+        <HomePanelLapangan
+          role={role}
+          proyek={proyekProgres}
+          rencanaMaterial={rencanaMaterial}
+          approverNama={profile?.full_name || 'Manajemen'}
+          onBukaProyek={id => { loadProject(id); navigate('/cost-control?tab=overview') }}
+          onBukaMaterial={sub => navigate(`/kontraktor/material?sub=${sub}`)}
+        />
 
         {/* ── Aktivitas terbaru ───────────────────────────────────────── */}
         <div className="rounded-2xl bg-white border border-border p-4">

@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import { ArrowLeft, Download, BarChart3, TrendingUp, TrendingDown, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { useCostStore } from '@/store/costStore'
 import { useAkuntanStore } from '@/store/akuntanStore'
 import { useToast } from '@/hooks/use-toast'
@@ -89,28 +90,17 @@ export default function KonsolidasiPage() {
   return (
     <div className="min-h-screen bg-slate-100/70 pb-10">
       {/* Header */}
-      <div className="bg-navy text-white">
-        <div className="max-w-6xl mx-auto px-4 py-5">
-          <button onClick={() => navigate('/kontraktor')}
-            className="flex items-center gap-1.5 text-xs font-bold text-white/70 hover:text-white mb-2">
-            <ArrowLeft className="w-4 h-4" /> Home Kontraktor AI
-          </button>
-          <div className="flex items-end justify-between gap-3 flex-wrap">
-            <div>
-              <h1 className="font-serif text-xl md:text-2xl font-bold flex items-center gap-2">
-                <BarChart3 className="w-6 h-6" /> Laporan Konsolidasi
-              </h1>
-              <p className="text-white/60 text-xs mt-1">
-                Gabungan {baris.length} lingkup · seluruh proyek dalam satu laporan
-              </p>
-            </div>
-            <Button onClick={exportExcel} variant="outline"
-              className="gap-2 font-bold bg-white text-navy hover:bg-white/90 border-0">
-              <Download className="w-4 h-4" /> Export Excel
-            </Button>
-          </div>
-        </div>
-      </div>
+      <KontraktorHeader
+        judul="Laporan Konsolidasi"
+        subjudul={`Gabungan ${baris.length} lingkup · seluruh proyek dalam satu laporan`}
+        kembaliKe="/kontraktor"
+        aksi={
+          <Button onClick={exportExcel} variant="outline"
+            className="gap-2 font-bold bg-white text-navy hover:bg-white/90 border-0 w-full sm:w-auto">
+            <Download className="w-4 h-4" /> Export Excel
+          </Button>
+        }
+      />
 
       <div className="max-w-6xl mx-auto px-4 py-5 space-y-5">
         {baris.length === 0 ? (
