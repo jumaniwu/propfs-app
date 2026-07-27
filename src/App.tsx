@@ -8,6 +8,7 @@ import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute, FeatureRoute } from './
 import { supabase } from './lib/supabase'
 import { Button } from './components/ui/button'
 import BottomNav from './components/layout/BottomNav'
+import { jalurTautan, type JenisTautan } from './lib/tautanPendek'
 
 // Code-split routes
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -62,6 +63,16 @@ function LoadingScreen() {
       </div>
     </div>
   )
+}
+
+/**
+ * Daftarkan sebuah halaman publik pada seluruh jalurnya sekaligus — yang
+ * pendek untuk tautan baru, yang panjang agar tautan lama tetap terbuka.
+ */
+function ruteToken(jenis: JenisTautan, halaman: JSX.Element) {
+  return jalurTautan(jenis).map(jalur => (
+    <Route key={jalur} path={`${jalur}/:token`} element={<OpenRoute>{halaman}</OpenRoute>} />
+  ))
 }
 
 export default function App() {
@@ -119,15 +130,18 @@ export default function App() {
           <Route path="/tim/masuk" element={<AuthRoute><TimLoginPage /></AuthRoute>} />
           <Route path="/legal/:type" element={<OpenRoute><LegalPage /></OpenRoute>} />
           <Route path="/reset-password" element={<OpenRoute><ResetPasswordPage /></OpenRoute>} />
-          {/* Halaman publik Kontraktor AI: vendor/tukang tanpa login */}
-          <Route path="/spk/sign/:token" element={<OpenRoute><SpkSignPage /></OpenRoute>} />
-          <Route path="/opname/isi/:token" element={<OpenRoute><OpnameFillPage /></OpenRoute>} />
-          <Route path="/lapor/:token" element={<OpenRoute><LaporHarianPage /></OpenRoute>} />
-          <Route path="/progress/:token" element={<OpenRoute><ProgressKalenderPage /></OpenRoute>} />
+          {/* Halaman publik Kontraktor AI: vendor/tukang tanpa login.
+              Tiap halaman punya DUA jalur — yang pendek dipakai tautan baru,
+              yang panjang tetap dilayani agar tautan yang sudah tersebar di
+              WhatsApp tidak mati. Pemetaannya ada di lib/tautanPendek.ts. */}
+          {ruteToken('spk_sign', <SpkSignPage />)}
+          {ruteToken('opname', <OpnameFillPage />)}
+          {ruteToken('lapor', <LaporHarianPage />)}
+          {ruteToken('progress', <ProgressKalenderPage />)}
           {/* Procurement: vendor mendaftar & membuka PO tanpa login */}
-          <Route path="/vendor/daftar/:token" element={<OpenRoute><VendorDaftarPage /></OpenRoute>} />
-          <Route path="/vendor/item/:token" element={<OpenRoute><VendorItemPage /></OpenRoute>} />
-          <Route path="/po/:token" element={<OpenRoute><PoViewPage /></OpenRoute>} />
+          {ruteToken('vendor_daftar', <VendorDaftarPage />)}
+          {ruteToken('vendor_item', <VendorItemPage />)}
+          {ruteToken('po', <PoViewPage />)}
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />

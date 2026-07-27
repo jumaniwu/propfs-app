@@ -10,6 +10,7 @@ import type {
 } from './procurement'
 import { milikWorkspace } from './procurement'
 import { dataOwnerId } from './teamApi'
+import { tautanPublik } from './tautanPendek'
 
 export interface BuatPoInput {
   nomor: string
@@ -69,6 +70,12 @@ export interface ProcurementApi {
 
   /** Tautan registrasi vendor milik perusahaan ini. */
   vendorToken(): Promise<string>
+  /**
+   * Terbitkan token registrasi baru. Dipakai untuk memperpendek tautan lama
+   * dan untuk mematikan tautan yang terlanjur bocor — tautan sebelumnya
+   * langsung tidak berlaku.
+   */
+  vendorTokenPutarUlang(): Promise<string>
 
   // ── Publik (tanpa login) ──
   perusahaanByVendorToken(token: string): Promise<string>
@@ -229,6 +236,10 @@ const realApi: ProcurementApi = {
     return (await rpc<string | null>('vendor_token_saya', {})) ?? ''
   },
 
+  async vendorTokenPutarUlang() {
+    return (await rpc<string | null>('vendor_token_putar_ulang', {})) ?? ''
+  },
+
   // ── Publik ──
   async perusahaanByVendorToken(token) {
     const rows = await rpc<Array<{ nama_perusahaan?: string }>>(
@@ -264,13 +275,13 @@ export function procurementApi(): ProcurementApi {
 
 /** Tautan registrasi vendor yang dibagikan lewat WA/email. */
 export function vendorDaftarLink(token: string): string {
-  return `${window.location.origin}/vendor/daftar/${token}`
+  return tautanPublik('vendor_daftar', token, window.location.origin)
 }
 /** Tautan pribadi vendor untuk memperbarui daftar barangnya. */
 export function vendorItemLink(token: string): string {
-  return `${window.location.origin}/vendor/item/${token}`
+  return tautanPublik('vendor_item', token, window.location.origin)
 }
 /** Tautan PO yang dikirim ke vendor — WhatsApp tidak bisa melampirkan file. */
 export function poViewLink(token: string): string {
-  return `${window.location.origin}/po/${token}`
+  return tautanPublik('po', token, window.location.origin)
 }
