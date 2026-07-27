@@ -2,6 +2,7 @@
 // dan watermark hanya muncul pada paket gratis.
 import {
   identitasLaporan, footerLaporan, perluWatermark, TEKS_WATERMARK, PROFIL_KOSONG,
+  TANPA_WATERMARK,
 } from '../src/lib/branding.ts'
 
 let ok = 0
@@ -142,5 +143,20 @@ const kopBawaan = identitasLaporan(PROFIL_KOSONG, null)
 assert(kopBawaan.nama === 'PropFS' && kopBawaan.bawaan === true, 'tanpa keduanya jatuh ke kop PropFS')
 assert(identitasLaporan(PROFIL_KOSONG).sumber === 'bawaan', 'tanpa argumen cadangan tetap seperti semula')
 assert(identitasLaporan(null).nama === 'PropFS', 'profil null aman')
+
+// ── Salinan untuk pihak luar tidak pernah diberi watermark ────────────────
+// PDF yang diunduh vendor dari tautan PO adalah surat pesanan resmi di atas
+// kop perusahaan pembeli. Watermark "Versi Gratis" di situ berarti memasang
+// penanda produk di hadapan pemasok pengguna sendiri.
+assert(!perluWatermark(TANPA_WATERMARK), 'TANPA_WATERMARK menghasilkan dokumen bersih')
+assert(TANPA_WATERMARK.untukPihakLuar === true, 'penandanya eksplisit, bukan efek samping')
+assert(!perluWatermark({ untukPihakLuar: true, planId: 'free', role: 'user', sistemLanggananAktif: true }),
+  'pelanggan paket gratis pun: salinan vendornya tetap bersih')
+
+// Objek kosong TIDAK boleh diperlakukan sebagai "pihak luar" — tanpa
+// keterangan apa pun, aturan paketnya yang berlaku.
+assert(perluWatermark({}), 'konteks kosong tetap mengikuti aturan paket gratis')
+assert(perluWatermark({ untukPihakLuar: false, planId: 'free' }), 'false berarti bukan pihak luar')
+assert(perluWatermark({ untukPihakLuar: undefined, planId: 'free' }), 'undefined bukan pihak luar')
 
 console.log(`✅ branding: ${ok} assertion lolos`)

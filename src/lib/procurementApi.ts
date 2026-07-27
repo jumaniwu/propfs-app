@@ -43,6 +43,13 @@ export interface ProfilVendorPublik {
   catatan: string
 }
 
+/** PO + kop perusahaan pembeli, sebagaimana dikembalikan po_get_by_token. */
+export type PoPublik = PurchaseOrder & {
+  kop_nama?: string
+  kop_logo?: string
+  kop_kontak?: string
+}
+
 export type ItemVendorPublik = Pick<VendorItem, 'nama' | 'satuan' | 'harga' | 'merek' | 'min_order' | 'catatan'>
 
 export interface ProcurementApi {
@@ -88,7 +95,12 @@ export interface ProcurementApi {
   daftarVendor(token: string, profil: ProfilVendorPublik, items: ItemVendorPublik[]): Promise<string | null>
   vendorBySelfToken(token: string): Promise<(ProfilVendorPublik & { status: StatusVendor; items: ItemVendorPublik[] }) | null>
   simpanItemVendor(token: string, items: ItemVendorPublik[]): Promise<boolean>
-  poByToken(token: string): Promise<PurchaseOrder | null>
+  /**
+   * PO untuk halaman publik vendor, beserta kop perusahaan pembelinya.
+   * Kop ikut dari server karena vendor membuka halaman ini tanpa login —
+   * cache lokal dan sesi milik perangkat pemakai aplikasi, bukan vendor.
+   */
+  poByToken(token: string): Promise<PoPublik | null>
 }
 
 // ── REST langsung ───────────────────────────────────────────────────────────
@@ -271,7 +283,7 @@ const realApi: ProcurementApi = {
   ),
 
   async poByToken(token) {
-    const rows = await rpc<PurchaseOrder[]>('po_get_by_token', { p_token: token }, true)
+    const rows = await rpc<PoPublik[]>('po_get_by_token', { p_token: token }, true)
     return rows?.[0] ?? null
   },
 }

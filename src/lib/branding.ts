@@ -51,6 +51,13 @@ const PAKET_GRATIS = new Set(['', 'free', 'trial', 'free_trial'])
  * pernah berbeda jawaban.
  */
 export interface KonteksWatermark {
+  /**
+   * Dokumen ini dikirim ke pihak luar (vendor), jadi tidak pernah diberi
+   * watermark apa pun paketnya. Watermark adalah penanda produk untuk pemakai
+   * aplikasi — mencetaknya pada surat pesanan berarti memasang iklan di atas
+   * kop surat perusahaan pengguna, di hadapan pemasoknya sendiri.
+   */
+  untukPihakLuar?: boolean
   planId?: string | null
   /** profile.role — 'superadmin' selalu bersih. */
   role?: string | null
@@ -64,6 +71,9 @@ export interface KonteksWatermark {
 
 const FITUR_BAWAAN = 'cost_control'
 
+/** Konteks siap pakai untuk dokumen yang dikirim ke vendor/pihak luar. */
+export const TANPA_WATERMARK: KonteksWatermark = { untukPihakLuar: true }
+
 /**
  * Apakah laporan perlu diberi watermark.
  *
@@ -74,6 +84,9 @@ export function perluWatermark(
   arg: string | null | undefined | KonteksWatermark,
 ): boolean {
   const k: KonteksWatermark = typeof arg === 'object' && arg !== null ? arg : { planId: arg }
+
+  // 0. Salinan untuk pihak luar selalu bersih.
+  if (k.untukPihakLuar === true) return false
 
   // 1. Superadmin — dokumennya milik pengelola sistem, bukan pelanggan.
   if ((k.role ?? '').trim().toLowerCase() === 'superadmin') return false
