@@ -35,6 +35,13 @@ export interface RealisasiEntry {
   status: string             // ✅ Dicatat / 🔄 Kasbon / ⏳ Belum Lunas
   metodePembayaran?: string  // Cash / Transfer / Bon
   linkedComponentId?: string // ID item RAB yang terkait
+  /**
+   * Diisi bila nota ini sudah dicatat sekaligus sebagai penerimaan barang.
+   * Entri seperti itu tetap menjadi BIAYA, tetapi tidak lagi menambah stok:
+   * yang menambah stok adalah surat jalannya, dan menghitung keduanya berarti
+   * satu kiriman masuk gudang dua kali.
+   */
+  doId?: string
 }
 
 export interface ChatMessage {
@@ -80,6 +87,7 @@ function parseEntry(item: any): RealisasiEntry {
     status: item.status || '✅ Dicatat',
     metodePembayaran: item.metodePembayaran || 'Cash',
     linkedComponentId: item.linkedComponentId || undefined,
+    doId: item.doId || undefined,
   }
 }
 
@@ -338,6 +346,11 @@ export async function chatRealisasiWithGemini(
   rabComponents: BudgetComponent[],
   currentEntries: RealisasiEntry[]
 ): Promise<{ textResponse: string; parsedResult: RealisasiParsedResult }> {
+  // Titik sisip untuk uji E2E: alur penyambung nota → PO diuji tanpa memanggil
+  // Gemini sungguhan, supaya hasilnya pasti dan tidak menghabiskan kuota.
+  const tiruan = (globalThis as { __aiRealisasiMock?: typeof chatRealisasiWithGemini }).__aiRealisasiMock
+  if (tiruan) return await tiruan(newMessage, history, rabComponents, currentEntries)
+
   const rabList = rabComponents.map(c => `${c.id}|${c.name}|${c.categoryId}|Rp${c.totalPlannedCost}`).join('\n')
   
   const currentEntriesList = currentEntries.length === 0 
