@@ -13,6 +13,8 @@ import { Download, Loader2, FileText, CheckCircle2 } from 'lucide-react'
 import { procurementApi } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
 import { teksTerm, type PurchaseOrder } from '@/lib/procurement'
+import type { PoPublik } from '@/lib/procurementApi'
+import { TANPA_WATERMARK, type IdentitasLaporan } from '@/lib/branding'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tglPanjang = (s?: string | null) => {
@@ -22,9 +24,26 @@ const tglPanjang = (s?: string | null) => {
     : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+/**
+ * Kop yang dicetak pada PDF salinan vendor. Nama & logo perusahaan pembeli
+ * datang bersama PO-nya dari server; bila perusahaan belum mengisi profil,
+ * dipakai kop bawaan seperti di dalam aplikasi.
+ */
+function kopVendor(po: PoPublik): IdentitasLaporan {
+  const nama = (po.kop_nama ?? '').trim()
+  if (!nama) return { nama: 'PropFS', logo: '', kontak: 'propfs.id', bawaan: true, sumber: 'bawaan' }
+  return {
+    nama,
+    logo: (po.kop_logo ?? '').trim(),
+    kontak: (po.kop_kontak ?? '').trim(),
+    bawaan: false,
+    sumber: 'perusahaan',
+  }
+}
+
 export default function PoViewPage() {
   const { token = '' } = useParams()
-  const [po, setPo] = useState<PurchaseOrder | null>(null)
+  const [po, setPo] = useState<PoPublik | null>(null)
   const [memuat, setMemuat] = useState(true)
   const [error, setError] = useState('')
 
@@ -72,7 +91,11 @@ export default function PoViewPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 -mt-6 space-y-4">
-        <button onClick={() => downloadPoPdf(po)}
+        {/* Salinan vendor dicetak BERSIH: watermark "Versi Gratis" adalah
+            penanda produk untuk pemakai aplikasi, bukan untuk vendor yang
+            sekadar menerima surat pesanan. Kop diambil dari server karena
+            vendor membuka halaman ini tanpa login. */}
+        <button onClick={() => downloadPoPdf(po, TANPA_WATERMARK, kopVendor(po))}
           className="w-full h-12 rounded-xl bg-gold text-navy font-black text-sm inline-flex items-center justify-center gap-2 hover:bg-gold/90">
           <Download className="w-4 h-4" /> UNDUH PDF
         </button>

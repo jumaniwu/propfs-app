@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf'
 import { teksTerm, type PurchaseOrder } from './procurement'
 import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark } from './branding'
 import { kopSaya } from './identitasSaya'
+import type { IdentitasLaporan } from './branding'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tgl = (s?: string | null) => {
@@ -16,16 +17,20 @@ const tgl = (s?: string | null) => {
 }
 
 /**
- * `konteks` menentukan watermark. Superadmin dan pengguna berbayar dicetak
- * bersih — lihat perluWatermark() di branding.ts.
+ * @param konteks menentukan watermark. Superadmin dan pengguna berbayar
+ *   dicetak bersih — lihat perluWatermark() di branding.ts.
+ * @param kop identitas yang dicetak di kepala surat. Diisi eksplisit oleh
+ *   halaman PO publik: vendor membukanya tanpa login, jadi cache lokal dan
+ *   sesi — keduanya milik perangkat pemakai aplikasi — tidak bisa dipakai.
  */
 export function downloadPoPdf(
   po: PurchaseOrder,
   konteks?: string | null | KonteksWatermark,
+  kop?: IdentitasLaporan,
 ): void {
   // Kop: Profil Perusahaan → nama pemilik akun → identitas PropFS. Vendor
   // harus tahu siapa yang memesan, termasuk saat pemesannya perorangan.
-  const merek = kopSaya()
+  const merek = kop ?? kopSaya()
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const M = 16
@@ -34,45 +39,54 @@ export function downloadPoPdf(
 
   const ensure = (need: number) => { if (y + need > 280) { doc.addPage(); y = 20 } }
 
-  // ── Kop: identitas perusahaan pemakai; PropFS hanya bila profil kosong ──
-  const tinggiKop = merek.bawaan ? 33 : 38
-  doc.setFillColor(13, 27, 42)
-  doc.rect(0, 0, W, tinggiKop, 'F')
-  doc.setTextColor(255, 255, 255)
+  // ── Kop surat: latar PUTIH polos ──
+  // Sebelumnya pita navy selebar halaman. Surat resmi ke vendor dicetak di
+  // atas kop perusahaan pembeli, bukan di atas warna aplikasi — dan blok
+  // gelap selebar itu juga memboroskan tinta saat dicetak.
+  const tinggiKop = merek.bawaan ? 30 : 34
+  doc.setTextColor(13, 27, 42)
 
   if (merek.bawaan) {
-    // Kop bawaan tetap memuat identitas, bukan langsung judul dokumen —
-    // vendor perlu tahu surat ini datang dari mana.
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
-    doc.text(merek.nama, W / 2, 10.5, { align: 'center' })
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
-    doc.text(merek.kontak, W / 2, 15, { align: 'center' })
+    // Tanpa profil perusahaan: identitas tetap dicantumkan, karena vendor
+    // perlu tahu surat ini datang dari mana.
     doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
-    doc.text('PURCHASE ORDER', W / 2, 22.5, { align: 'center' })
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-    doc.text(`Nomor: ${po.nomor}`, W / 2, 27.5, { align: 'center' })
+    doc.text(merek.nama, W / 2, 13, { align: 'center' })
+    if (merek.kontak) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+      doc.setTextColor(90, 102, 115)
+      doc.text(merek.kontak, W / 2, 18, { align: 'center' })
+    }
   } else {
     let teksX = M
     if (merek.logo) {
       try {
-        doc.addImage(merek.logo, 'PNG', M, 6, 20, 20)
+        doc.addImage(merek.logo, 'PNG', M, 7, 20, 20)
         teksX = M + 25
       } catch { /* logo tidak terbaca — lanjut tanpa logo */ }
     }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
-    doc.text(merek.nama, teksX, 13)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
+    doc.text(merek.nama, teksX, 14)
     if (merek.kontak) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
-      doc.text(doc.splitTextToSize(merek.kontak, contentW - (teksX - M))[0], teksX, 18)
+      doc.setTextColor(90, 102, 115)
+      doc.text(doc.splitTextToSize(merek.kontak, contentW - (teksX - M))[0], teksX, 19.5)
     }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
-    doc.text('PURCHASE ORDER', W / 2, 29, { align: 'center' })
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-    doc.text(`Nomor: ${po.nomor}`, W / 2, 34.5, { align: 'center' })
   }
 
+  // Garis tipis sebagai pemisah kop — penanda kepala surat tanpa blok warna.
+  doc.setDrawColor(13, 27, 42); doc.setLineWidth(0.6)
+  doc.line(M, tinggiKop, W - M, tinggiKop)
+  doc.setLineWidth(0.2)
+
+  doc.setTextColor(13, 27, 42)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
+  doc.text('PURCHASE ORDER', W / 2, tinggiKop + 8, { align: 'center' })
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+  doc.setTextColor(90, 102, 115)
+  doc.text(`Nomor: ${po.nomor}`, W / 2, tinggiKop + 13, { align: 'center' })
+
   doc.setTextColor(20, 30, 40)
-  y = tinggiKop + 9
+  y = tinggiKop + 21
 
   // ── Dua kolom: kepada vendor & data PO ──
   const colW = contentW / 2
