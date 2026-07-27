@@ -6,16 +6,25 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
-import { chatRealisasiWithGemini, RealisasiEntry, ChatMessage } from '@/lib/ai-realisasi'
+import {
+  chatRealisasiWithGemini, RealisasiEntry, ChatMessage,
+  type PemasukanUsul, type PembayaranUsul,
+} from '@/lib/ai-realisasi'
 import { useToast } from '@/hooks/use-toast'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { procurementApi } from '@/lib/procurementApi'
 import { penerimaanApi } from '@/lib/penerimaanApi'
-import { cocokkanNotaKePo, usulanDo, ringkasCocok, type CocokPo } from '@/lib/notaKePo'
+import { usulanDo, ringkasCocok } from '@/lib/notaKePo'
+import { susunRencana, LABEL_MODUL, type Rencana } from '@/lib/rencanaCatat'
+import { useAkuntanStore } from '@/store/akuntanStore'
+import { totalDibayar } from '@/lib/penerimaan'
+import type { PoPayment } from '@/lib/penerimaan'
 import { nomorDo } from '@/lib/penerimaan'
 import type { PurchaseOrder } from '@/lib/procurement'
 import type { DeliveryOrder } from '@/lib/penerimaan'
+
+const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
 // ── Category Colors ───────────────────────────────────────────────────────────
 const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
@@ -193,69 +202,105 @@ export default function TabRealisasiBiaya() {
   // dan penerimaannya ditawarkan langsung di sini.
   const [posPo, setPosPo] = useState<PurchaseOrder[]>([])
   const [dosDo, setDosDo] = useState<DeliveryOrder[]>([])
-  const [usulan, setUsulan] = useState<{ calon: CocokPo[]; pilih: number; entri: RealisasiEntry[] } | null>(null)
-  const [simpanDo, setSimpanDo] = useState(false)
+  const [bayarPo, setBayarPo] = useState<PoPayment[]>([])
+  /** Daftar periksa lintas modul dari masukan terakhir, menunggu persetujuan. */
+  const [rencana, setRencana] = useState<Rencana | null>(null)
+  /** Pilihan pemakai: PO mana untuk penerimaan, PO mana untuk tiap pembayaran. */
+  const [pilihPo, setPilihPo] = useState(0)
+  const [pilihBayar, setPilihBayar] = useState<number[]>([])
+  const [menyimpan, setMenyimpan] = useState(false)
+  const addPemasukan = useAkuntanStore(s => s.addPemasukan)
 
   const muatProcurement = async () => {
-    const [p, d] = await Promise.all([
+    const [p, d, b] = await Promise.all([
       procurementApi().listPo().catch(() => [] as PurchaseOrder[]),
       penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
+      penerimaanApi().listBayar().catch(() => [] as PoPayment[]),
     ])
-    setPosPo(p); setDosDo(d)
-    return { p, d }
+    setPosPo(p); setDosDo(d); setBayarPo(b)
+    return { p, d, b }
   }
   useEffect(() => { void muatProcurement() }, [])
 
-  /** Tawarkan pencatatan penerimaan bila barang di nota cocok dengan PO terbuka. */
-  const tawarkanPenerimaan = (entri: RealisasiEntry[], pos: PurchaseOrder[], dos: DeliveryOrder[]) => {
-    const material = entri.filter(e => e.tipe === 'material' && (e.namaMaterial ?? '').trim() && (e.volume ?? 0) > 0)
-    if (material.length === 0) return
-    const calon = cocokkanNotaKePo(
-      material.map(e => ({
-        id: e.id, nama: e.namaMaterial ?? '', satuan: e.satuan,
-        qty: e.volume ?? 0, harga: e.hargaSatuan,
-      })),
-      pos, dos,
-      material.find(e => (e.namaSupplier ?? '').trim())?.namaSupplier ?? '',
-    )
-    if (calon.length === 0) return
-    setUsulan({ calon, pilih: 0, entri: material })
+  /** Susun daftar periksa: modul apa saja yang tersentuh oleh masukan ini. */
+  const susun = (
+    hasil: { added: RealisasiEntry[]; pemasukan?: PemasukanUsul[]; pembayaran?: PembayaranUsul[] },
+    pos: PurchaseOrder[], dos: DeliveryOrder[], bayar: PoPayment[],
+  ) => {
+    const r = susunRencana(hasil, {
+      pos, dos, sudahDibayar: (id: string) => totalDibayar(id, bayar),
+    })
+    if (!r.perluKonfirmasi) return
+    setRencana(r)
+    setPilihPo(0)
+    setPilihBayar(r.pembayaran.map(() => 0))
   }
 
-  const catatPenerimaan = async () => {
-    if (!usulan) return
-    const cocok = usulan.calon[usulan.pilih]
-    if (!cocok) return
-    setSimpanDo(true)
+  /** Jalankan semua langkah yang masih menunggu, dalam satu persetujuan. */
+  const catatSemua = async () => {
+    if (!rencana) return
+    setMenyimpan(true)
+    const selesai: string[] = []
     try {
-      const sumber = usulan.entri[0]
-      const d = usulanDo(cocok, {
-        nomorNota: sumber?.nomorNota ?? '',
-        tanggalNota: sumber?.tanggal ?? null,
-        tanggalTerima: sumber?.tanggal ?? undefined,
-        catatan: `Otomatis dari nota di Realisasi Biaya${sumber?.nomorNota ? ` (${sumber.nomorNota})` : ''}`,
-      })
-      const baru = await penerimaanApi().createDo({
-        ...d, nomor_do: nomorDo(dosDo.length), foto: [],
-      })
-      // Entri biayanya ditandai supaya stoknya tidak dihitung dua kali:
-      // yang menambah stok sekarang adalah surat jalan ini.
-      for (const p of cocok.pasangan) {
-        if (p.nota.id) updateRealisasiEntry(p.nota.id, { doId: baru.id })
+      // 1. Pemasukan → Akuntan. Lokal, jadi tidak bisa gagal karena jaringan.
+      for (const p of rencana.pemasukan) {
+        addPemasukan({
+          tanggal: p.tanggal, sumber: p.sumber, kategori: p.kategori,
+          jumlah: p.jumlah, keterangan: p.keterangan,
+          projectId: projectInfo?.id,
+        })
       }
+      if (rencana.pemasukan.length > 0) selesai.push(`${rencana.pemasukan.length} pemasukan`)
+
+      // 2. Penerimaan barang → Procurement, sekaligus menandai entri biayanya
+      //    supaya stoknya tidak dihitung dua kali.
+      const cocok = rencana.penerimaan[pilihPo]
+      if (cocok) {
+        const sumber = rencana.biaya.find(e => e.tipe === 'material')
+        const d = usulanDo(cocok, {
+          nomorNota: sumber?.nomorNota ?? '',
+          tanggalNota: sumber?.tanggal ?? null,
+          tanggalTerima: sumber?.tanggal ?? undefined,
+          catatan: `Otomatis dari nota di Realisasi Biaya${sumber?.nomorNota ? ` (${sumber.nomorNota})` : ''}`,
+        })
+        const baru = await penerimaanApi().createDo({ ...d, nomor_do: nomorDo(dosDo.length), foto: [] })
+        for (const p of cocok.pasangan) {
+          if (p.nota.id) updateRealisasiEntry(p.nota.id, { doId: baru.id })
+        }
+        selesai.push(`${d.items.length} barang datang`)
+      }
+
+      // 3. Pembayaran → Hutang Vendor. Yang tidak menemukan PO dilewati, dan
+      //    itu dilaporkan, bukan didiamkan.
+      let terbayar = 0, tanpaPo = 0
+      for (let i = 0; i < rencana.pembayaran.length; i++) {
+        const b = rencana.pembayaran[i]
+        const po = b.calon[pilihBayar[i] ?? 0]
+        if (!po) { tanpaPo++; continue }
+        await penerimaanApi().createBayar({
+          po_id: po.id, tanggal: b.usul.tanggal, jumlah: b.usul.jumlah,
+          metode: b.usul.metode, referensi: b.usul.referensi ?? '',
+          bukti: null, catatan: b.usul.catatan ?? 'Otomatis dari chat AI',
+        })
+        terbayar++
+      }
+      if (terbayar > 0) selesai.push(`${terbayar} pembayaran`)
+
       await muatProcurement()
-      setUsulan(null)
+      setRencana(null)
       toast({
-        title: '📦 Penerimaan barang tercatat',
-        description: `${d.items.length} barang masuk stok lewat ${cocok.po.nomor ?? 'PO'}. Jatuh tempo mulai berjalan dari tanggal notanya.`,
+        title: '✅ Tercatat di semua modul',
+        description: selesai.join(' · ')
+          + (tanpaPo > 0 ? ` · ${tanpaPo} pembayaran dilewati karena tidak ada PO yang cocok` : ''),
       })
     } catch (e) {
       toast({
-        title: 'Gagal mencatat penerimaan',
-        description: e instanceof Error ? e.message : String(e),
+        title: 'Sebagian gagal disimpan',
+        description: (e instanceof Error ? e.message : String(e))
+          + (selesai.length > 0 ? ` Yang sudah tersimpan: ${selesai.join(', ')}.` : ''),
         variant: 'destructive',
       })
-    } finally { setSimpanDo(false) }
+    } finally { setMenyimpan(false) }
   }
 
   const handleSend = async () => {
@@ -304,12 +349,14 @@ export default function TabRealisasiBiaya() {
       if (parsedResult.added.length > 0) {
         addRealisasiEntries(parsedResult.added)
         changeCount += parsedResult.added.length
-        // Daftar PO/DO disegarkan dulu: barang bisa saja sudah dicatat datang
-        // dari perangkat lain sejak tab ini dibuka.
-        void muatProcurement()
-          .then(({ p, d }) => tawarkanPenerimaan(parsedResult.added, p, d))
-          .catch(() => { /* penawaran ini pelengkap, bukan syarat pencatatan biaya */ })
       }
+      // Daftar periksa lintas modul disusun untuk SETIAP masukan, bukan hanya
+      // yang berisi biaya: satu bukti transfer tidak menambah biaya sama sekali
+      // tetapi tetap harus sampai ke Hutang Vendor. PO/DO disegarkan dulu
+      // karena barangnya bisa saja sudah dicatat dari perangkat lain.
+      void muatProcurement()
+        .then(({ p, d, b }) => susun(parsedResult, p, d, b))
+        .catch(() => { /* daftar periksa ini pelengkap, bukan syarat pencatatan biaya */ })
       if (parsedResult.updated.length > 0) {
         parsedResult.updated.forEach(u => updateRealisasiEntry(u.id, u.data))
         changeCount += parsedResult.updated.length
@@ -565,73 +612,119 @@ export default function TabRealisasiBiaya() {
           <div ref={chatEndRef} />
         </div>
 
-        {/* Tawaran mencatat penerimaan barang sekaligus. Sengaja tidak
-            dijalankan otomatis: satu nama barang bisa muncul di beberapa PO,
-            dan menebak salah berarti stok PO yang keliru ikut bergerak. */}
-        {usulan && usulan.calon[usulan.pilih] && (
-          <div className="bg-emerald-50 border-t-2 border-emerald-300 p-4 space-y-3">
+        {/* Daftar periksa lintas modul. Sengaja tidak dijalankan otomatis:
+            satu nama barang bisa muncul di beberapa PO, dan bukti transfer
+            bisa menempel ke tagihan yang salah. Yang ditebak sistem harus bisa
+            dilihat dan diperbaiki manusia sebelum tersimpan. */}
+        {rencana && (
+          <div className="bg-emerald-50 border-t-2 border-emerald-300 p-4 space-y-3 max-h-[52vh] overflow-y-auto">
             <div className="flex items-start gap-2">
               <PackageCheck className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-emerald-900">
-                  Barang ini sepertinya dari PO yang sedang ditunggu
-                </p>
-                <p className="text-[11px] text-emerald-800/90">
-                  {ringkasCocok(usulan.calon[usulan.pilih])}
-                </p>
-              </div>
+              <p className="text-xs font-bold text-emerald-900">
+                Masukan ini menyentuh {rencana.langkah.length} modul
+              </p>
             </div>
 
-            {usulan.calon.length > 1 && (
-              <div className="flex flex-wrap gap-1.5">
-                {usulan.calon.map((c, i) => (
-                  <button key={c.po.id} onClick={() => setUsulan(u => u && { ...u, pilih: i })}
-                    className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
-                      i === usulan.pilih
-                        ? 'bg-emerald-700 text-white border-emerald-700'
-                        : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-100'}`}>
-                    {c.po.nomor ?? 'PO'}
-                  </button>
-                ))}
-              </div>
-            )}
-
             <div className="bg-white rounded-xl border border-emerald-200 divide-y divide-emerald-100">
-              {usulan.calon[usulan.pilih].pasangan.map(p => (
-                <div key={p.po.nama} className="flex items-baseline justify-between gap-2 px-3 py-1.5">
-                  <span className="text-xs font-semibold text-navy truncate">{p.po.nama}</span>
-                  <span className="text-xs font-black text-emerald-800 shrink-0">
-                    {p.qty.toLocaleString('id-ID')} {p.po.satuan}
-                    {p.qty < (p.nota.qty || 0) && (
-                      <span className="font-medium text-muted-foreground"> (nota {p.nota.qty.toLocaleString('id-ID')}, sisa PO {p.po.sisa.toLocaleString('id-ID')})</span>
-                    )}
-                  </span>
+              {rencana.langkah.map(l => (
+                <div key={l.modul} className="px-3 py-2 space-y-0.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs font-bold text-navy truncate">{LABEL_MODUL[l.modul]}</span>
+                    <span className={`text-[10px] font-black shrink-0 rounded-full px-2 py-0.5 ${
+                      l.sudah ? 'bg-slate-100 text-slate-600' : 'bg-emerald-700 text-white'}`}>
+                      {l.sudah ? (l.turunan ? 'otomatis' : 'sudah dicatat') : 'akan dicatat'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{l.rincian}</p>
+                  {l.catatan && <p className="text-[10px] text-amber-800">{l.catatan}</p>}
                 </div>
               ))}
             </div>
 
-            {usulan.calon[usulan.pilih].takCocok.length > 0 && (
-              <p className="text-[11px] text-amber-800">
-                Di luar PO ini: {usulan.calon[usulan.pilih].takCocok.map(b => b.nama).join(', ')}.
-                Tetap tercatat sebagai biaya, tapi tidak masuk penerimaan.
-              </p>
+            {/* Penerimaan barang: pilih PO-nya bila lebih dari satu cocok. */}
+            {rencana.penerimaan.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-emerald-900">
+                  Barang datang dari — {ringkasCocok(rencana.penerimaan[pilihPo])}
+                </p>
+                {rencana.penerimaan.length > 1 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {rencana.penerimaan.map((c, i) => (
+                      <button key={c.po.id} onClick={() => setPilihPo(i)}
+                        className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
+                          i === pilihPo
+                            ? 'bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-100'}`}>
+                        {c.po.nomor ?? 'PO'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="bg-white rounded-xl border border-emerald-200 divide-y divide-emerald-100">
+                  {rencana.penerimaan[pilihPo].pasangan.map(p => (
+                    <div key={p.po.nama} className="flex items-baseline justify-between gap-2 px-3 py-1.5">
+                      <span className="text-xs font-semibold text-navy truncate">{p.po.nama}</span>
+                      <span className="text-xs font-black text-emerald-800 shrink-0">
+                        {p.qty.toLocaleString('id-ID')} {p.po.satuan}
+                        {p.qty < (p.nota.qty || 0) && (
+                          <span className="font-medium text-muted-foreground"> (nota {p.nota.qty.toLocaleString('id-ID')}, sisa PO {p.po.sisa.toLocaleString('id-ID')})</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {rencana.penerimaan[pilihPo].takCocok.length > 0 && (
+                  <p className="text-[11px] text-amber-800">
+                    Di luar PO ini: {rencana.penerimaan[pilihPo].takCocok.map(b => b.nama).join(', ')}.
+                    Tetap tercatat sebagai biaya, tapi tidak masuk penerimaan.
+                  </p>
+                )}
+              </div>
             )}
 
+            {/* Pembayaran: tiap bukti bayar menempel ke satu PO. */}
+            {rencana.pembayaran.map((b, i) => (
+              <div key={i} className="space-y-1.5">
+                <p className="text-[11px] font-bold text-emerald-900">
+                  Pembayaran {fmt(b.usul.jumlah)}
+                  {b.usul.referensi ? ` · ${b.usul.referensi}` : ''} — untuk PO
+                </p>
+                {b.calon.length === 0 ? (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2">
+                    Tidak ada PO yang cocok dan masih punya sisa tagihan. Pembayaran ini
+                    dilewati — catat manual di Akuntan → Hutang Vendor bila perlu.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {b.calon.slice(0, 4).map((po, j) => (
+                      <button key={po.id} onClick={() => setPilihBayar(v => v.map((x, k) => k === i ? j : x))}
+                        className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
+                          j === (pilihBayar[i] ?? 0)
+                            ? 'bg-emerald-700 text-white border-emerald-700'
+                            : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-100'}`}>
+                        {po.nomor ?? 'PO'} · sisa {fmt(po.sisa)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
             <div className="flex gap-2">
-              <Button onClick={catatPenerimaan} disabled={simpanDo}
+              <Button onClick={catatSemua} disabled={menyimpan}
                 className="flex-1 gap-2 bg-emerald-700 hover:bg-emerald-800 font-bold h-10 text-xs">
-                {simpanDo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
-                Catat sebagai Barang Datang
+                {menyimpan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageCheck className="w-3.5 h-3.5" />}
+                Catat ke Semua Modul
               </Button>
-              <Button variant="outline" onClick={() => setUsulan(null)} disabled={simpanDo}
+              <Button variant="outline" onClick={() => setRencana(null)} disabled={menyimpan}
                 className="h-10 text-xs font-bold">
-                Bukan
+                Lewati
               </Button>
             </div>
             <p className="text-[10px] text-emerald-800/70 leading-relaxed">
-              Kalau dicatat: stok bertambah di Inventori, PO ditandai sudah menerima barang,
-              dan jatuh tempo pembayaran mulai berjalan dari tanggal notanya. Biayanya tetap
-              tercatat sekali, tidak dobel.
+              Biaya sudah tercatat begitu AI menjawab. Yang menunggu di sini hanya yang
+              menyentuh modul lain — karena di situlah tebakan bisa salah, dan lebih baik
+              Anda yang memutuskan.
             </p>
           </div>
         )}
