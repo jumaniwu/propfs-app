@@ -1,5 +1,6 @@
 import { BudgetComponent } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
+import { parsePemasukan, parsePembayaran } from './rencanaCatat'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
@@ -54,11 +55,43 @@ export interface ChatMessage {
   deletedEntryIds?: string[]
 }
 
+/**
+ * Uang MASUK yang terbaca dari percakapan/dokumen. Tempatnya bukan di
+ * Realisasi Biaya melainkan di Akuntan → Pemasukan, dan selama ini satu-satunya
+ * jalan ke sana adalah mengetik manual.
+ */
+export interface PemasukanUsul {
+  tanggal: string
+  sumber: string
+  kategori: 'termin' | 'penjualan' | 'modal' | 'lainnya'
+  jumlah: number
+  keterangan?: string
+}
+
+/**
+ * Bukti pembayaran ke vendor. Tempatnya di Akuntan → Hutang Vendor, menempel
+ * pada PO-nya. Nomor PO sering tidak tertulis di bukti transfer, jadi vendor
+ * dan jumlahnya ikut dibawa untuk dicocokkan.
+ */
+export interface PembayaranUsul {
+  tanggal: string
+  nomorPo?: string
+  vendor?: string
+  jumlah: number
+  metode: 'transfer' | 'tunai' | 'giro' | 'lainnya'
+  referensi?: string
+  catatan?: string
+}
+
 export interface RealisasiParsedResult {
   clean: string;
   added: RealisasiEntry[];
   updated: { id: string; data: Partial<RealisasiEntry> }[];
   deleted: string[];
+  /** Uang masuk — dicatat ke Akuntan, bukan ke Realisasi Biaya. */
+  pemasukan: PemasukanUsul[];
+  /** Bukti bayar ke vendor — dicatat ke Hutang Vendor. */
+  pembayaran: PembayaranUsul[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,6 +130,8 @@ function extractEntriesFromText(text: string): RealisasiParsedResult {
   let added: RealisasiEntry[] = []
   let updated: { id: string; data: Partial<RealisasiEntry> }[] = []
   let deleted: string[] = []
+  let pemasukan: PemasukanUsul[] = []
+  let pembayaran: PembayaranUsul[] = []
   let clean = text
 
   if (match) {
@@ -115,13 +150,22 @@ function extractEntriesFromText(text: string): RealisasiParsedResult {
         // Fallback for older structure
         if (Array.isArray(parsed.transaksi)) added = parsed.transaksi.map(parseEntry)
         if (Array.isArray(parsed.entries)) added = parsed.entries.map(parseEntry)
+
+        // Uang masuk & bukti bayar hanya diambil kalau nominalnya jelas —
+        // baris tanpa angka bukan transaksi, melainkan basa-basi.
+        if (Array.isArray(parsed.pemasukan)) {
+          pemasukan = parsed.pemasukan.map(parsePemasukan).filter((p: PemasukanUsul) => p.jumlah > 0)
+        }
+        if (Array.isArray(parsed.pembayaran)) {
+          pembayaran = parsed.pembayaran.map(parsePembayaran).filter((p: PembayaranUsul) => p.jumlah > 0)
+        }
       }
     } catch (e) {
       console.error('[ai-realisasi] Gagal parsing JSON entries', e)
     }
     clean = text.replace(jsonRegex, '').trim()
   }
-  return { clean, added, updated, deleted }
+  return { clean, added, updated, deleted, pemasukan, pembayaran }
 }
 
 // ── System Instruction (Bisa belajar & menerima instruksi format) ─────────────
@@ -166,6 +210,16 @@ Jika mencatat transaksi BARU, masukkan ke dalam array \`added\`.
 Jika MENGUBAH transaksi yang sudah ada (revisi), masukkan ke \`updated\` dengan mencantumkan "id" transaksi tersebut.
 Jika MENGHAPUS transaksi, masukkan "id" nya ke array \`deleted\`.
 
+PENTING — TIGA JENIS UANG, TIGA TEMPAT BERBEDA:
+1. Uang KELUAR untuk proyek (beli material, upah, operasional) → array \`added\`.
+2. Uang MASUK (termin dari owner, penjualan unit, modal disetor, pinjaman) → array \`pemasukan\`.
+   JANGAN pernah menaruh uang masuk di \`added\`; \`added\` hanya untuk pengeluaran.
+3. BUKTI PEMBAYARAN ke vendor/supplier (bukti transfer, kuitansi pelunasan nota
+   yang SUDAH pernah dicatat) → array \`pembayaran\`. Ini melunasi hutang, bukan
+   biaya baru. Kalau dokumennya bukti transfer, JANGAN juga menaruhnya di
+   \`added\` — nanti biayanya terhitung dua kali.
+   Sebutkan \`nomorPo\` bila tertulis; kalau tidak ada, isi \`vendor\` saja.
+
 \`\`\`json
 {
   "added": [
@@ -196,6 +250,26 @@ Jika MENGHAPUS transaksi, masukkan "id" nya ke array \`deleted\`.
   ],
   "deleted": [
     "contoh-id-transaksi-456"
+  ],
+  "pemasukan": [
+    {
+      "tanggal": "2026-04-20",
+      "sumber": "Termin 2 Ruko Blok A",
+      "kategori": "termin",
+      "jumlah": 250000000,
+      "keterangan": "Transfer dari owner"
+    }
+  ],
+  "pembayaran": [
+    {
+      "tanggal": "2026-04-21",
+      "nomorPo": "PO/001/04/2026",
+      "vendor": "Toko Bangunan Maju",
+      "jumlah": 5000000,
+      "metode": "transfer",
+      "referensi": "TRF-99881",
+      "catatan": "Pelunasan nota A123"
+    }
   ]
 }
 \`\`\`
