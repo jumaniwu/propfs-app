@@ -3,7 +3,7 @@
 //  2. Pakai Material  : material yang terpakai di lapangan
 //  3. Request Material: permintaan material yang kurang
 // Ketiganya memakai satu link yang sama (report_token).
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import {
@@ -11,10 +11,17 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { fieldApi, uploadToDrive } from '@/lib/fieldReports'
-import { materialApi, type Urgensi } from '@/lib/materialApi'
+import {
+  materialApi, stokLapangan, cariMaterial,
+  type Urgensi, type StokMaterial,
+} from '@/lib/materialApi'
 import { downscaleImage } from '@/lib/imageUtil'
 
 type Tab = 'laporan' | 'pakai' | 'request'
+
+/** Angka ringkas untuk layar HP: tanpa desimal bila bulat. */
+const angkaRingkas = (n: number) =>
+  (Number(n) || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
 
 const hariIni = () => new Date().toISOString().slice(0, 10)
 const inputCls = 'w-full h-10 rounded-lg border border-input bg-background px-3 text-sm'
@@ -257,6 +264,31 @@ function FormPakaiMaterial({ token, header, onDone }: {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Daftar material yang sudah dikenal di proyek ini, beserta sisanya.
+  // Ditarik sekali saat form dibuka; kegagalannya ditelan diam-diam karena
+  // pengisian manual harus tetap bisa dilakukan tanpa daftar ini.
+  const [stok, setStok] = useState<StokMaterial[]>([])
+  const [bukaSaran, setBukaSaran] = useState(false)
+  useEffect(() => {
+    let batal = false
+    materialApi().byToken(token)
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests)) })
+      .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
+    return () => { batal = true }
+  }, [token])
+
+  const saran = useMemo(() => cariMaterial(stok, nama), [stok, nama])
+  const terpilih = useMemo(
+    () => stok.find(m => m.nama.trim().toLowerCase() === nama.trim().toLowerCase()) ?? null,
+    [stok, nama],
+  )
+
+  function pilihMaterial(m: StokMaterial) {
+    setNama(m.nama)
+    if (m.satuan) setSatuan(m.satuan)
+    setBukaSaran(false)
+  }
+
   async function submit() {
     const jumlah = Number(qty)
     if (pelapor.trim().length < 2 || nama.trim().length < 2 || !(jumlah > 0)) {
@@ -293,17 +325,74 @@ function FormPakaiMaterial({ token, header, onDone }: {
         </div>
       </div>
 
-      <div className="space-y-1">
+      {/* Nama material: pilih dari yang sudah ada di proyek ini, supaya tukang
+          tidak perlu mengetik nama panjang dari nol. Mengetik bebas tetap
+          diizinkan — material baru harus tetap bisa dicatat. */}
+      <div className="space-y-1 relative">
         <label className="text-xs font-medium text-muted-foreground">Nama Material</label>
-        <input value={nama} onChange={e => setNama(e.target.value)}
-          placeholder="mis. Semen Portland 50kg" className={inputCls} />
+        <input value={nama}
+          onChange={e => { setNama(e.target.value); setBukaSaran(true) }}
+          onFocus={() => setBukaSaran(true)}
+          onBlur={() => window.setTimeout(() => setBukaSaran(false), 150)}
+          placeholder="Ketik atau pilih dari daftar" className={inputCls} autoComplete="off" />
+
+        {bukaSaran && saran.length > 0 && (
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+            {saran.map(m => (
+              <button key={m.nama} type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => pilihMaterial(m)}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-border last:border-0">
+                <p className="text-sm text-navy font-semibold truncate">{m.nama}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {m.belumAdaPenerimaan
+                    ? `Terpakai ${angkaRingkas(m.terpakai)} ${m.satuan} · penerimaan belum tercatat`
+                    : `Sisa ${angkaRingkas(m.stok)} ${m.satuan} · terpakai ${angkaRingkas(m.terpakai)}`}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Stok hanya ditampilkan, tidak bisa diubah dari sini: angkanya lahir
+          dari penerimaan dikurangi pemakaian, bukan dari ketikan. */}
+      {terpilih && (
+        <div className={`rounded-xl border p-3 ${
+          terpilih.belumAdaPenerimaan ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+          {terpilih.belumAdaPenerimaan ? (
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              <b>Stok belum tercatat.</b> Material ini belum pernah ditandai diterima di
+              kantor, jadi sisanya belum bisa dihitung. Pemakaian tetap bisa dicatat.
+            </p>
+          ) : (
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-[11px] font-bold text-emerald-900">Sisa stok saat ini</span>
+              <span className="text-base font-black text-emerald-900">
+                {angkaRingkas(terpilih.stok)} <span className="text-xs font-bold">{terpilih.satuan}</span>
+              </span>
+            </div>
+          )}
+          {!terpilih.belumAdaPenerimaan && (
+            <p className="text-[10px] text-emerald-800/80 mt-0.5">
+              Diterima {angkaRingkas(terpilih.masuk)} · terpakai {angkaRingkas(terpilih.terpakai)}
+              {terpilih.dalamProses > 0 && ` · ${angkaRingkas(terpilih.dalamProses)} dalam proses`}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Jumlah Dipakai</label>
           <input type="number" inputMode="decimal" min="0" value={qty} onChange={e => setQty(e.target.value)}
             placeholder="mis. 40" className={inputCls} />
+          {terpilih && !terpilih.belumAdaPenerimaan && Number(qty) > terpilih.stok && (
+            <p className="text-[11px] text-amber-700">
+              Melebihi sisa stok ({angkaRingkas(terpilih.stok)} {terpilih.satuan}). Tetap bisa
+              dicatat bila memang begitu keadaannya.
+            </p>
+          )}
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Satuan</label>
@@ -354,6 +443,31 @@ function FormRequestMaterial({ token, header, onDone }: {
   const [photos, setPhotos] = useState<string[]>([])
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Daftar material yang sudah dikenal di proyek ini, beserta sisanya.
+  // Ditarik sekali saat form dibuka; kegagalannya ditelan diam-diam karena
+  // pengisian manual harus tetap bisa dilakukan tanpa daftar ini.
+  const [stok, setStok] = useState<StokMaterial[]>([])
+  const [bukaSaran, setBukaSaran] = useState(false)
+  useEffect(() => {
+    let batal = false
+    materialApi().byToken(token)
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests)) })
+      .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
+    return () => { batal = true }
+  }, [token])
+
+  const saran = useMemo(() => cariMaterial(stok, nama), [stok, nama])
+  const terpilih = useMemo(
+    () => stok.find(m => m.nama.trim().toLowerCase() === nama.trim().toLowerCase()) ?? null,
+    [stok, nama],
+  )
+
+  function pilihMaterial(m: StokMaterial) {
+    setNama(m.nama)
+    if (m.satuan) setSatuan(m.satuan)
+    setBukaSaran(false)
+  }
 
   async function submit() {
     const jumlah = Number(qty)

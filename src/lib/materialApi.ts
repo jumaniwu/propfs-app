@@ -79,6 +79,12 @@ export interface MaterialApi {
     tanggal: string; pemohon: string; nama: string; satuan: string; qty: number
     urgensi: Urgensi; butuhTanggal: string | null; catatan: string; photos: string[]
   }): Promise<boolean>
+  /**
+   * Pemakaian & request yang sudah tercatat pada log ini, untuk halaman
+   * laporan publik. Dipakai menyarankan nama material dan menampilkan sisa
+   * stok — supaya tukang tidak mengetik nama dari nol.
+   */
+  byToken(token: string): Promise<{ usage: MaterialUsage[]; requests: MaterialRequest[] }>
 }
 
 // ── REST langsung (pola sama dengan fieldReports.ts) ─────────────────────────
@@ -177,6 +183,13 @@ const realApi: MaterialApi = {
       p_satuan: r.satuan, p_qty: r.qty, p_urgensi: r.urgensi,
       p_butuh_tanggal: r.butuhTanggal, p_catatan: r.catatan, p_photos: r.photos,
     }) === true
+  },
+  async byToken(token) {
+    const rows = await rpc<Array<{ usage: MaterialUsage[]; requests: MaterialRequest[] }>>(
+      'material_by_report_token', { p_token: token },
+    )
+    const r = rows?.[0]
+    return { usage: r?.usage ?? [], requests: r?.requests ?? [] }
   },
 }
 
@@ -280,4 +293,91 @@ export function ringkasKekurangan(
     // yang perlu perhatian tampil lebih dulu, lalu pemakaian terbesar
     .sort((a, b) =>
       Number(b.perluPerhatian) - Number(a.perluPerhatian) || b.terpakai - a.terpakai)
+}
+
+// ── Stok di lapangan, untuk halaman laporan publik ─────────────────────────
+
+export interface StokMaterial {
+  nama: string
+  satuan: string
+  /** Qty request yang sudah ditandai DITERIMA di lapangan. */
+  masuk: number
+  /** Qty yang sudah dicatat terpakai. */
+  terpakai: number
+  /** masuk − terpakai. Bisa negatif bila pemakaian dicatat sebelum penerimaan. */
+  stok: number
+  /** Sudah diminta tapi belum sampai — disetujui/dibeli, belum 'diterima'. */
+  dalamProses: number
+  /** true bila belum ada satu pun penerimaan tercatat untuk material ini. */
+  belumAdaPenerimaan: boolean
+}
+
+/**
+ * Daftar material yang pernah tersentuh di proyek ini beserta sisanya.
+ *
+ * Dipakai halaman /l/:token supaya tukang tidak perlu mengetik nama material
+ * dari nol — nama, satuan, dan sisa stok datang dari data yang sudah ada.
+ *
+ * Sengaja dihitung HANYA dari pemakaian & request milik log ini, bukan dari
+ * Material Schedule: halaman itu publik dan tidak boleh menarik rencana RAB,
+ * dan rencana bukan stok — rencana adalah niat, bukan barang yang ada.
+ *
+ * `masuk` mengandalkan request yang ditandai 'diterima'. Bila tim belum
+ * membiasakan menandainya, stoknya akan nol; itulah sebabnya
+ * `belumAdaPenerimaan` ada — supaya tampilan bisa mengatakan "belum tercatat"
+ * alih-alih menampilkan angka 0 yang terbaca seperti "barangnya habis".
+ */
+export function stokLapangan(
+  pemakaian: MaterialUsage[] | null | undefined,
+  requests: MaterialRequest[] | null | undefined,
+): StokMaterial[] {
+  const map = new Map<string, StokMaterial>()
+  const ambil = (nama: string, satuan: string): StokMaterial | null => {
+    const bersih = (nama ?? '').trim()
+    if (!bersih) return null
+    const k = kunciNama(bersih)
+    const ada = map.get(k)
+    if (ada) {
+      if (!ada.satuan && satuan?.trim()) ada.satuan = satuan.trim()
+      return ada
+    }
+    const baru: StokMaterial = {
+      nama: bersih, satuan: (satuan ?? '').trim(),
+      masuk: 0, terpakai: 0, stok: 0, dalamProses: 0, belumAdaPenerimaan: true,
+    }
+    map.set(k, baru)
+    return baru
+  }
+
+  for (const u of pemakaian ?? []) {
+    const row = ambil(u?.nama ?? '', u?.satuan ?? '')
+    if (row) row.terpakai += Math.max(0, Number(u.qty) || 0)
+  }
+  for (const q of requests ?? []) {
+    const row = ambil(q?.nama ?? '', q?.satuan ?? '')
+    if (!row) continue
+    const qty = Math.max(0, Number(q.qty) || 0)
+    if (q.status === 'diterima') { row.masuk += qty; row.belumAdaPenerimaan = false }
+    else if (q.status !== 'ditolak') row.dalamProses += qty
+  }
+
+  return [...map.values()]
+    .map(r => ({ ...r, stok: r.masuk - r.terpakai }))
+    .sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
+}
+
+/**
+ * Saran nama material sesuai yang sedang diketik. Cocokkan per kata supaya
+ * "semen 50" menemukan "Semen Portland 50kg"; tanpa ketikan, seluruh daftar
+ * ditawarkan agar tukang bisa memilih tanpa mengetik sama sekali.
+ */
+export function cariMaterial(daftar: StokMaterial[], q: string, batas = 8): StokMaterial[] {
+  const kata = (q ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const cocok = kata.length === 0
+    ? daftar
+    : daftar.filter(m => {
+      const teks = `${m.nama} ${m.satuan}`.toLowerCase()
+      return kata.every(k => teks.includes(k))
+    })
+  return cocok.slice(0, Math.max(0, batas))
 }
