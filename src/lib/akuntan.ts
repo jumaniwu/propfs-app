@@ -5,6 +5,7 @@
 // ============================================================
 
 import type { RealisasiEntry } from './ai-realisasi'
+import { pengelompokNama } from './namaMaterial.ts'
 
 /** Proyek tempat entri dicatat; entri lama tanpa proyek masuk grup ini. */
 export const PROYEK_UMUM = '__umum__'
@@ -165,13 +166,22 @@ export function hitungInventori(
 ): InventoryRow[] {
   type Baris = InventoryRow & { nilaiBeli: number }
   const rows = new Map<string, Baris>()
-  const keyOf = (nama: string) => nama.trim().toLowerCase()
   const angka = (n: unknown) => Math.max(0, Number(n) || 0)
 
+  // Satu barang sering tertulis dengan beberapa nama — nota dari toko, item PO,
+  // dan koreksi gudang diketik orang yang berbeda. Kelompoknya disusun dari
+  // SELURUH nama yang terlibat lebih dulu supaya stoknya tidak terbagi.
+  const kelompok = pengelompokNama([
+    ...pengeluaran.filter(e => e?.tipe === 'material').map(e => e?.namaMaterial || e?.keterangan || ''),
+    ...penerimaan.map(d => d?.nama ?? ''),
+    ...pemakaian.map(p => p?.nama ?? ''),
+    ...adjustments.map(a => a?.nama ?? ''),
+  ])
+
   const ambil = (nama: string, satuan?: string): Baris | null => {
-    const bersih = (nama ?? '').trim()
+    const bersih = kelompok.tampilan(nama)
     if (!bersih) return null
-    const k = keyOf(bersih)
+    const k = kelompok.kunci(nama)
     const cur = rows.get(k) ?? {
       nama: bersih, satuan: satuan || '-',
       masuk: 0, keluar: 0, stok: 0, hargaRata: 0, nilai: 0, nilaiBeli: 0,

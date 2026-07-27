@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { MaterialScheduleItem } from '@/types/cost.types'
+import { pengelompokNama } from './namaMaterial.ts'
 
 export type Urgensi = 'normal' | 'segera' | 'darurat'
 export type StatusRequest = 'menunggu' | 'disetujui' | 'ditolak' | 'dibeli' | 'diterima'
@@ -378,10 +379,23 @@ export function stokLapangan(
   const map = new Map<string, StokMaterial & {
     _do: number; _manual: number; _beli: number; _sesuaiMasuk: number; _sesuaiKeluar: number
   }>()
+
+  // Satu barang bisa tertulis dengan beberapa nama karena diketik ulang di
+  // nota, request, PO, dan koreksi gudang. Kelompoknya disusun dari SELURUH
+  // nama yang terlibat lebih dulu, supaya "Triplek 9mm Pku" dan
+  // "Triplek 9mm Pku @130lmbr/pallet" jatuh ke satu baris, bukan dua.
+  const kelompok = pengelompokNama([
+    ...(pemakaian ?? []).map(x => x?.nama ?? ''),
+    ...(requests ?? []).map(x => x?.nama ?? ''),
+    ...(penerimaan ?? []).map(x => x?.nama ?? ''),
+    ...(gudang?.pembelian ?? []).map(x => x?.nama ?? ''),
+    ...(gudang?.penyesuaian ?? []).map(x => x?.nama ?? ''),
+  ])
+
   const ambil = (nama: string, satuan: string) => {
-    const bersih = (nama ?? '').trim()
+    const bersih = kelompok.tampilan(nama)
     if (!bersih) return null
-    const k = kunciNama(bersih)
+    const k = kelompok.kunci(nama)
     const ada = map.get(k)
     if (ada) {
       if (!ada.satuan && satuan?.trim()) ada.satuan = satuan.trim()
