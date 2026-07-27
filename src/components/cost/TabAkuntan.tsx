@@ -26,7 +26,7 @@ import {
   penerimaanInventori, PROYEK_UMUM, LABEL_PROYEK_UMUM,
   type PemasukanEntry, type OpnameItem, type LingkupAkuntan,
 } from '@/lib/akuntan'
-import { materialApi, type MaterialUsage } from '@/lib/materialApi'
+import { materialApi, type MaterialUsage, type MaterialRequest } from '@/lib/materialApi'
 import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
@@ -73,6 +73,8 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   const [dos, setDos] = useState<DeliveryOrder[]>([])
   const [bayarPo, setBayarPo] = useState<PoPayment[]>([])
   const [pemakaian, setPemakaian] = useState<MaterialUsage[]>([])
+  // Dipakai memulihkan proyek asal DO ketika project_name PO-nya kosong.
+  const [reqMaterial, setReqMaterial] = useState<MaterialRequest[]>([])
   const [hutangMuat, setHutangMuat] = useState(false)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const bolehBayar = can(roleSaatIni(workspaces), 'akuntan', 'tulis')
@@ -80,13 +82,14 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   async function muatHutang() {
     setHutangMuat(true)
     try {
-      const [p, d, b, u] = await Promise.all([
+      const [p, d, b, u, r] = await Promise.all([
         procurementApi().listPo().catch(() => [] as PurchaseOrder[]),
         penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
         penerimaanApi().listBayar().catch(() => [] as PoPayment[]),
         materialApi().listUsage().catch(() => [] as MaterialUsage[]),
+        materialApi().listRequests().catch(() => [] as MaterialRequest[]),
       ])
-      setPos(p); setDos(d); setBayarPo(b); setPemakaian(u)
+      setPos(p); setDos(d); setBayarPo(b); setPemakaian(u); setReqMaterial(r)
     } finally { setHutangMuat(false) }
   }
   useEffect(() => {
@@ -141,8 +144,8 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   // Barang yang surat jalannya sudah dikonfirmasi langsung menjadi stok, dan
   // pemakaian yang dicatat tukang langsung menguranginya.
   const penerimaanLingkup = useMemo(
-    () => penerimaanInventori(dos, pos, namaProyekLingkup),
-    [dos, pos, namaProyekLingkup],
+    () => penerimaanInventori(dos, pos, namaProyekLingkup, reqMaterial),
+    [dos, pos, namaProyekLingkup, reqMaterial],
   )
   const pemakaianLingkup = useMemo(() => {
     const cocok = (a: string) => a.trim().toLowerCase() === namaProyekLingkup.trim().toLowerCase()

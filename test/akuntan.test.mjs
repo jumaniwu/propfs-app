@@ -159,3 +159,46 @@ console.log('cloudSync: lulus')
 }
 
 console.log(`akuntan-inventori: ${ok} assert lulus (kumulatif)`)
+
+// ── PO tanpa nama proyek tetap menemukan proyeknya lewat request ───────────
+// Kolom project_name PO diisi dari proyek yang kebetulan aktif saat PO dibuat,
+// jadi PO yang dibuat langsung dari Home bisa kosong. Barangnya tetap harus
+// masuk stok proyek yang benar.
+{
+  const pos = [
+    { id: 'po1', project_name: '', items: [{ request_id: 'r1', nama: 'Besi 12mm', satuan: 'btg', harga: 120_000 }] },
+    { id: 'po2', project_name: '', items: [{ request_id: 'r9', nama: 'Semen', satuan: 'sak', harga: 60_000 }] },
+  ]
+  const dos = [
+    { po_id: 'po1', items: [{ nama: 'Besi 12mm', satuan: 'btg', qty: 50 }] },
+    { po_id: 'po2', items: [{ nama: 'Semen', satuan: 'sak', qty: 10 }] },
+  ]
+  const requests = [
+    { id: 'r1', project_name: 'Ruko Pak Soni' },
+    { id: 'r9', project_name: 'Proyek Lain' },
+  ]
+
+  assert(penerimaanInventori(dos, pos, 'Ruko Pak Soni').length === 0,
+    'tanpa data request, PO tanpa nama proyek memang tidak ketemu')
+
+  const pulih = penerimaanInventori(dos, pos, 'Ruko Pak Soni', requests)
+  assert(pulih.length === 1, 'hanya DO yang requestnya milik proyek itu')
+  assert(pulih[0].nama === 'Besi 12mm' && pulih[0].harga === 120_000,
+    'harga tetap terbaca dari item PO')
+
+  assert(penerimaanInventori(dos, pos, 'Proyek Lain', requests).length === 1,
+    'proyek lain menemukan DO-nya sendiri, bukan milik tetangga')
+
+  // Nama proyek yang benar tetap menang tanpa perlu rantai request.
+  const langsung = penerimaanInventori(
+    [{ po_id: 'po3', items: [{ nama: 'Bata', qty: 5 }] }],
+    [{ id: 'po3', project_name: 'Ruko Pak Soni', items: [] }],
+    'Ruko Pak Soni', requests)
+  assert(langsung.length === 1, 'PO yang nama proyeknya benar tidak butuh rantai request')
+
+  // Request tanpa proyek tidak boleh menjadi pintu masuk ke semua proyek.
+  assert(penerimaanInventori(dos, pos, 'Ruko Pak Soni', [{ id: 'r1' }]).length === 0,
+    'request tanpa nama proyek tidak dianggap cocok')
+}
+
+console.log(`akuntan-do-proyek: ${ok} assert lulus (kumulatif)`)

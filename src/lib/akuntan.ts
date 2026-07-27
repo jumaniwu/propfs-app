@@ -244,16 +244,31 @@ export function penerimaanInventori(
   dos: Array<{ po_id: string; items?: unknown }>,
   pos: Array<{ id: string; project_name?: string; items?: unknown }>,
   namaProyek = '',
+  requests: Array<{ id: string; project_name?: string }> = [],
 ): PenerimaanBarang[] {
   const cocok = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
   const poById = new Map(pos.map(p => [p.id, p]))
+
+  // Jalur cadangan ketika `project_name` PO kosong — dan itu sering terjadi,
+  // karena kolomnya diisi dari proyek yang kebetulan aktif saat PO dibuat.
+  // Material Request asal barangnya tahu proyeknya, dan tautannya berupa id
+  // sehingga tidak bisa putus karena beda penulisan nama.
+  const idRequestProyek = new Set(
+    (requests ?? [])
+      .filter(r => !namaProyek || cocok(r.project_name ?? '', namaProyek))
+      .map(r => r.id),
+  )
+  const lewatRequest = (po: { items?: unknown }) =>
+    (Array.isArray(po.items) ? po.items as Array<Record<string, unknown>> : [])
+      .some(it => idRequestProyek.has(String(it?.request_id ?? '')))
+
   const hasil: PenerimaanBarang[] = []
 
   for (const d of dos ?? []) {
     const po = poById.get(d?.po_id ?? '')
     // Tanpa PO-nya, asal barang tidak bisa dipastikan milik proyek yang mana.
     if (!po) continue
-    if (namaProyek && !cocok(po.project_name ?? '', namaProyek)) continue
+    if (namaProyek && !cocok(po.project_name ?? '', namaProyek) && !lewatRequest(po)) continue
 
     const itemsPo = Array.isArray(po.items) ? po.items as Array<Record<string, unknown>> : []
     for (const it of (Array.isArray(d.items) ? d.items as Array<Record<string, unknown>> : [])) {

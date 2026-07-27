@@ -894,6 +894,13 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
 
   const vendor = vendors.find(v => v.id === vendorId)
 
+  /** Nama proyek yang terbaca dari barang-barang yang sedang dipilih. */
+  const proyekDariRequest = useMemo(() => {
+    const dipesan = new Set(baris.filter(b => b.pilih && b.qty > 0).map(b => b.request_id))
+    return requests.find(r => dipesan.has(r.id) && (r.project_name ?? '').trim())?.project_name?.trim() ?? ''
+  }, [baris, requests])
+  const proyekPo = projectName.trim() || proyekDariRequest
+
   // Harga terisi otomatis dari katalog vendor; tetap bisa diubah manual karena
   // vendor belum tentu mendaftarkan setiap barang yang diminta.
   useEffect(() => {
@@ -936,7 +943,12 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         vendor_id: vendor.id,
         vendor_nama: vendor.nama,
         vendor_wa: vendor.no_wa,
-        project_name: projectName,
+        // Proyek aktif belum tentu ada — Procurement bisa dibuka langsung dari
+        // Home tanpa memuat proyek dulu. Kalau dibiarkan kosong, PO ini menjadi
+        // yatim: surat jalannya tercatat tapi barangnya tidak pernah sampai ke
+        // stok proyek mana pun. Material Request yang dipesan tahu proyeknya,
+        // jadi itu yang dipakai sebagai cadangan.
+        project_name: projectName.trim() || proyekDariRequest,
         butuh_tanggal: butuh || null,
         term: vendor.term,
         term_hari: vendor.term_hari,
@@ -1062,6 +1074,21 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
           <span className="font-black text-navy text-base tabular-nums">{fmt(total.total)}</span>
         </div>
       </div>
+
+      {/* PO tanpa proyek tidak bisa menyalurkan barangnya ke stok proyek mana
+          pun. Diberitahukan di sini, sebelum PO terlanjur terbit. */}
+      {dipilih.length > 0 && !proyekPo && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+          <b>PO ini belum punya nama proyek.</b> Barang yang datang nanti tidak akan
+          masuk ke stok proyek mana pun. Buka proyeknya dulu lewat Kontraktor AI,
+          lalu buat PO-nya dari sana.
+        </p>
+      )}
+      {dipilih.length > 0 && !projectName.trim() && proyekPo && (
+        <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5">
+          Proyek diambil dari barang yang dipilih: <b>{proyekPo}</b>.
+        </p>
+      )}
 
       <Button onClick={terbitkan} disabled={kirim || !vendorId || dipilih.length === 0}
         className="w-full gap-2 bg-navy hover:bg-navy/90 font-bold h-11">
