@@ -152,6 +152,61 @@ assert(stokLapangan([], [R('Semen', 10, 'diterima')])[0].masuk === 10,
   'tanpa data DO, penandaan manual tetap dipakai')
 assert(stokLapangan([], [], null).length === 0, 'penerimaan null aman')
 
+// ── Gudang di Akuntan: nota pembelian & penyesuaian manual ────────────────
+// Material yang dibeli langsung di toko tidak pernah punya surat jalan. Tanpa
+// membaca Inventori, barang itu selamanya "penerimaan belum tercatat".
+const G = (nama, qty, satuan = 'Box') => ({ nama, qty, satuan })
+
+{
+  const g = stokLapangan([], [], [], { pembelian: [G('Paku kayu 2.5"', 30)] })
+  assert(g.length === 1 && g[0].masuk === 30, 'nota pembelian mengisi stok')
+  assert(g[0].belumAdaPenerimaan === false, 'nota dihitung sebagai penerimaan')
+  assert(g[0].satuan === 'Box', 'satuan ikut dari nota')
+}
+
+// Tiga pintu masuk dijumlah, karena mencatat kejadian yang berbeda.
+{
+  const g = stokLapangan([U('Semen', 10)], [],
+    [D('Semen', 100)], { pembelian: [G('Semen', 20, 'sak')], penyesuaian: [G('Semen', 5, 'sak')] })
+  assert(g[0].masuk === 125, 'surat jalan + nota + koreksi positif dijumlah')
+  assert(g[0].stok === 115, 'stok dikurangi pemakaian lapangan')
+}
+
+// Penyesuaian negatif adalah barang keluar dari gudang, bukan barang masuk.
+{
+  const g = stokLapangan([U('Triplek', 5, 'Pcs')], [],
+    [], { pembelian: [G('Triplek', 40, 'Pcs')], penyesuaian: [G('Triplek', -8, 'Pcs')] })
+  assert(g[0].masuk === 40, 'koreksi negatif tidak menambah masuk')
+  assert(g[0].stok === 27, 'stok = 40 masuk - 5 dipakai - 8 koreksi keluar')
+  assert(g[0].terpakai === 5, 'terpakai tetap hanya pemakaian lapangan')
+}
+
+// Penandaan manual hanya cadangan: kalah oleh sumber mana pun yang tercatat.
+{
+  const g = stokLapangan([], [R('Besi', 99, 'diterima')], [], { pembelian: [G('Besi', 40, 'btg')] })
+  assert(g[0].masuk === 40, 'nota menang atas penandaan manual, tidak dijumlah')
+  const tanpa = stokLapangan([], [R('Besi', 99, 'diterima')], [], { pembelian: [] })
+  assert(tanpa[0].masuk === 99, 'tanpa sumber tercatat, penandaan manual dipakai')
+}
+
+// Barang yang sudah dibeli lewat nota tidak lagi "dalam perjalanan".
+{
+  const g = stokLapangan([], [R('Kayu', 100, 'dibeli')], [], { pembelian: [G('Kayu', 60)] })
+  assert(g[0].dalamProses === 40, 'sisa yang belum datang saja yang dalam perjalanan')
+}
+
+// Masukan cacat dari gudang tidak merusak daftar.
+{
+  const g = stokLapangan([], [], [], {
+    pembelian: [G('', 5), G('A', NaN)],
+    penyesuaian: [G('  ', 3)],
+  })
+  assert(g.length === 1 && g[0].nama === 'A', 'baris tanpa nama diabaikan')
+  assert(g[0].masuk === 0, 'qty NaN diabaikan')
+}
+assert(stokLapangan([], [], [], null).length === 0, 'gudang null aman')
+assert(stokLapangan([], [], [], {}).length === 0, 'gudang kosong aman')
+
 // ── cariMaterial ───────────────────────────────────────────────────────────
 const daftar = stokLapangan([
   U('Semen Portland 50kg', 1), U('Besi Beton D13', 1),
