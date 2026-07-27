@@ -202,3 +202,23 @@ console.log(`akuntan-inventori: ${ok} assert lulus (kumulatif)`)
 }
 
 console.log(`akuntan-do-proyek: ${ok} assert lulus (kumulatif)`)
+
+// ── Nota yang sudah jadi surat jalan tidak menambah stok dua kali ──────────
+{
+  const nota = { id: 'a', tipe: 'material', tanggal: '2026-07-01', namaMaterial: 'Besi',
+    volume: 50, satuan: 'btg', jumlah: 6_000_000 }
+  const doItem = [{ nama: 'Besi', satuan: 'btg', qty: 50, harga: 120_000 }]
+
+  const dobel = hitungInventori([nota], [], doItem, [])
+  assert(dobel[0].masuk === 100 && dobel[0].mungkinDobel === true,
+    'tanpa penanda, nota + surat jalan memang terhitung dua kali dan ditandai')
+
+  const rapi = hitungInventori([{ ...nota, doId: 'do1' }], [], doItem, [])
+  assert(rapi[0].masuk === 50, 'nota bertanda surat jalan tidak lagi menambah stok')
+  assert(rapi[0].dariPembelian === 0 && rapi[0].dariPenerimaan === 50,
+    'stoknya sepenuhnya milik surat jalan')
+  assert(rapi[0].mungkinDobel === false, 'tidak ada lagi yang perlu diperiksa manusia')
+  assert(rapi[0].nilai === 50 * 120_000, 'nilainya dari harga PO, bukan dijumlah dengan nota')
+}
+
+console.log(`akuntan-nota-do: ${ok} assert lulus (kumulatif)`)

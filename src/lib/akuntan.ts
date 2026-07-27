@@ -185,6 +185,10 @@ export function hitungInventori(
 
   for (const e of pengeluaran) {
     if (e.tipe !== 'material') continue
+    // Nota yang sudah dicatat sekaligus sebagai surat jalan tetap menjadi
+    // biaya, tetapi stoknya diserahkan ke surat jalan itu. Tanpa aturan ini
+    // satu kiriman masuk gudang dua kali.
+    if (e.doId) continue
     const cur = ambil((e.namaMaterial || e.keterangan || ''), e.satuan)
     if (!cur) continue
     const qty = e.volume ?? 0
