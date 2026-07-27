@@ -10,7 +10,6 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import IndikatorSimpan from '@/components/cost/IndikatorSimpan'
-import { buatInvoiceAddon } from '@/lib/invoice'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
 import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
@@ -33,6 +32,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
 import { konteksWatermark } from '@/lib/identitasSaya'
+import { useBuatProyek } from '@/hooks/useBuatProyek'
 
 /** Judul yang tampil di header workspace, mengikuti menu yang sedang dibuka. */
 const JUDUL_TAB: Record<WorkspaceTab, string> = {
@@ -56,7 +56,6 @@ export default function CostDashboard() {
     deleteProject, clearActivePlan, loadProjects
   } = useCostStore()
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
-  const [showCreateModal, setShowCreateModal] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -72,60 +71,20 @@ export default function CostDashboard() {
     setSearchParams(new URLSearchParams(), { replace: true }) // bersihkan query
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { canCreateProject, isSubscriptionEnabled } = useSubscription()
-  const { addonFeaturesEnabled, addonCostPrice, user, planCatalog } = useAuthStore()
+  const { user } = useAuthStore()
+  const { isSubscriptionEnabled } = useSubscription()
 
   // SECURITY: Reload projects whenever user changes so data is always user-scoped
   useEffect(() => {
     if (user) loadProjects()
   }, [user?.id])
 
-  // Use authStore canCreateProject which reads 'cost_control' limit from plan catalog
-  const canAdd = canCreateProject(savedProjects.length, 'cost')
-
-  // Derive max cost projects for display (from plan catalog)
-  const maxCostProjects = useMemo(() => {
-    const plan = useAuthStore.getState().getCurrentPlan()
-    const limits = useAuthStore.getState().getPlanLimits(plan)
-    const addonSlots = (useAuthStore.getState().profile as any)?.addon_cost_slots ?? 0
-    return ((limits as any).maxCostProjects ?? 0) + addonSlots
-  }, [planCatalog, user])
-
-  const handleCreateNew = () => {
-    if (!canAdd) {
-      if (isSubscriptionEnabled) {
-        if (addonFeaturesEnabled) {
-          toast({
-            title: 'Batas proyek tercapai',
-            description: `Anda bisa membeli slot tambahan Cost Control seharga Rp ${addonCostPrice.toLocaleString('id-ID')}, atau upgrade paket Anda.`,
-            variant: 'destructive',
-          })
-          buatInvoiceAddon('addon_cost', addonCostPrice)
-            .then(id => navigate(`/payment/${id}`))
-            .catch(e => toast({
-              title: 'Gagal memulai pembelian',
-              description: e instanceof Error ? e.message : String(e),
-              variant: 'destructive',
-            }))
-        } else {
-          toast({
-            title: 'Batas proyek tercapai',
-            description: 'Anda sudah mencapai batas maksimal proyek untuk paket ini. Silakan upgrade paket Anda.',
-            variant: 'destructive',
-          })
-          navigate('/pricing')
-        }
-      } else {
-        toast({
-          title: 'Batas proyek tercapai',
-          description: 'Anda sudah mencapai batas proyek.',
-          variant: 'destructive',
-        })
-      }
-    } else {
-      setShowCreateModal(true)
-    }
-  }
+  // Gerbang kuota dipakai bersama dengan kartu "Buat Proyek Baru" di Home,
+  // supaya keduanya tidak pernah berbeda jawaban.
+  const {
+    bisaTambah: canAdd, maksProyek: maxCostProjects,
+    mulai: handleCreateNew, terbuka: showCreateModal, tutup: tutupCreateModal,
+  } = useBuatProyek()
 
   const filteredProjects = savedProjects.filter(p =>
     p.info.projectName.toLowerCase().includes(search.toLowerCase()) ||
@@ -903,7 +862,7 @@ export default function CostDashboard() {
       )}
 
       {showCreateModal && (
-        <CreateProjectModal onClose={() => setShowCreateModal(false)} onCreated={() => setShowCreateModal(false)} />
+        <CreateProjectModal onClose={tutupCreateModal} onCreated={tutupCreateModal} />
       )}
     </div>
   )
