@@ -5,10 +5,14 @@
 -- surat jalan. Padahal Inventori di Akuntan punya dua sumber lagi yang tidak
 -- pernah sampai ke lapangan:
 --
---   1. Pembelian material dari nota di Realisasi Biaya. Barang yang dibeli
---      langsung di toko tanpa PO tidak pernah punya surat jalan, jadi di
---      halaman tukang selamanya tertulis "penerimaan belum tercatat".
+--   1. Pembelian material dari nota di Realisasi Biaya — termasuk yang
+--      dimasukkan lewat chat AI. Barang yang dibeli langsung di toko tanpa PO
+--      tidak pernah punya surat jalan, jadi di halaman tukang selamanya
+--      tertulis "penerimaan belum tercatat".
 --   2. Penyesuaian stok manual (koreksi, opname, temuan gudang).
+--
+-- PO dan surat jalan TIDAK disyaratkan. Keduanya hanya salah satu jalan masuk;
+-- gudang di Akuntan berdiri sendiri dan dibaca apa adanya.
 --
 -- Akibatnya dua layar menyebut barang yang sama dengan angka berbeda, dan
 -- yang di lapangan justru yang paling tidak lengkap — padahal merekalah yang
@@ -101,17 +105,27 @@ begin
   -- ── Gudang di Akuntan ────────────────────────────────────────────────────
   -- Proyek dikenali lewat NAMA (dari field_logs) sedangkan penyesuaian stok
   -- menyimpan ID proyek, jadi id-nya dicari dulu lewat nama.
-  if v_proj <> '' and to_regclass('public.cost_projects') is not null then
+  --
+  -- Bila link laporannya TIDAK punya nama proyek, penyaringnya dilonggarkan ke
+  -- seluruh gudang milik pemilik link. Itu disengaja: link tanpa nama proyek
+  -- tidak punya alat lain untuk mengenali proyeknya, dan menampilkan daftar
+  -- kosong membuat fiturnya seolah rusak. Batas yang tetap dijaga adalah
+  -- pemiliknya — gudang perusahaan lain tidak pernah ikut.
+  if to_regclass('public.cost_projects') is not null then
     execute $q$
       select coalesce(array_agg(c.data->'info'->>'id'), '{}')
         from cost_projects c
        where c.user_id = $1
-         and lower(trim(coalesce(c.data->'info'->>'projectName', ''))) = $2
+         and ($2 = '' or lower(trim(coalesce(c.data->'info'->>'projectName', ''))) = $2)
     $q$ into v_proj_ids using v_user, v_proj;
 
-    -- Pembelian material dari nota. Entri yang sudah menjadi surat jalan
-    -- (`doId`) dilewati — barangnya sudah terhitung lewat DO di atas, dan
-    -- menghitung keduanya berarti satu kiriman masuk gudang dua kali.
+    -- Pembelian material dari nota — termasuk yang dimasukkan lewat chat AI
+    -- tanpa PO sama sekali. Surat jalan maupun PO TIDAK disyaratkan di sini;
+    -- inilah satu-satunya jalan bagi barang yang dibeli langsung di toko.
+    --
+    -- Entri yang sudah menjadi surat jalan (`doId`) dilewati — barangnya sudah
+    -- terhitung lewat DO di atas, dan menghitung keduanya berarti satu kiriman
+    -- masuk gudang dua kali.
     execute $q$
       select coalesce(jsonb_agg(jsonb_build_object(
                'nama',   coalesce(nullif(trim(e->>'namaMaterial'), ''), trim(e->>'keterangan')),
@@ -120,7 +134,7 @@ begin
         from cost_projects c
         cross join lateral jsonb_array_elements(coalesce(c.data->'realisasiEntries', '[]'::jsonb)) e
        where c.user_id = $1
-         and lower(trim(coalesce(c.data->'info'->>'projectName', ''))) = $2
+         and ($2 = '' or lower(trim(coalesce(c.data->'info'->>'projectName', ''))) = $2)
          and e->>'tipe' = 'material'
          and coalesce(e->>'doId', '') = ''
          and coalesce(nullif(trim(e->>'namaMaterial'), ''), trim(e->>'keterangan')) <> ''
@@ -128,7 +142,10 @@ begin
   end if;
 
   -- Penyesuaian manual. Qty bertanda: positif menambah, negatif mengurangi.
-  if array_length(v_proj_ids, 1) > 0 and to_regclass('public.akuntan_data') is not null then
+  -- Penyesuaian lama bisa saja tidak punya projectId sama sekali; yang seperti
+  -- itu ikut terbawa, karena membuangnya berarti stok yang sudah dikoreksi
+  -- manusia justru hilang dari lapangan.
+  if to_regclass('public.akuntan_data') is not null then
     execute $q$
       select coalesce(jsonb_agg(jsonb_build_object(
                'nama',   trim(a->>'nama'),
@@ -137,9 +154,9 @@ begin
         from akuntan_data d
         cross join lateral jsonb_array_elements(coalesce(d.data->'inventoryAdjustments', '[]'::jsonb)) a
        where d.user_id = $1
-         and coalesce(a->>'projectId', '') = any($2)
+         and ($3 = '' or coalesce(a->>'projectId', '') = '' or coalesce(a->>'projectId', '') = any($2))
          and trim(coalesce(a->>'nama', '')) <> ''
-    $q$ into v_sesuai using v_user, v_proj_ids;
+    $q$ into v_sesuai using v_user, v_proj_ids, v_proj;
   end if;
 
   return query select
