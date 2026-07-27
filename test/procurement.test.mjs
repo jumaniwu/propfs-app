@@ -3,6 +3,7 @@
 import {
   nomorPo, hitungTotalPo, sisaQty, belumTerpesan, bolehKirimPo,
   statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm,
+  qtyDalamPoTertunda, sisaQtyEfektif, menungguTandaTanganPo, STATUS_PO_BELUM_TERCATAT,
   katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
   milikWorkspace, profilAwal, PROFIL_VENDOR_KOSONG,
   LABEL_STATUS_PO, LABEL_TERM,
@@ -297,5 +298,71 @@ assert(profilAwal({ term: 'term', term_hari: '30' }).term_hari === 30, 'term_har
 assert(profilAwal({ term: 'term', term_hari: 30 }).term === 'term', 'term tempo dipertahankan')
 assert(profilAwal({ term_hari: -5 }).term_hari === 0, 'term_hari negatif tidak diteruskan')
 assert(profilAwal({ term_hari: 14.7 }).term_hari === 14, 'term_hari pecahan dipotong')
+
+// ── Request yang sudah masuk PO tapi PO-nya belum dikirim ──────────────────
+// Server hanya menambah qty_dipesan saat PO DIKIRIM. Tanpa penyesuaian ini,
+// request yang PO-nya sudah dibuat tetap muncul sebagai "siap dipesan" dan
+// pengguna diminta membuat PO untuk sesuatu yang PO-nya sudah ada.
+const poItem = (request_id, qty) => ({ request_id, nama: 'X', satuan: 'sak', qty, harga: 1, subtotal: qty })
+
+assert(STATUS_PO_BELUM_TERCATAT.includes('draft'), 'draft belum tercatat di qty_dipesan')
+assert(STATUS_PO_BELUM_TERCATAT.includes('menunggu_approval'), 'menunggu approval belum tercatat')
+assert(STATUS_PO_BELUM_TERCATAT.includes('disetujui'), 'disetujui tapi belum dikirim belum tercatat')
+assert(!STATUS_PO_BELUM_TERCATAT.includes('terkirim'), 'terkirim TIDAK dihitung ulang')
+assert(!STATUS_PO_BELUM_TERCATAT.includes('selesai'), 'selesai TIDAK dihitung ulang')
+assert(!STATUS_PO_BELUM_TERCATAT.includes('ditolak'), 'PO ditolak tidak menahan request')
+
+const reqA = { id: 'ra', status: 'disetujui', qty: 300, qty_dipesan: 0 }
+const reqB = { id: 'rb', status: 'disetujui', qty: 300, qty_dipesan: 100 }
+
+assert(qtyDalamPoTertunda('ra', [{ status: 'draft', items: [poItem('ra', 120)] }]) === 120,
+  'qty pada PO draf dihitung')
+assert(qtyDalamPoTertunda('ra', [{ status: 'terkirim', items: [poItem('ra', 120)] }]) === 0,
+  'PO terkirim tidak dihitung — sudah masuk qty_dipesan')
+assert(qtyDalamPoTertunda('ra', [{ status: 'ditolak', items: [poItem('ra', 120)] }]) === 0,
+  'PO ditolak tidak dihitung')
+assert(qtyDalamPoTertunda('ra', [
+  { status: 'draft', items: [poItem('ra', 100)] },
+  { status: 'menunggu_approval', items: [poItem('ra', 50), poItem('rb', 70)] },
+]) === 150, 'qty dari beberapa PO tertunda dijumlah')
+assert(qtyDalamPoTertunda('ra', []) === 0, 'tanpa PO hasilnya nol')
+assert(qtyDalamPoTertunda('', [{ status: 'draft', items: [poItem('', 100)] }]) === 0,
+  'baris PO tanpa request_id tidak dihitung')
+assert(qtyDalamPoTertunda('ra', [{ status: 'draft' }]) === 0, 'PO tanpa items aman')
+assert(qtyDalamPoTertunda('ra', [{ status: 'draft', items: [poItem('ra', -50)] }]) === 0,
+  'qty negatif diabaikan')
+
+// sisaQtyEfektif
+assert(sisaQtyEfektif(reqA, []) === 300, 'tanpa PO, sisa = qty')
+assert(sisaQtyEfektif(reqA, [{ status: 'draft', items: [poItem('ra', 120)] }]) === 180,
+  'sisa dikurangi qty yang sudah masuk PO draf')
+assert(sisaQtyEfektif(reqA, [{ status: 'draft', items: [poItem('ra', 300)] }]) === 0,
+  'seluruh qty masuk PO draf = tidak ada lagi yang perlu dipesan')
+assert(sisaQtyEfektif(reqA, [{ status: 'draft', items: [poItem('ra', 999)] }]) === 0,
+  'PO melebihi qty tidak membuat sisa negatif')
+assert(sisaQtyEfektif(reqB, [{ status: 'draft', items: [poItem('rb', 200)] }]) === 0,
+  'qty_dipesan dan PO draf dijumlah bersama')
+
+// belumTerpesan — inilah yang mengendalikan tombol "Buat PO" di Beranda
+const semua = [reqA, reqB]
+assert(belumTerpesan(semua, []).length === 2, 'tanpa PO, keduanya siap dipesan')
+assert(belumTerpesan(semua, [{ status: 'draft', items: [poItem('ra', 300), poItem('rb', 200)] }]).length === 0,
+  'setelah PO dibuat, tidak ada lagi yang "siap dipesan"')
+assert(belumTerpesan(semua, [{ status: 'draft', items: [poItem('ra', 100)] }]).map(r => r.id).join(',') === 'ra,rb',
+  'PO sebagian: request tetap muncul karena masih ada sisa')
+assert(belumTerpesan(semua, [{ status: 'ditolak', items: [poItem('ra', 300), poItem('rb', 200)] }]).length === 2,
+  'PO ditolak mengembalikan request ke daftar siap dipesan')
+assert(belumTerpesan(semua).length === 2, 'tanpa argumen PO, perilakunya seperti semula')
+
+// menungguTandaTanganPo — supaya requestnya tidak sekadar hilang tanpa kabar
+const tertunda = menungguTandaTanganPo(semua, [{ status: 'draft', items: [poItem('ra', 300), poItem('rb', 200)] }])
+assert(tertunda.map(r => r.id).join(',') === 'ra,rb', 'keduanya menunggu tanda tangan PO')
+assert(menungguTandaTanganPo(semua, []).length === 0, 'tanpa PO tidak ada yang menunggu tanda tangan')
+assert(menungguTandaTanganPo(semua, [{ status: 'draft', items: [poItem('ra', 100)] }]).length === 0,
+  'PO sebagian belum berarti menunggu tanda tangan — masih ada yang harus dipesan')
+assert(menungguTandaTanganPo(
+  [{ id: 'rc', status: 'disetujui', qty: 300, qty_dipesan: 300 }],
+  [{ status: 'draft', items: [] }],
+).length === 0, 'request yang sudah penuh terkirim tidak dihitung menunggu tanda tangan')
 
 console.log(`✅ procurement: ${ok} assertion lolos`)

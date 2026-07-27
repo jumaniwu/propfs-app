@@ -239,10 +239,75 @@ export function sisaQty(r: Pick<MaterialRequest, 'qty'> & { qty_dipesan?: number
  * Yang masih menunggu, ditolak, atau sudah penuh terpesan tidak ikut —
  * pemesanan hanya boleh lahir dari permintaan yang sudah lewat approval.
  */
-export function belumTerpesan<T extends Pick<MaterialRequest, 'status' | 'qty'> & { qty_dipesan?: number }>(
+/**
+ * Status PO yang qty-nya BELUM tercatat pada material_requests.qty_dipesan.
+ *
+ * Server hanya menambah qty_dipesan saat PO dikirim (po_tandai_terkirim),
+ * dalam satu transaksi bersama pemeriksaan tanda tangan. Sengaja: PO yang
+ * belum ditandatangani bisa saja ditolak atau dihapus, dan requestnya harus
+ * kembali bisa dipesan.
+ *
+ * Akibatnya, request yang sudah dimasukkan ke PO draf masih terlihat "belum
+ * dipesan" bila hanya melihat qty_dipesan — dan pengguna terus diminta membuat
+ * PO untuk request yang PO-nya sudah ada. Nilai di bawah ini yang dipakai
+ * menjembataninya di sisi klien.
+ *
+ * 'ditolak' tidak ikut: PO yang ditolak tidak menahan request apa pun.
+ * 'terkirim'/'selesai' juga tidak, karena sudah masuk qty_dipesan — kalau ikut
+ * dihitung, qty-nya terhitung dua kali.
+ */
+export const STATUS_PO_BELUM_TERCATAT: StatusPo[] = ['draft', 'menunggu_approval', 'disetujui']
+
+type PoUntukHitung = Pick<PurchaseOrder, 'status'> & { items?: Array<Partial<PoItem>> }
+
+/** Qty sebuah request yang sudah masuk PO tapi PO-nya belum dikirim. */
+export function qtyDalamPoTertunda(requestId: string, pos: PoUntukHitung[] = []): number {
+  if (!requestId) return 0
+  let total = 0
+  for (const po of pos ?? []) {
+    if (!STATUS_PO_BELUM_TERCATAT.includes(po?.status)) continue
+    for (const it of po?.items ?? []) {
+      if (it?.request_id === requestId) total += Math.max(0, Number(it.qty) || 0)
+    }
+  }
+  return total
+}
+
+/**
+ * Sisa yang benar-benar masih perlu dipesan: qty dikurangi yang sudah dikirim
+ * DAN yang sudah menunggu tanda tangan di PO.
+ */
+export function sisaQtyEfektif(
+  r: Pick<MaterialRequest, 'id' | 'qty'> & { qty_dipesan?: number },
+  pos: PoUntukHitung[] = [],
+): number {
+  return Math.max(0, sisaQty(r) - qtyDalamPoTertunda(r.id, pos))
+}
+
+/**
+ * Request yang siap dibuatkan PO. `pos` boleh dikosongkan bila pemanggilnya
+ * memang belum memuat daftar PO; hasilnya lalu sama seperti sebelumnya.
+ */
+export function belumTerpesan<T extends Pick<MaterialRequest, 'id' | 'status' | 'qty'> & { qty_dipesan?: number }>(
   requests: T[],
+  pos: PoUntukHitung[] = [],
 ): T[] {
-  return (requests ?? []).filter(r => r.status === 'disetujui' && sisaQty(r) > 0)
+  return (requests ?? []).filter(r => r.status === 'disetujui' && sisaQtyEfektif(r, pos) > 0)
+}
+
+/**
+ * Request disetujui yang seluruh sisanya sudah masuk PO tapi PO-nya belum
+ * dikirim. Dipakai untuk memberi tahu pengguna bahwa langkah berikutnya adalah
+ * menandatangani PO, bukan membuat PO baru.
+ */
+export function menungguTandaTanganPo<T extends Pick<MaterialRequest, 'id' | 'status' | 'qty'> & { qty_dipesan?: number }>(
+  requests: T[],
+  pos: PoUntukHitung[] = [],
+): T[] {
+  return (requests ?? []).filter(r =>
+    r.status === 'disetujui'
+    && sisaQty(r) > 0
+    && sisaQtyEfektif(r, pos) === 0)
 }
 
 /**

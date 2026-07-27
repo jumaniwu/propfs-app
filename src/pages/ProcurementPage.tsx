@@ -92,7 +92,7 @@ export default function ProcurementPage() {
 
   const vendorAktif = useMemo(() => vendors.filter(v => v.status === 'aktif'), [vendors])
   const perluVerifikasi = useMemo(() => vendors.filter(v => v.status === 'baru').length, [vendors])
-  const siapDipesan = useMemo(() => belumTerpesan(requests), [requests])
+  const siapDipesan = useMemo(() => belumTerpesan(requests, pos), [requests, pos])
 
   const TAB: Array<[Sub, string, JSX.Element, number]> = [
     ['vendor', 'Vendor', <Store key="i" className="w-4 h-4" />, perluVerifikasi],
