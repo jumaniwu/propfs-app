@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Scale, TrendingUp, PackageOpen, ClipboardList, Download,
-  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send,
+  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -30,13 +30,20 @@ import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkAp
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
 import { useAuthStore } from '@/store/authStore'
+import TabHutangPo from '@/components/cost/TabHutangPo'
+import { procurementApi } from '@/lib/procurementApi'
+import { penerimaanApi } from '@/lib/penerimaanApi'
+import { roleSaatIni, teamApi, type Workspace } from '@/lib/teamApi'
+import { can } from '@/lib/teamRoles'
+import type { DeliveryOrder, PoPayment } from '@/lib/penerimaan'
+import type { PurchaseOrder } from '@/lib/procurement'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 const fmtJt = (n: number) => `Rp ${(n / 1_000_000).toFixed(2)} Jt`
 
-type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname'
+type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname' | 'hutang'
 
-const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname']
+const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname', 'hutang']
 /** Nilai dropdown lingkup untuk "semua proyek". */
 const KONSOLIDASI = '__konsolidasi__'
 
@@ -57,6 +64,31 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   // tarik data akuntan dari cloud sekali saat tab dibuka (sinkron antar perangkat)
   useEffect(() => { void useAkuntanStore.getState().loadFromCloud() }, [])
   const [opnames, setOpnames] = useState<OpnameDoc[]>([])
+  // Hutang ke vendor: PO + penerimaan barang + pembayaran. Dimuat hanya saat
+  // sub-tabnya dibuka supaya tab Akuntan lain tidak ikut menunggu jaringan.
+  const [pos, setPos] = useState<PurchaseOrder[]>([])
+  const [dos, setDos] = useState<DeliveryOrder[]>([])
+  const [bayarPo, setBayarPo] = useState<PoPayment[]>([])
+  const [hutangMuat, setHutangMuat] = useState(false)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+  const bolehBayar = can(roleSaatIni(workspaces), 'akuntan', 'tulis')
+
+  async function muatHutang() {
+    setHutangMuat(true)
+    try {
+      const [p, d, b] = await Promise.all([
+        procurementApi().listPo().catch(() => [] as PurchaseOrder[]),
+        penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
+        penerimaanApi().listBayar().catch(() => [] as PoPayment[]),
+      ])
+      setPos(p); setDos(d); setBayarPo(b)
+    } finally { setHutangMuat(false) }
+  }
+  useEffect(() => {
+    if (sub !== 'hutang') return
+    void muatHutang()
+    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+  }, [sub]) // eslint-disable-line react-hooks/exhaustive-deps
   const [opnameLoading, setOpnameLoading] = useState(false)
   const [opnameError, setOpnameError] = useState('')
 
@@ -227,6 +259,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
           ['pemasukan', 'Pemasukan', <TrendingUp key="i" className="w-3.5 h-3.5" />],
           ['inventori', 'Inventori', <PackageOpen key="i" className="w-3.5 h-3.5" />],
           ['opname', 'Opname', <ClipboardList key="i" className="w-3.5 h-3.5" />],
+          ['hutang', 'Hutang Vendor (PO)', <Wallet key="i" className="w-3.5 h-3.5" />],
         ] as Array<[SubTab, string, JSX.Element]>).map(([key, label, icon]) => (
           <button key={key} onClick={() => setSub(key)}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${
@@ -236,6 +269,11 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
         ))}
       </div>
 
+      {sub === 'hutang' && (
+        hutangMuat
+          ? <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          : <TabHutangPo pos={pos} dos={dos} bayar={bayarPo} bolehUbah={bolehBayar} onUbah={muatHutang} />
+      )}
       {sub === 'labarugi' && <SubLabaRugi labaRugi={labaRugi} neraca={neraca} />}
       {sub === 'pemasukan' && (
         <SubPemasukan
