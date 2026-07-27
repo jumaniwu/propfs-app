@@ -23,9 +23,10 @@ import { useAkuntanStore } from '@/store/akuntanStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname, saringLingkup,
-  PROYEK_UMUM, LABEL_PROYEK_UMUM,
+  penerimaanInventori, PROYEK_UMUM, LABEL_PROYEK_UMUM,
   type PemasukanEntry, type OpnameItem, type LingkupAkuntan,
 } from '@/lib/akuntan'
+import { materialApi, type MaterialUsage } from '@/lib/materialApi'
 import { spkApi, opnameFillLink, type OpnameDoc, type SpkDoc } from '@/lib/spkApi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
@@ -64,11 +65,14 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   // tarik data akuntan dari cloud sekali saat tab dibuka (sinkron antar perangkat)
   useEffect(() => { void useAkuntanStore.getState().loadFromCloud() }, [])
   const [opnames, setOpnames] = useState<OpnameDoc[]>([])
-  // Hutang ke vendor: PO + penerimaan barang + pembayaran. Dimuat hanya saat
-  // sub-tabnya dibuka supaya tab Akuntan lain tidak ikut menunggu jaringan.
+  // PO + penerimaan barang + pembayaran. Dipakai dua sub-tab: Hutang untuk
+  // menagih, Inventori untuk mengisi stok dari barang yang sudah datang.
+  // Dimuat hanya saat salah satunya dibuka supaya sub-tab lain tidak ikut
+  // menunggu jaringan.
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [dos, setDos] = useState<DeliveryOrder[]>([])
   const [bayarPo, setBayarPo] = useState<PoPayment[]>([])
+  const [pemakaian, setPemakaian] = useState<MaterialUsage[]>([])
   const [hutangMuat, setHutangMuat] = useState(false)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const bolehBayar = can(roleSaatIni(workspaces), 'akuntan', 'tulis')
@@ -76,16 +80,17 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   async function muatHutang() {
     setHutangMuat(true)
     try {
-      const [p, d, b] = await Promise.all([
+      const [p, d, b, u] = await Promise.all([
         procurementApi().listPo().catch(() => [] as PurchaseOrder[]),
         penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
         penerimaanApi().listBayar().catch(() => [] as PoPayment[]),
+        materialApi().listUsage().catch(() => [] as MaterialUsage[]),
       ])
-      setPos(p); setDos(d); setBayarPo(b)
+      setPos(p); setDos(d); setBayarPo(b); setPemakaian(u)
     } finally { setHutangMuat(false) }
   }
   useEffect(() => {
-    if (sub !== 'hutang') return
+    if (sub !== 'hutang' && sub !== 'inventori') return
     void muatHutang()
     teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
   }, [sub]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -121,7 +126,35 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
   )
 
   const labaRugi = useMemo(() => hitungLabaRugi(pemasukanLingkup, pengeluaran), [pemasukanLingkup, pengeluaran])
-  const inventori = useMemo(() => hitungInventori(pengeluaran, adjustmentsLingkup), [pengeluaran, adjustmentsLingkup])
+  /**
+   * Nama proyek yang sedang dilihat. PO, surat jalan, dan pemakaian lapangan
+   * dikenali lewat NAMA proyek, bukan id-nya — ketiganya lahir dari sisi
+   * lapangan yang tidak mengenal id proyek di cost store. Konsolidasi memakai
+   * string kosong, yang berarti "semua proyek".
+   */
+  const namaProyekLingkup = useMemo(() => {
+    if (konsolidasi) return ''
+    if (lingkupId === projectInfo?.id) return projectInfo?.projectName ?? ''
+    return daftarProyek.find(p => p.info.id === lingkupId)?.info.projectName ?? ''
+  }, [konsolidasi, lingkupId, projectInfo?.id, projectInfo?.projectName, daftarProyek])
+
+  // Barang yang surat jalannya sudah dikonfirmasi langsung menjadi stok, dan
+  // pemakaian yang dicatat tukang langsung menguranginya.
+  const penerimaanLingkup = useMemo(
+    () => penerimaanInventori(dos, pos, namaProyekLingkup),
+    [dos, pos, namaProyekLingkup],
+  )
+  const pemakaianLingkup = useMemo(() => {
+    const cocok = (a: string) => a.trim().toLowerCase() === namaProyekLingkup.trim().toLowerCase()
+    return pemakaian
+      .filter(u => !namaProyekLingkup || cocok(u.project_name ?? ''))
+      .map(u => ({ nama: u.nama, satuan: u.satuan, qty: u.qty }))
+  }, [pemakaian, namaProyekLingkup])
+
+  const inventori = useMemo(
+    () => hitungInventori(pengeluaran, adjustmentsLingkup, penerimaanLingkup, pemakaianLingkup),
+    [pengeluaran, adjustmentsLingkup, penerimaanLingkup, pemakaianLingkup],
+  )
   const neraca = useMemo(() => hitungNeraca(pemasukanLingkup, pengeluaran, inventori), [pemasukanLingkup, pengeluaran, inventori])
 
   const loadOpnames = () => {
@@ -291,7 +324,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
       )}
       {sub === 'inventori' && (
         <SubInventori inventori={inventori} adjustments={adjustmentsLingkup}
-          onAdd={addAdjustment} onDelete={deleteAdjustment} />
+          onAdd={addAdjustment} onDelete={deleteAdjustment} memuat={hutangMuat} />
       )}
       {sub === 'opname' && (
         <SubOpname opnames={opnames} loading={opnameLoading} error={opnameError}
@@ -504,24 +537,29 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, onAdd, onDelete, o
 }
 
 // ── Sub: Inventori ──────────────────────────────────────────────────────────
-function SubInventori({ inventori, adjustments, onAdd, onDelete }: {
+function SubInventori({ inventori, adjustments, onAdd, onDelete, memuat }: {
   inventori: ReturnType<typeof hitungInventori>
   adjustments: ReturnType<typeof useAkuntanStore.getState>['inventoryAdjustments']
   onAdd: (a: Omit<(typeof adjustments)[number], 'id'>) => void
   onDelete: (id: string) => void
+  memuat: boolean
 }) {
   const [nama, setNama] = useState('')
   const [satuan, setSatuan] = useState('pcs')
   const [qty, setQty] = useState(0)
   const [arah, setArah] = useState<'keluar' | 'masuk'>('keluar')
   const totalNilai = inventori.reduce((s, r) => s + r.nilai, 0)
+  const dobel = inventori.filter(r => r.mungkinDobel)
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-3xl border border-border p-5 space-y-3">
         <h3 className="font-bold text-navy text-sm">Penyesuaian Stok (pemakaian / koreksi)</h3>
         <p className="text-[11px] text-muted-foreground">
-          Stok <b>masuk</b> otomatis dari pembelian material di Realisasi Biaya. Catat pemakaian di lapangan sebagai <b>keluar</b>.
+          Stok <b>masuk</b> otomatis dari penerimaan barang (surat jalan yang sudah
+          dikonfirmasi di Procurement) dan dari pembelian material di Realisasi Biaya.
+          Stok <b>keluar</b> otomatis dari pemakaian yang dicatat tukang lewat link
+          laporan. Formulir ini hanya untuk koreksi manual.
         </p>
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
           <div className="space-y-1 lg:col-span-2">
@@ -578,9 +616,19 @@ function SubInventori({ inventori, adjustments, onAdd, onDelete }: {
           <h3 className="font-bold text-navy text-sm">Data Inventori ({inventori.length} material)</h3>
           <span className="text-sm font-black text-navy">Nilai stok: {fmt(totalNilai)}</span>
         </div>
+        {dobel.length > 0 && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+            <b>Periksa {dobel.length} material berikut:</b> {dobel.map(r => r.nama).join(', ')}. Barangnya
+            tercatat dua kali — dari nota pembelian <i>dan</i> dari surat jalan. Kalau itu
+            pembelian yang sama, hapus salah satunya supaya stok tidak dihitung ganda.
+          </p>
+        )}
+
         {inventori.length === 0 ? (
           <p className="text-xs text-muted-foreground py-6 text-center">
-            Belum ada data. Catat pembelian material lewat tab Realisasi Biaya.
+            {memuat
+              ? 'Memuat penerimaan barang & pemakaian lapangan…'
+              : 'Belum ada data. Stok terisi dari penerimaan barang di Procurement atau pembelian material di Realisasi Biaya.'}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border max-h-[55vh] overflow-y-auto overscroll-contain">
@@ -588,6 +636,7 @@ function SubInventori({ inventori, adjustments, onAdd, onDelete }: {
               <thead className="bg-navy text-white sticky top-0">
                 <tr>
                   <th className="px-3 py-2 text-left">Material</th>
+                  <th className="px-3 py-2 text-left">Sumber</th>
                   <th className="px-3 py-2 text-right">Masuk</th>
                   <th className="px-3 py-2 text-right">Keluar</th>
                   <th className="px-3 py-2 text-right">Stok</th>
@@ -598,6 +647,32 @@ function SubInventori({ inventori, adjustments, onAdd, onDelete }: {
                 {inventori.map((r, i) => (
                   <tr key={r.nama} className={i % 2 ? 'bg-slate-50' : ''}>
                     <td className="px-3 py-2 font-semibold text-navy">{r.nama} <span className="text-muted-foreground">({r.satuan})</span></td>
+                    {/* Asal angkanya ditunjukkan supaya selisih bisa ditelusuri
+                        tanpa harus membuka Procurement satu per satu. */}
+                    <td className="px-3 py-2">
+                      <span className="inline-flex flex-wrap gap-1">
+                        {r.dariPenerimaan > 0 && (
+                          <span className="rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                            Surat jalan {r.dariPenerimaan.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                        {r.dariPembelian > 0 && (
+                          <span className="rounded-full bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                            Nota {r.dariPembelian.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                        {r.dariLapangan > 0 && (
+                          <span className="rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                            Dipakai {r.dariLapangan.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                        {r.dariPenyesuaian !== 0 && (
+                          <span className="rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap">
+                            Koreksi {r.dariPenyesuaian > 0 ? '+' : ''}{r.dariPenyesuaian.toLocaleString('id-ID')}
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-right">{r.masuk.toLocaleString('id-ID')}</td>
                     <td className="px-3 py-2 text-right">{r.keluar.toLocaleString('id-ID')}</td>
                     <td className={`px-3 py-2 text-right font-bold ${r.stok < 0 ? 'text-red-600' : ''}`}>{r.stok.toLocaleString('id-ID')}</td>

@@ -1,5 +1,5 @@
 // Test logika Modul Akuntan (laba rugi, inventori, neraca, opname).
-import { hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname } from '../src/lib/akuntan.ts'
+import { hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname, penerimaanInventori } from '../src/lib/akuntan.ts'
 
 let ok = 0
 const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
@@ -74,3 +74,88 @@ const { mergeNewest, unionById } = await import('../src/lib/cloudSync.ts')
   assert(u.length === 2 && u.find(x => x.id === '1').v === 'a', 'union: lokal menang, unik ditambah')
 }
 console.log('cloudSync: lulus')
+
+// ── Penerimaan barang (DO) & pemakaian lapangan masuk ke inventori ─────────
+// Barang yang dikonfirmasi diterima harus langsung tercatat sebagai stok,
+// bukan menunggu seseorang mencatat notanya lagi secara manual.
+{
+  const inv = hitungInventori([], [],
+    [{ nama: 'Besi Beton 12mm', satuan: 'Batang', qty: 50, harga: 120_000 }],
+    [])
+  assert(inv.length === 1, 'DO membuat baris inventori baru')
+  assert(inv[0].masuk === 50 && inv[0].stok === 50, 'qty DO jadi stok')
+  assert(inv[0].dariPenerimaan === 50, 'sumbernya tercatat sebagai penerimaan')
+  assert(inv[0].hargaRata === 120_000, 'harga satuan diambil dari PO')
+  assert(inv[0].nilai === 6_000_000, 'nilai stok = qty x harga PO')
+  assert(inv[0].satuan === 'Batang', 'satuan ikut dari surat jalan')
+  assert(inv[0].mungkinDobel === false, 'satu sumber saja tidak ditandai dobel')
+}
+
+// Pemakaian di lapangan mengurangi stok — kolom Keluar akhirnya berarti.
+{
+  const inv = hitungInventori([], [],
+    [{ nama: 'Semen', satuan: 'sak', qty: 100, harga: 60_000 }],
+    [{ nama: 'semen', satuan: 'sak', qty: 30 }])
+  assert(inv.length === 1, 'nama beda huruf besar-kecil tetap satu baris')
+  assert(inv[0].keluar === 30 && inv[0].dariLapangan === 30, 'pemakaian jadi keluar')
+  assert(inv[0].stok === 70, 'stok = masuk - pemakaian')
+  assert(inv[0].nilai === 70 * 60_000, 'nilai mengikuti sisa stok')
+}
+
+// Nota pembelian + surat jalan untuk barang yang sama tidak dijumlah diam-diam.
+{
+  const inv = hitungInventori(
+    [{ id: 'a', tipe: 'material', tanggal: '2026-07-01', namaMaterial: 'Triplek', volume: 30, satuan: 'lbr', jumlah: 4_500_000 }],
+    [],
+    [{ nama: 'Triplek', satuan: 'lbr', qty: 30, harga: 150_000 }], [])
+  assert(inv[0].mungkinDobel === true, 'dua sumber untuk satu barang ditandai')
+  assert(inv[0].dariPembelian === 30 && inv[0].dariPenerimaan === 30, 'kedua sumber tetap terlihat terpisah')
+}
+
+// Penyesuaian manual tanpa harga tidak boleh menaikkan nilai persediaan.
+{
+  const inv = hitungInventori([], [{ id: 'x', tanggal: '2026-07-01', nama: 'Paku', satuan: 'kg', qty: 10 }],
+    [{ nama: 'Paku', satuan: 'kg', qty: 90, harga: 20_000 }], [])
+  assert(inv[0].masuk === 100 && inv[0].dariPenyesuaian === 10, 'penyesuaian ikut menambah masuk')
+  assert(inv[0].nilai === 90 * 20_000, 'nilai tetap sebesar yang benar-benar dibeli')
+}
+
+// Masukan cacat tidak merusak tabel.
+{
+  const inv = hitungInventori([], [],
+    [{ nama: '  ', qty: 5 }, { nama: 'A', qty: -5 }, { nama: 'B', qty: 3 }],
+    [{ nama: 'B', qty: NaN }])
+  assert(inv.length === 2, 'baris tanpa nama diabaikan')
+  assert(inv.find(r => r.nama === 'A').masuk === 0, 'qty negatif diabaikan')
+  assert(inv.find(r => r.nama === 'B').keluar === 0, 'qty NaN diabaikan')
+}
+
+// ── penerimaanInventori: rakit DO + PO jadi baris siap hitung ──────────────
+{
+  const pos = [
+    { id: 'po1', project_name: 'Griya Asri', items: [{ nama: 'Besi 12mm', satuan: 'btg', harga: 120_000 }] },
+    { id: 'po2', project_name: 'Proyek Lain', items: [{ nama: 'Semen', satuan: 'sak', harga: 60_000 }] },
+  ]
+  const dos = [
+    { po_id: 'po1', items: [{ nama: 'Besi 12mm', satuan: 'btg', qty: 50 }] },
+    { po_id: 'po2', items: [{ nama: 'Semen', satuan: 'sak', qty: 100 }] },
+    { po_id: 'hilang', items: [{ nama: 'Entah', qty: 1 }] },
+  ]
+  const satu = penerimaanInventori(dos, pos, 'Griya Asri')
+  assert(satu.length === 1, 'hanya DO milik proyek yang diminta')
+  assert(satu[0].harga === 120_000, 'harga satuan diambil dari item PO yang namanya cocok')
+  assert(satu[0].qty === 50 && satu[0].satuan === 'btg', 'qty dari DO, satuan ikut terbawa')
+
+  assert(penerimaanInventori(dos, pos, '').length === 2,
+    'tanpa nama proyek: konsolidasi semua proyek, DO tanpa PO tetap dibuang')
+  assert(penerimaanInventori(dos, pos, 'griya asri').length === 1, 'nama proyek tidak peka huruf besar')
+
+  const tanpaHarga = penerimaanInventori(
+    [{ po_id: 'po1', items: [{ nama: 'Barang Tak Dipesan', qty: 2 }] }], pos, 'Griya Asri')
+  assert(tanpaHarga[0].harga === 0, 'barang di luar daftar PO masuk tanpa nilai, bukan menebak harga')
+
+  assert(penerimaanInventori([], [], '').length === 0, 'data kosong aman')
+  assert(penerimaanInventori([{ po_id: 'po1' }], pos, 'Griya Asri').length === 0, 'DO tanpa items aman')
+}
+
+console.log(`akuntan-inventori: ${ok} assert lulus (kumulatif)`)

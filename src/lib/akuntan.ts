@@ -42,6 +42,22 @@ export function saringLingkup<T extends { projectId?: string }>(rows: T[], lingk
   return rows.filter(r => (r.projectId || PROYEK_UMUM) === lingkup.projectId)
 }
 
+/** Satu baris barang pada surat jalan yang sudah dikonfirmasi diterima. */
+export interface PenerimaanBarang {
+  nama: string
+  satuan?: string
+  qty: number
+  /** Harga satuan dari PO-nya. Tanpa ini barangnya masuk stok tanpa nilai. */
+  harga?: number
+}
+
+/** Pemakaian material di lapangan — inilah yang mengeluarkan barang dari stok. */
+export interface PemakaianBarang {
+  nama: string
+  satuan?: string
+  qty: number
+}
+
 export interface InventoryRow {
   nama: string
   satuan: string
@@ -50,6 +66,18 @@ export interface InventoryRow {
   stok: number
   hargaRata: number
   nilai: number
+  /** Dari mana `masuk` berasal — supaya angkanya bisa ditelusuri, bukan cuma dipercaya. */
+  dariPembelian: number
+  dariPenerimaan: number
+  dariPenyesuaian: number
+  /** Bagian `keluar` yang datang dari catatan pemakaian lapangan. */
+  dariLapangan: number
+  /**
+   * Nota pembelian dan surat jalan bisa menyebut barang yang sama, dan sistem
+   * tidak punya cara memastikan keduanya bukan satu kejadian yang sama. Tanda
+   * ini menyerahkan penilaiannya ke manusia, bukan diam-diam menjumlah dua kali.
+   */
+  mungkinDobel: boolean
 }
 
 export interface LabaRugi {
@@ -119,38 +147,128 @@ export function hitungLabaRugi(pemasukan: PemasukanEntry[], pengeluaran: Realisa
   }
 }
 
-/** Inventori: pembelian material (masuk) + penyesuaian manual (+/-). */
-export function hitungInventori(pengeluaran: RealisasiEntry[], adjustments: InventoryAdjustment[]): InventoryRow[] {
-  const rows = new Map<string, InventoryRow & { nilaiBeli: number }>()
+/**
+ * Inventori: pembelian material dari nota (masuk), penerimaan barang dari
+ * surat jalan yang sudah dikonfirmasi (masuk), pemakaian di lapangan (keluar),
+ * dan penyesuaian manual (+/-).
+ *
+ * Penerimaan sengaja masuk sebagai sumber tersendiri, bukan disamakan dengan
+ * pembelian: barang yang sudah dipesan belum tentu sudah datang, dan yang
+ * mengubah stok adalah kedatangannya. Nilainya diambil dari harga PO supaya
+ * persediaan di neraca tidak menjadi nol rupiah.
+ */
+export function hitungInventori(
+  pengeluaran: RealisasiEntry[],
+  adjustments: InventoryAdjustment[],
+  penerimaan: PenerimaanBarang[] = [],
+  pemakaian: PemakaianBarang[] = [],
+): InventoryRow[] {
+  type Baris = InventoryRow & { nilaiBeli: number }
+  const rows = new Map<string, Baris>()
   const keyOf = (nama: string) => nama.trim().toLowerCase()
+  const angka = (n: unknown) => Math.max(0, Number(n) || 0)
+
+  const ambil = (nama: string, satuan?: string): Baris | null => {
+    const bersih = (nama ?? '').trim()
+    if (!bersih) return null
+    const k = keyOf(bersih)
+    const cur = rows.get(k) ?? {
+      nama: bersih, satuan: satuan || '-',
+      masuk: 0, keluar: 0, stok: 0, hargaRata: 0, nilai: 0, nilaiBeli: 0,
+      dariPembelian: 0, dariPenerimaan: 0, dariPenyesuaian: 0, dariLapangan: 0,
+      mungkinDobel: false,
+    }
+    if (satuan) cur.satuan = satuan
+    rows.set(k, cur)
+    return cur
+  }
 
   for (const e of pengeluaran) {
     if (e.tipe !== 'material') continue
-    const nama = (e.namaMaterial || e.keterangan || '').trim()
-    if (!nama) continue
-    const k = keyOf(nama)
-    const cur = rows.get(k) ?? { nama, satuan: e.satuan || '-', masuk: 0, keluar: 0, stok: 0, hargaRata: 0, nilai: 0, nilaiBeli: 0 }
+    const cur = ambil((e.namaMaterial || e.keterangan || ''), e.satuan)
+    if (!cur) continue
     const qty = e.volume ?? 0
     cur.masuk += qty
+    cur.dariPembelian += qty
     cur.nilaiBeli += e.jumlah
-    if (e.satuan) cur.satuan = e.satuan
-    rows.set(k, cur)
+  }
+  for (const d of penerimaan) {
+    const cur = ambil(d?.nama ?? '', d?.satuan)
+    if (!cur) continue
+    const qty = angka(d.qty)
+    cur.masuk += qty
+    cur.dariPenerimaan += qty
+    cur.nilaiBeli += qty * angka(d.harga)
+  }
+  for (const p of pemakaian) {
+    const cur = ambil(p?.nama ?? '', p?.satuan)
+    if (!cur) continue
+    const qty = angka(p.qty)
+    cur.keluar += qty
+    cur.dariLapangan += qty
   }
   for (const a of adjustments) {
-    const k = keyOf(a.nama)
-    const cur = rows.get(k) ?? { nama: a.nama.trim(), satuan: a.satuan || '-', masuk: 0, keluar: 0, stok: 0, hargaRata: 0, nilai: 0, nilaiBeli: 0 }
+    const cur = ambil(a.nama, a.satuan)
+    if (!cur) continue
     if (a.qty >= 0) cur.masuk += a.qty
     else cur.keluar += -a.qty
-    if (a.satuan) cur.satuan = a.satuan
-    rows.set(k, cur)
+    cur.dariPenyesuaian += a.qty
   }
+
   return [...rows.values()]
-    .map(r => {
+    .map(({ nilaiBeli, ...r }) => {
       const stok = r.masuk - r.keluar
-      const hargaRata = r.masuk > 0 ? r.nilaiBeli / r.masuk : 0
-      return { nama: r.nama, satuan: r.satuan, masuk: r.masuk, keluar: r.keluar, stok, hargaRata, nilai: Math.max(0, stok) * hargaRata }
+      // Pembaginya seluruh qty masuk, termasuk yang datang tanpa harga
+      // (penyesuaian manual, atau DO yang barangnya tidak ada di PO). Barang
+      // tak berharga jadi mengencerkan rata-rata, bukan dinilai seharga
+      // pembelian — nilai persediaan di neraca tidak boleh naik karena ada
+      // barang yang justru tidak diketahui harganya.
+      const hargaRata = r.masuk > 0 ? nilaiBeli / r.masuk : 0
+      return {
+        ...r, stok, hargaRata,
+        nilai: Math.max(0, stok) * hargaRata,
+        mungkinDobel: r.dariPembelian > 0 && r.dariPenerimaan > 0,
+      }
     })
     .sort((a, b) => b.nilai - a.nilai)
+}
+
+/**
+ * Ubah surat jalan menjadi baris penerimaan siap hitung: hanya DO milik proyek
+ * yang diminta, dengan harga satuan diambil dari PO-nya sesuai nama barang.
+ *
+ * Nama proyek kosong berarti "semua proyek" (tampilan konsolidasi). Itu wajar
+ * di sini — berbeda dengan halaman publik, pemakainya memang pemilik datanya.
+ */
+export function penerimaanInventori(
+  dos: Array<{ po_id: string; items?: unknown }>,
+  pos: Array<{ id: string; project_name?: string; items?: unknown }>,
+  namaProyek = '',
+): PenerimaanBarang[] {
+  const cocok = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+  const poById = new Map(pos.map(p => [p.id, p]))
+  const hasil: PenerimaanBarang[] = []
+
+  for (const d of dos ?? []) {
+    const po = poById.get(d?.po_id ?? '')
+    // Tanpa PO-nya, asal barang tidak bisa dipastikan milik proyek yang mana.
+    if (!po) continue
+    if (namaProyek && !cocok(po.project_name ?? '', namaProyek)) continue
+
+    const itemsPo = Array.isArray(po.items) ? po.items as Array<Record<string, unknown>> : []
+    for (const it of (Array.isArray(d.items) ? d.items as Array<Record<string, unknown>> : [])) {
+      const nama = String(it?.nama ?? '').trim()
+      if (!nama) continue
+      const diPo = itemsPo.find(x => cocok(String(x?.nama ?? ''), nama))
+      hasil.push({
+        nama,
+        satuan: String(it?.satuan ?? diPo?.satuan ?? ''),
+        qty: Number(it?.qty) || 0,
+        harga: Number(diPo?.harga) || 0,
+      })
+    }
+  }
+  return hasil
 }
 
 /** Neraca sederhana: Aset (kas + persediaan) = Modal disetor + laba berjalan (non-modal). */
