@@ -2,7 +2,7 @@
 // dan perbandingan harga antar vendor.
 import {
   nomorPo, hitungTotalPo, sisaQty, belumTerpesan, bolehKirimPo,
-  statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm,
+  statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm, waEfektifPo,
   qtyDalamPoTertunda, sisaQtyEfektif, menungguTandaTanganPo, STATUS_PO_BELUM_TERCATAT,
   katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
   milikWorkspace, profilAwal, PROFIL_VENDOR_KOSONG,
@@ -81,6 +81,58 @@ assert(bolehKirimPo({ ...poSiap, vendor_wa: '' }).boleh === false, 'tanpa nomor 
 assert(bolehKirimPo({ ...poSiap, items: [] }).boleh === false, 'PO tanpa barang tidak bisa dikirim')
 assert(bolehKirimPo({ ...poSiap, status: 'terkirim' }).boleh === false, 'PO yang sudah terkirim tidak dikirim dua kali')
 assert(bolehKirimPo({ ...poSiap, status: 'ditolak' }).boleh === false, 'PO yang ditolak tidak bisa dikirim')
+
+// ── waEfektifPo: nomor WA vendor tidak boleh ikut membeku ─────────────────
+// PO menyimpan vendor_wa sebagai SALINAN. Bila PO dibuat saat vendornya belum
+// punya nomor, salinan itu kosong selamanya — dan PO jadi tak pernah bisa
+// dikirim walau nomornya sudah dilengkapi setelahnya.
+const V = [
+  { id: 'v1', nama: 'TOKO PERMATA', no_wa: '081277788899' },
+  { id: 'v2', nama: 'Global Bangunan Seraya', no_wa: '081274124901' },
+  { id: 'v3', nama: 'Tanpa Nomor', no_wa: '' },
+]
+
+assert(waEfektifPo({ vendor_id: 'v1', vendor_nama: 'TOKO PERMATA', vendor_wa: '0899' }, V) === '0899',
+  'salinan pada PO dipakai lebih dulu — dokumen terbit tidak berubah diam-diam')
+assert(waEfektifPo({ vendor_id: 'v1', vendor_nama: 'TOKO PERMATA', vendor_wa: '' }, V) === '081277788899',
+  'salinan kosong: pakai nomor vendor yang berlaku sekarang')
+assert(waEfektifPo({ vendor_id: 'v1', vendor_nama: 'X', vendor_wa: '   ' }, V) === '081277788899',
+  'salinan berisi spasi saja dianggap kosong')
+
+// PO lama bisa saja tidak menyimpan vendor_id.
+assert(waEfektifPo({ vendor_id: null, vendor_nama: 'TOKO PERMATA', vendor_wa: '' }, V) === '081277788899',
+  'tanpa vendor_id, dicocokkan lewat nama')
+assert(waEfektifPo({ vendor_id: null, vendor_nama: '  toko permata ', vendor_wa: '' }, V) === '081277788899',
+  'pencocokan nama tidak peka huruf besar & spasi tepi')
+assert(waEfektifPo({ vendor_id: 'sudah-dihapus', vendor_nama: 'TOKO PERMATA', vendor_wa: '' }, V) === '081277788899',
+  'vendor_id yang tidak ditemukan jatuh ke pencocokan nama')
+
+assert(waEfektifPo({ vendor_id: 'v3', vendor_nama: 'Tanpa Nomor', vendor_wa: '' }, V) === '',
+  'vendor yang memang belum punya nomor tetap kosong')
+assert(waEfektifPo({ vendor_id: 'v9', vendor_nama: 'Entah Siapa', vendor_wa: '' }, V) === '',
+  'vendor tidak dikenal tetap kosong')
+assert(waEfektifPo({ vendor_id: 'v1', vendor_nama: 'TOKO PERMATA', vendor_wa: '' }, []) === '',
+  'tanpa daftar vendor tetap kosong')
+assert(waEfektifPo(null, V) === '', 'PO null aman')
+assert(waEfektifPo({ vendor_id: 'v1', vendor_nama: 'X', vendor_wa: '' }, null) === '', 'vendors null aman')
+
+// Inilah gejala yang dilaporkan: PO sudah ttd + approve, vendornya sudah
+// dilengkapi nomor, tapi tombol Kirim tetap mati.
+const poTanpaSalinan = {
+  items: [{ nama: 'Semen', satuan: 'sak', qty: 1, harga: 1, subtotal: 1 }],
+  vendor_id: 'v1', vendor_nama: 'TOKO PERMATA', vendor_wa: '',
+  pembuat_signature: 'data:x', approver_signature: 'data:y', status: 'disetujui',
+}
+assert(bolehKirimPo(poTanpaSalinan).boleh === false,
+  'tanpa daftar vendor, aturannya tetap seperti semula')
+assert(bolehKirimPo(poTanpaSalinan, V).boleh === true,
+  'dengan nomor vendor terkini, PO jadi bisa dikirim')
+assert(bolehKirimPo({ ...poTanpaSalinan, vendor_id: 'v3', vendor_nama: 'Tanpa Nomor' }, V).boleh === false,
+  'vendor yang benar-benar belum punya nomor tetap tidak bisa dikirim')
+assert(/tab Vendor/i.test(bolehKirimPo({ ...poTanpaSalinan, vendor_id: 'v3', vendor_nama: 'Tanpa Nomor' }, V).alasan),
+  'alasannya menyebutkan di mana nomor itu diisi')
+assert(/Tanpa Nomor/.test(bolehKirimPo({ ...poTanpaSalinan, vendor_id: 'v3', vendor_nama: 'Tanpa Nomor' }, V).alasan),
+  'alasannya menyebut nama vendornya')
 
 // ── statusPoSetelah ────────────────────────────────────────────────────────
 assert(statusPoSetelah({ pembuat_signature: null, approver_signature: null, status: 'draft' }) === 'draft',
