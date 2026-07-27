@@ -74,4 +74,73 @@ const footerBawaanBayar = footerLaporan(PROFIL_KOSONG, 'bundle')
 assert(!footerBawaanBayar.includes(TEKS_WATERMARK),
   'berbayar tanpa profil: tetap tanpa watermark walau identitas masih PropFS')
 
+// ── Watermark: paket saja TIDAK cukup ──────────────────────────────────────
+// getPlanFor() mengembalikan 'free' pada dua keadaan yang bukan pelanggan
+// gratis: pemilik hak lewat peran, dan saat sistem langganan dimatikan.
+
+// Superadmin — dokumennya milik pengelola sistem, bukan pelanggan.
+assert(!perluWatermark({ planId: 'free', role: 'superadmin' }),
+  'superadmin tidak pernah diberi watermark walau paketnya terbaca free')
+assert(!perluWatermark({ planId: '', role: 'SuperAdmin' }),
+  'peran tidak peka huruf besar-kecil')
+assert(!perluWatermark({ planId: 'free', role: '  superadmin  ' }),
+  'spasi di tepi peran diabaikan')
+assert(perluWatermark({ planId: 'free', role: 'user' }),
+  'pengguna biasa berpaket gratis tetap diberi watermark')
+assert(perluWatermark({ planId: 'free', role: 'admin' }),
+  'admin biasa (bukan superadmin) tetap mengikuti paketnya')
+
+// Akses yang diberikan langsung ke satu pengguna.
+assert(!perluWatermark({ planId: 'free', customFeatures: { cost_control: true } }),
+  'custom_features yang memberi akses membuat dokumen bersih')
+assert(perluWatermark({ planId: 'free', customFeatures: { cost_control: false } }),
+  'custom_features bernilai false tidak memberi apa-apa')
+assert(perluWatermark({ planId: 'free', customFeatures: { fitur_lain: true } }),
+  'fitur lain tidak ikut membebaskan watermark')
+assert(!perluWatermark({ planId: 'free', customFeatures: { laporan: true }, fitur: 'laporan' }),
+  'nama fitur bisa ditentukan pemanggil')
+assert(perluWatermark({ planId: 'free', customFeatures: null }), 'customFeatures null aman')
+
+// Sistem langganan dimatikan: getPlanFor() memberi 'free' ke SEMUA orang.
+assert(!perluWatermark({ planId: 'free', sistemLanggananAktif: false }),
+  'sistem langganan mati: tidak ada paket berbayar, jadi jangan ditandai gratis')
+assert(perluWatermark({ planId: 'free', sistemLanggananAktif: true }),
+  'sistem langganan hidup: paket gratis tetap diberi watermark')
+assert(perluWatermark({ planId: 'free' }),
+  'tanpa keterangan sistem langganan, perilakunya seperti semula')
+
+// Bentuk lama (teks) harus tetap berlaku.
+assert(perluWatermark('free') && !perluWatermark('pro'), 'argumen teks tetap didukung')
+assert(perluWatermark(null) && perluWatermark(undefined), 'null/undefined dianggap gratis')
+assert(!perluWatermark({ planId: 'pro', role: 'user' }), 'paket berbayar tetap bersih')
+
+// ── Kop: profil perusahaan → nama pemilik akun → PropFS ────────────────────
+// Kontraktor perorangan tidak pernah membuka Pengaturan; tanpa cadangan ini
+// dokumen yang dikirim ke vendor tidak menyebut satu pun nama pemesan.
+const profilPT = { ...PROFIL_KOSONG, nama: 'PT Jaya Abadi', telepon: '021-555', logo: 'data:image/png;base64,x' }
+
+const kopPT = identitasLaporan(profilPT, { nama: 'Jumani' })
+assert(kopPT.nama === 'PT Jaya Abadi', 'profil perusahaan menang atas nama akun')
+assert(kopPT.sumber === 'perusahaan', 'sumbernya ditandai perusahaan')
+assert(kopPT.logo === 'data:image/png;base64,x', 'logo perusahaan ikut terbawa')
+assert(kopPT.bawaan === false, 'bukan identitas bawaan')
+
+const kopAkun = identitasLaporan(PROFIL_KOSONG, { nama: 'Jumani', telepon: '0812', email: 'j@x.id' })
+assert(kopAkun.nama === 'Jumani', 'tanpa profil PT, nama pemilik akun yang dipakai')
+assert(kopAkun.sumber === 'akun', 'sumbernya ditandai akun')
+assert(kopAkun.bawaan === false, 'nama akun bukan identitas bawaan — kop tetap dicetak')
+assert(kopAkun.kontak === '0812 · j@x.id', 'telepon & email akun jadi baris kontak')
+assert(kopAkun.logo === '', 'akun perorangan tidak punya logo')
+
+assert(identitasLaporan(PROFIL_KOSONG, { nama: 'Jumani', perusahaan: 'CV Mandiri' }).nama === 'CV Mandiri',
+  'nama perusahaan pada akun dipakai lebih dulu daripada nama orang')
+assert(identitasLaporan(PROFIL_KOSONG, { nama: '  Jumani  ' }).nama === 'Jumani', 'spasi dipangkas')
+assert(identitasLaporan(PROFIL_KOSONG, { nama: '   ' }).sumber === 'bawaan',
+  'nama akun yang hanya spasi tidak dianggap ada')
+
+const kopBawaan = identitasLaporan(PROFIL_KOSONG, null)
+assert(kopBawaan.nama === 'PropFS' && kopBawaan.bawaan === true, 'tanpa keduanya jatuh ke kop PropFS')
+assert(identitasLaporan(PROFIL_KOSONG).sumber === 'bawaan', 'tanpa argumen cadangan tetap seperti semula')
+assert(identitasLaporan(null).nama === 'PropFS', 'profil null aman')
+
 console.log(`✅ branding: ${ok} assertion lolos`)

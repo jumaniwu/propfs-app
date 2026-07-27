@@ -32,6 +32,7 @@ import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
+import { konteksWatermark } from '@/lib/identitasSaya'
 
 /** Judul yang tampil di header workspace, mengikuti menu yang sedang dibuka. */
 const JUDUL_TAB: Record<WorkspaceTab, string> = {
@@ -207,7 +208,7 @@ export default function CostDashboard() {
     ws.getCell(4 + off, 1).font = { name: 'Calibri', size: 10 }
 
     // Watermark hanya untuk paket gratis
-    if (perluWatermark(useAuthStore.getState().getPlanFor('kontraktor'))) {
+    if (perluWatermark(konteksWatermark())) {
       ws.mergeCells(5 + off, 1, 5 + off, colCount)
       ws.getCell(5 + off, 1).value = TEKS_WATERMARK
       ws.getCell(5 + off, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF9AA4B0' } }

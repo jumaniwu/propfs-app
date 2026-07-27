@@ -31,6 +31,7 @@ import {
 import { downloadPoPdf } from '@/lib/poPdf'
 import { waKe, nomorWaInternasional } from '@/lib/waLink'
 import { tokenSudahPendek } from '@/lib/tautanPendek'
+import { konteksWatermark } from '@/lib/identitasSaya'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
   ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
@@ -1190,7 +1191,7 @@ function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
       {/* Aksi */}
       <div className="flex gap-1.5 pt-1 border-t border-border flex-wrap">
         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-          onClick={() => downloadPoPdf(po, useAuthStore.getState().getPlanFor('kontraktor'))}>
+          onClick={() => downloadPoPdf(po, konteksWatermark())}>
           <Download className="w-3 h-3" /> PDF
         </Button>
 

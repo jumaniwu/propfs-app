@@ -4,7 +4,8 @@
 // dengan SPK yang sudah dipakai.
 import { jsPDF } from 'jspdf'
 import { teksTerm, type PurchaseOrder } from './procurement'
-import { getBrandingCache, identitasLaporan, perluWatermark, TEKS_WATERMARK } from './branding'
+import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark } from './branding'
+import { kopSaya } from './identitasSaya'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tgl = (s?: string | null) => {
@@ -14,9 +15,17 @@ const tgl = (s?: string | null) => {
     : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
 }
 
-/** `planId` menentukan watermark — hanya paket gratis yang diberi watermark. */
-export function downloadPoPdf(po: PurchaseOrder, planId?: string | null): void {
-  const merek = identitasLaporan(getBrandingCache())
+/**
+ * `konteks` menentukan watermark. Superadmin dan pengguna berbayar dicetak
+ * bersih — lihat perluWatermark() di branding.ts.
+ */
+export function downloadPoPdf(
+  po: PurchaseOrder,
+  konteks?: string | null | KonteksWatermark,
+): void {
+  // Kop: Profil Perusahaan → nama pemilik akun → identitas PropFS. Vendor
+  // harus tahu siapa yang memesan, termasuk saat pemesannya perorangan.
+  const merek = kopSaya()
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const M = 16
@@ -26,16 +35,22 @@ export function downloadPoPdf(po: PurchaseOrder, planId?: string | null): void {
   const ensure = (need: number) => { if (y + need > 280) { doc.addPage(); y = 20 } }
 
   // ── Kop: identitas perusahaan pemakai; PropFS hanya bila profil kosong ──
-  const tinggiKop = merek.bawaan ? 30 : 38
+  const tinggiKop = merek.bawaan ? 33 : 38
   doc.setFillColor(13, 27, 42)
   doc.rect(0, 0, W, tinggiKop, 'F')
   doc.setTextColor(255, 255, 255)
 
   if (merek.bawaan) {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(15)
-    doc.text('PURCHASE ORDER', W / 2, 14, { align: 'center' })
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
-    doc.text(`Nomor: ${po.nomor}`, W / 2, 21, { align: 'center' })
+    // Kop bawaan tetap memuat identitas, bukan langsung judul dokumen —
+    // vendor perlu tahu surat ini datang dari mana.
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11)
+    doc.text(merek.nama, W / 2, 10.5, { align: 'center' })
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5)
+    doc.text(merek.kontak, W / 2, 15, { align: 'center' })
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
+    doc.text('PURCHASE ORDER', W / 2, 22.5, { align: 'center' })
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+    doc.text(`Nomor: ${po.nomor}`, W / 2, 27.5, { align: 'center' })
   } else {
     let teksX = M
     if (merek.logo) {
@@ -204,7 +219,7 @@ export function downloadPoPdf(po: PurchaseOrder, planId?: string | null): void {
   }
 
   // ── Watermark: HANYA paket gratis. Paket berbayar dicetak bersih. ──
-  if (perluWatermark(planId)) {
+  if (perluWatermark(konteks)) {
     const jml = doc.getNumberOfPages()
     for (let i = 1; i <= jml; i++) {
       doc.setPage(i)

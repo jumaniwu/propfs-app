@@ -2,14 +2,18 @@
 // pasal-pasal, dan dua blok tanda tangan (Pihak Pertama & Pihak Kedua).
 import { jsPDF } from 'jspdf'
 import { spkTitle, type SpkDoc } from './spkApi'
-import { getBrandingCache, identitasLaporan, perluWatermark, TEKS_WATERMARK } from './branding'
+import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark } from './branding'
+import { kopSaya } from './identitasSaya'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
-/** `planId` menentukan watermark — hanya paket gratis yang diberi watermark. */
-export function downloadSpkPdf(spk: SpkDoc, planId?: string | null): void {
+/**
+ * `konteks` menentukan watermark. Superadmin dan pengguna berbayar dicetak
+ * bersih — lihat perluWatermark() di branding.ts.
+ */
+export function downloadSpkPdf(spk: SpkDoc, konteks?: string | null | KonteksWatermark): void {
   const isKonsumen = (spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen'
-  const merek = identitasLaporan(getBrandingCache())
+  const merek = kopSaya()
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const M = 18
@@ -176,7 +180,7 @@ export function downloadSpkPdf(spk: SpkDoc, planId?: string | null): void {
   }
 
   // ── Watermark: HANYA paket gratis. Paket berbayar dicetak bersih. ──
-  if (perluWatermark(planId)) {
+  if (perluWatermark(konteks)) {
     const jml = doc.getNumberOfPages()
     for (let i = 1; i <= jml; i++) {
       doc.setPage(i)

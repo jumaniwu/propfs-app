@@ -34,9 +34,58 @@ export const TEKS_WATERMARK = 'PropFS — Versi Gratis'
  */
 const PAKET_GRATIS = new Set(['', 'free', 'trial', 'free_trial'])
 
-/** Apakah laporan perlu diberi watermark untuk paket ini. */
-export function perluWatermark(planId: string | null | undefined): boolean {
-  return PAKET_GRATIS.has((planId ?? '').trim().toLowerCase())
+/**
+ * Keadaan pengguna yang menentukan watermark.
+ *
+ * Paket saja TIDAK cukup. getPlanFor() mengembalikan 'free' pada dua keadaan
+ * yang sama sekali bukan "pelanggan gratis":
+ *
+ *   - Superadmin dan pengguna dengan custom_features tidak punya baris
+ *     langganan sama sekali — haknya datang dari peran, bukan dari paket.
+ *   - Ketika sistem langganan DIMATIKAN, getPlanFor() mengembalikan 'free'
+ *     untuk SEMUA orang. Tidak ada paket berbayar yang bisa dibeli, jadi
+ *     menandai dokumennya "Versi Gratis" justru menyesatkan.
+ *
+ * Urutan pemeriksaan di bawah sengaja sama dengan isFeatureEnabled() di
+ * authStore, supaya "boleh memakai fitur" dan "dokumennya bersih" tidak
+ * pernah berbeda jawaban.
+ */
+export interface KonteksWatermark {
+  planId?: string | null
+  /** profile.role — 'superadmin' selalu bersih. */
+  role?: string | null
+  /** profile.custom_features — pemberian akses per pengguna. */
+  customFeatures?: Record<string, unknown> | null
+  /** Nama fitur yang dicari di customFeatures. */
+  fitur?: string
+  /** isSubscriptionEnabled. false = sistem langganan dimatikan. */
+  sistemLanggananAktif?: boolean
+}
+
+const FITUR_BAWAAN = 'cost_control'
+
+/**
+ * Apakah laporan perlu diberi watermark.
+ *
+ * Menerima paket sebagai teks (bentuk lama) atau konteks lengkap. Bentuk teks
+ * dipertahankan supaya pemanggil yang memang hanya tahu paketnya tetap jalan.
+ */
+export function perluWatermark(
+  arg: string | null | undefined | KonteksWatermark,
+): boolean {
+  const k: KonteksWatermark = typeof arg === 'object' && arg !== null ? arg : { planId: arg }
+
+  // 1. Superadmin — dokumennya milik pengelola sistem, bukan pelanggan.
+  if ((k.role ?? '').trim().toLowerCase() === 'superadmin') return false
+
+  // 2. Akses yang diberikan langsung ke pengguna tertentu.
+  if (k.customFeatures?.[k.fitur ?? FITUR_BAWAAN] === true) return false
+
+  // 3. Sistem langganan dimatikan: tidak ada paket berbayar untuk dibandingkan.
+  if (k.sistemLanggananAktif === false) return false
+
+  // 4. Sisanya ditentukan paketnya.
+  return PAKET_GRATIS.has((k.planId ?? '').trim().toLowerCase())
 }
 
 // ── Identitas yang tampil di laporan ────────────────────────────────────────
@@ -48,28 +97,69 @@ export interface IdentitasLaporan {
   kontak: string
   /** true bila memakai identitas PropFS (perusahaan belum mengisi profil). */
   bawaan: boolean
+  /**
+   * Dari mana nama itu berasal:
+   *   'perusahaan' — Profil Perusahaan di Pengaturan
+   *   'akun'       — nama pemilik akun, dipakai kontraktor perorangan
+   *   'bawaan'     — tidak ada keduanya, jatuh ke identitas PropFS
+   */
+  sumber: 'perusahaan' | 'akun' | 'bawaan'
 }
 
 /**
- * Identitas yang dipakai mencetak laporan. Bila nama perusahaan sudah diisi,
- * identitas PropFS TIDAK dipakai lagi.
+ * Identitas pemilik akun, dipakai bila Profil Perusahaan belum diisi.
+ *
+ * Kontraktor perorangan tidak pernah membuka Pengaturan dan tidak punya nama
+ * PT — tanpa cadangan ini, dokumen yang dikirim ke vendor tidak menyebut satu
+ * pun nama pemesan.
  */
-export function identitasLaporan(profil: CompanyProfile | null | undefined): IdentitasLaporan {
+export interface IdentitasCadangan {
+  /** profile.full_name */
+  nama?: string | null
+  /** profile.company — dipakai lebih dulu bila ada. */
+  perusahaan?: string | null
+  telepon?: string | null
+  email?: string | null
+}
+
+/**
+ * Identitas yang dipakai mencetak laporan, berurutan:
+ *
+ *   1. Profil Perusahaan (nama PT + logo + kontak) bila sudah diisi
+ *   2. Nama pemilik akun, untuk kontraktor perorangan
+ *   3. Identitas PropFS sebagai kop bawaan
+ */
+export function identitasLaporan(
+  profil: CompanyProfile | null | undefined,
+  cadangan?: IdentitasCadangan | null,
+): IdentitasLaporan {
   const nama = (profil?.nama ?? '').trim()
-  if (!nama) {
-    return { nama: 'PropFS', logo: '', kontak: 'propfs.id', bawaan: true }
+  if (nama) {
+    const kontak = [profil?.alamat, profil?.telepon, profil?.email, profil?.website]
+      .map(s => (s ?? '').trim())
+      .filter(Boolean)
+      .join(' · ')
+    return { nama, logo: (profil?.logo ?? '').trim(), kontak, bawaan: false, sumber: 'perusahaan' }
   }
-  const kontak = [profil?.alamat, profil?.telepon, profil?.email, profil?.website]
-    .map(s => (s ?? '').trim())
-    .filter(Boolean)
-    .join(' · ')
-  return { nama, logo: (profil?.logo ?? '').trim(), kontak, bawaan: false }
+
+  const namaAkun = [(cadangan?.perusahaan ?? '').trim(), (cadangan?.nama ?? '').trim()]
+    .find(Boolean) ?? ''
+  if (namaAkun) {
+    const kontak = [cadangan?.telepon, cadangan?.email]
+      .map(s => (s ?? '').trim())
+      .filter(Boolean)
+      .join(' · ')
+    // Tanpa logo: akun perorangan tidak punya berkas logo untuk dipakai.
+    return { nama: namaAkun, logo: '', kontak, bawaan: false, sumber: 'akun' }
+  }
+
+  return { nama: 'PropFS', logo: '', kontak: 'propfs.id', bawaan: true, sumber: 'bawaan' }
 }
 
 /** Baris kaki laporan: identitas perusahaan, plus penanda gratis bila perlu. */
 export function footerLaporan(
   profil: CompanyProfile | null | undefined,
-  planId: string | null | undefined,
+  planId: string | null | undefined | KonteksWatermark,
 ): string {
   const id = identitasLaporan(profil)
   const dasar = id.bawaan
@@ -84,7 +174,7 @@ export function footerLaporan(
  */
 export function kopLaporan(
   profil: CompanyProfile | null | undefined,
-  planId: string | null | undefined,
+  planId: string | null | undefined | KonteksWatermark,
 ): { kop?: string; kopKontak?: string; watermark?: string } {
   const id = identitasLaporan(profil)
   const out: { kop?: string; kopKontak?: string; watermark?: string } = {}
