@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Store, Package, ShoppingCart, Loader2, RefreshCw, Trash2, Plus, Copy,
   Send, Check, X, Link2, PenLine, Download, FileText, Search, AlertTriangle,
-  ReceiptIcon,
+  ReceiptIcon, Truck,
 } from 'lucide-react'
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,9 @@ import { downloadPoPdf } from '@/lib/poPdf'
 import { waKe, nomorWaInternasional } from '@/lib/waLink'
 import { tokenSudahPendek } from '@/lib/tautanPendek'
 import { konteksWatermark } from '@/lib/identitasSaya'
+import TabPenerimaan from '@/components/cost/TabPenerimaan'
+import { penerimaanApi } from '@/lib/penerimaanApi'
+import { statusTerima, type DeliveryOrder } from '@/lib/penerimaan'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
   ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
@@ -40,7 +43,7 @@ import {
   type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
 } from '@/lib/procurement'
 
-type Sub = 'vendor' | 'katalog' | 'po'
+type Sub = 'vendor' | 'katalog' | 'po' | 'terima'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -56,13 +59,14 @@ export default function ProcurementPage() {
 
   const [sub, setSub] = useState<Sub>(() => {
     const s = new URLSearchParams(window.location.search).get('sub')
-    return s === 'katalog' || s === 'po' ? s : 'vendor'
+    return s === 'katalog' || s === 'po' || s === 'terima' ? s : 'vendor'
   })
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [items, setItems] = useState<VendorItem[]>([])
   const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [requests, setRequests] = useState<MaterialRequest[]>([])
+  const [dos, setDos] = useState<DeliveryOrder[]>([])
   const [token, setToken] = useState('')
   const [memuat, setMemuat] = useState(true)
   const [error, setError] = useState('')
@@ -75,11 +79,14 @@ export default function ProcurementPage() {
     if (!diam) setMemuat(true)
     try {
       const api = procurementApi()
-      const [v, it, p, r] = await Promise.all([
+      const [v, it, p, r, d] = await Promise.all([
         api.listVendors(), api.listVendorItems(), api.listPo(),
         materialApi().listRequests().catch(() => [] as MaterialRequest[]),
+        // Penerimaan opsional: bila migration_penerimaan.sql belum dijalankan,
+        // tab lain harus tetap bisa dipakai.
+        penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
       ])
-      setVendors(v); setItems(it); setPos(p); setRequests(r); setError('')
+      setVendors(v); setItems(it); setPos(p); setRequests(r); setDos(d); setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setMemuat(false) }
@@ -95,10 +102,19 @@ export default function ProcurementPage() {
   const perluVerifikasi = useMemo(() => vendors.filter(v => v.status === 'baru').length, [vendors])
   const siapDipesan = useMemo(() => belumTerpesan(requests, pos), [requests, pos])
 
+  // PO terkirim yang barangnya belum lengkap datang — itulah yang menunggu
+  // dicatat penerimaannya.
+  const menungguDatang = useMemo(
+    () => pos.filter(p => (p.status === 'terkirim' || p.status === 'selesai')
+      && statusTerima(p.items, dos.filter(d => d.po_id === p.id)) !== 'lengkap').length,
+    [pos, dos],
+  )
+
   const TAB: Array<[Sub, string, JSX.Element, number]> = [
     ['vendor', 'Vendor', <Store key="i" className="w-4 h-4" />, perluVerifikasi],
     ['katalog', 'Katalog', <Package key="i" className="w-4 h-4" />, 0],
     ['po', 'Purchase Order', <ShoppingCart key="i" className="w-4 h-4" />, siapDipesan.length],
+    ['terima', 'Penerimaan', <Truck key="i" className="w-4 h-4" />, menungguDatang],
   ]
 
   return (
@@ -148,6 +164,9 @@ export default function ProcurementPage() {
             {sub === 'katalog' && (
               <TabKatalog items={items} vendors={vendors} realisasi={semuaRealisasi()}
                 bolehUbah={bolehUbah} onUbah={muat} />
+            )}
+            {sub === 'terima' && (
+              <TabPenerimaan pos={pos} dos={dos} bolehUbah={bolehUbah} onUbah={muat} />
             )}
             {sub === 'po' && (
               <TabPo
