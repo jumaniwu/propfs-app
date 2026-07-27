@@ -1,6 +1,7 @@
 import { BudgetComponent } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
 import { parsePemasukan, parsePembayaran } from './rencanaCatat'
+import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
@@ -170,7 +171,7 @@ function extractEntriesFromText(text: string): RealisasiParsedResult {
 
 // ── System Instruction (Bisa belajar & menerima instruksi format) ─────────────
 
-function buildSysInstruction(rabList: string, currentEntriesList: string): string {
+function buildSysInstruction(rabList: string, currentEntriesList: string, daftarMaterial: string): string {
   const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
   return `Kamu adalah **AI Asisten Keuangan Proyek Konstruksi** yang cerdas, teliti, dan adaptif.
 
@@ -209,6 +210,22 @@ Lampirkan JSON transaksi HANYA di akhir pesan, dalam blok code json persis seper
 Jika mencatat transaksi BARU, masukkan ke dalam array \`added\`.
 Jika MENGUBAH transaksi yang sudah ada (revisi), masukkan ke \`updated\` dengan mencantumkan "id" transaksi tersebut.
 Jika MENGHAPUS transaksi, masukkan "id" nya ke array \`deleted\`.
+
+PENTING — SATU BARANG, SATU NAMA:
+Berikut material yang SUDAH pernah tercatat di proyek ini:
+${daftarMaterial}
+
+Kalau barang di nota adalah barang yang SAMA dengan salah satu di atas, pakai
+**persis nama yang sudah ada** — jangan menuliskan variannya. Stok dihitung per
+nama, jadi "Triplek 9mm Pku" dan "Triplek 9mm Pku @130lmbr/pallet" akan terbaca
+sebagai dua barang berbeda dan stoknya terbagi dua.
+
+Keterangan kemasan, isi per pallet, merek toko, dan harga JANGAN dimasukkan ke
+\`namaMaterial\`. Tempatnya di \`keterangan\`. Nama material hanya berisi jenis,
+ukuran, dan mutu barangnya — itu saja yang membedakan satu barang dari yang lain.
+
+Barang yang benar-benar BEDA ukuran atau mutu tetap ditulis terpisah:
+"Besi Beton 10mm" dan "Besi Beton 12mm" bukan barang yang sama.
 
 PENTING — TIGA JENIS UANG, TIGA TEMPAT BERBEDA:
 1. Uang KELUAR untuk proyek (beli material, upah, operasional) → array \`added\`.
@@ -431,7 +448,22 @@ export async function chatRealisasiWithGemini(
     ? '(Belum ada transaksi dicatat)' 
     : currentEntries.map(e => `[ID: ${e.id}] Tgl: ${e.tanggal} | Rp${e.jumlah} | ${e.keterangan}`).join('\n')
 
-  const sysInstruction = buildSysInstruction(rabList, currentEntriesList)
+  // Nama material yang SUDAH dipakai proyek ini. Diberikan ke AI supaya ia
+  // memakai ulang nama yang ada alih-alih melahirkan varian baru — satu barang
+  // dengan dua nama membuat stoknya terbagi dan tidak ada yang benar.
+  const kelompokNama = pengelompokNama(
+    currentEntries.filter(e => e.tipe === 'material').map(e => e.namaMaterial || e.keterangan || ''),
+  )
+  const namaTerpakai = [...new Set(
+    currentEntries
+      .filter(e => e.tipe === 'material' && (e.namaMaterial || '').trim())
+      .map(e => kelompokNama.tampilan(e.namaMaterial ?? '')),
+  )]
+  const daftarMaterial = namaTerpakai.length === 0
+    ? '(Belum ada material tercatat)'
+    : namaTerpakai.map(n => `- ${n}`).join('\n')
+
+  const sysInstruction = buildSysInstruction(rabList, currentEntriesList, daftarMaterial)
   const hasImages = (newMessage.files?.length ?? 0) > 0
 
   const errors: string[] = []
