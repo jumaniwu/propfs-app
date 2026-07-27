@@ -23,6 +23,8 @@ import {
 } from '@/lib/teamApi'
 import { aksesLewatPerusahaan } from '@/lib/teamLogin'
 import { can, MENU_KE_MODUL, ROLES } from '@/lib/teamRoles'
+import { useBuatProyek } from '@/hooks/useBuatProyek'
+import CreateProjectModal from '@/components/cost/CreateProjectModal'
 
 const HIDE_KEY = 'propfs-kontraktor-hide-amount'
 
@@ -65,6 +67,10 @@ export default function KontraktorHomePage() {
   const navigate = useNavigate()
   const { profile, isFeatureEnabled } = useAuthStore()
   const { savedProjects, loadProjects, loadProject, projectInfo } = useCostStore()
+
+  // Gerbang kuota + dialog buat proyek, sama persis dengan yang dipakai
+  // Dashboard Kontraktor AI.
+  const buatProyek = useBuatProyek()
 
   const [q, setQ] = useState('')
   const [kategori, setKategori] = useState<MenuKategori | 'semua'>('semua')
@@ -310,8 +316,10 @@ export default function KontraktorHomePage() {
             )
           })}
 
-          {/* Kartu buat proyek baru */}
-          <button onClick={() => navigate('/cost-control')}
+          {/* Kartu buat proyek baru — dialognya dibuka langsung di sini.
+              Sebelumnya melempar ke dashboard lama, lalu tombol yang sama
+              harus ditekan sekali lagi. */}
+          <button onClick={buatProyek.mulai}
             className="snap-start shrink-0 w-[60%] sm:w-[220px] rounded-2xl bg-white border-2 border-dashed border-navy/20 p-4 flex flex-col items-center justify-center gap-2 text-navy hover:border-navy/40 shadow-lg transition-colors min-h-[180px]">
             <div className="w-11 h-11 rounded-full bg-navy/8 flex items-center justify-center">
               <Plus className="w-5 h-5" />
@@ -446,7 +454,7 @@ export default function KontraktorHomePage() {
               <div className="py-8 text-center space-y-3">
                 <Building2 className="w-10 h-10 mx-auto opacity-30" />
                 <p className="text-xs text-muted-foreground">Belum ada proyek tersimpan.</p>
-                <button onClick={() => navigate('/cost-control')}
+                <button onClick={buatProyek.mulai}
                   className="h-10 px-5 rounded-xl bg-navy text-white text-xs font-bold">
                   Buat Proyek Baru
                 </button>
@@ -467,6 +475,16 @@ export default function KontraktorHomePage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Dialog buat proyek — dibuka langsung dari Home, tanpa singgah ke
+          Dashboard Kontraktor AI. Setelah tersimpan, langsung dibawa ke RAB
+          proyek barunya: itu langkah berikutnya yang sebenarnya. */}
+      {buatProyek.terbuka && (
+        <CreateProjectModal
+          onClose={buatProyek.tutup}
+          onCreated={() => { buatProyek.tutup(); navigate('/cost-control?tab=rab') }}
+        />
       )}
     </div>
   )
