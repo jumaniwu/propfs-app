@@ -268,12 +268,14 @@ function FormPakaiMaterial({ token, header, onDone }: {
   // Ditarik sekali saat form dibuka; kegagalannya ditelan diam-diam karena
   // pengisian manual harus tetap bisa dilakukan tanpa daftar ini.
   const [stok, setStok] = useState<StokMaterial[]>([])
+  const [siapDaftar, setSiapDaftar] = useState(false)
   const [bukaSaran, setBukaSaran] = useState(false)
   useEffect(() => {
     let batal = false
     materialApi().byToken(token)
-      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests)) })
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan)) })
       .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
+      .finally(() => { if (!batal) setSiapDaftar(true) })
     return () => { batal = true }
   }, [token])
 
@@ -335,6 +337,21 @@ function FormPakaiMaterial({ token, header, onDone }: {
           onFocus={() => setBukaSaran(true)}
           onBlur={() => window.setTimeout(() => setBukaSaran(false), 150)}
           placeholder="Ketik atau pilih dari daftar" className={inputCls} autoComplete="off" />
+
+        {/* Daftar kosong pun harus bersuara: tanpa penjelasan ini, tidak
+            munculnya saran terbaca seperti fiturnya rusak, padahal proyeknya
+            memang belum punya catatan material. */}
+        {bukaSaran && saran.length === 0 && (
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg px-3 py-2">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {!siapDaftar
+                ? 'Memuat daftar material…'
+                : stok.length === 0
+                  ? 'Belum ada material tercatat di proyek ini. Ketik namanya langsung — nanti ikut muncul di sini.'
+                  : 'Tidak ada yang cocok. Ketik namanya langsung, material baru tetap tercatat.'}
+            </p>
+          </div>
+        )}
 
         {bukaSaran && saran.length > 0 && (
           <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto">
@@ -448,12 +465,14 @@ function FormRequestMaterial({ token, header, onDone }: {
   // Ditarik sekali saat form dibuka; kegagalannya ditelan diam-diam karena
   // pengisian manual harus tetap bisa dilakukan tanpa daftar ini.
   const [stok, setStok] = useState<StokMaterial[]>([])
+  const [siapDaftar, setSiapDaftar] = useState(false)
   const [bukaSaran, setBukaSaran] = useState(false)
   useEffect(() => {
     let batal = false
     materialApi().byToken(token)
-      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests)) })
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan)) })
       .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
+      .finally(() => { if (!batal) setSiapDaftar(true) })
     return () => { batal = true }
   }, [token])
 
@@ -506,11 +525,65 @@ function FormRequestMaterial({ token, header, onDone }: {
         </div>
       </div>
 
-      <div className="space-y-1">
+      {/* Sama seperti form pemakaian: nama diambil dari material yang sudah
+          dikenal proyek ini, lengkap dengan sisanya — supaya yang meminta tahu
+          barangnya memang tinggal sedikit sebelum menuliskan jumlahnya. */}
+      <div className="space-y-1 relative">
         <label className="text-xs font-medium text-muted-foreground">Nama Material</label>
-        <input value={nama} onChange={e => setNama(e.target.value)}
-          placeholder="mis. Besi Beton D13" className={inputCls} />
+        <input value={nama}
+          onChange={e => { setNama(e.target.value); setBukaSaran(true) }}
+          onFocus={() => setBukaSaran(true)}
+          onBlur={() => window.setTimeout(() => setBukaSaran(false), 150)}
+          placeholder="Ketik atau pilih dari daftar" className={inputCls} autoComplete="off" />
+
+        {/* Daftar kosong pun harus bersuara: tanpa penjelasan ini, tidak
+            munculnya saran terbaca seperti fiturnya rusak, padahal proyeknya
+            memang belum punya catatan material. */}
+        {bukaSaran && saran.length === 0 && (
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg px-3 py-2">
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              {!siapDaftar
+                ? 'Memuat daftar material…'
+                : stok.length === 0
+                  ? 'Belum ada material tercatat di proyek ini. Ketik namanya langsung — nanti ikut muncul di sini.'
+                  : 'Tidak ada yang cocok. Ketik namanya langsung, material baru tetap tercatat.'}
+            </p>
+          </div>
+        )}
+
+        {bukaSaran && saran.length > 0 && (
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+            {saran.map(m => (
+              <button key={m.nama} type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => pilihMaterial(m)}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-border last:border-0">
+                <p className="text-sm text-navy font-semibold truncate">{m.nama}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {m.belumAdaPenerimaan
+                    ? `Terpakai ${angkaRingkas(m.terpakai)} ${m.satuan} · penerimaan belum tercatat`
+                    : `Sisa ${angkaRingkas(m.stok)} ${m.satuan} · terpakai ${angkaRingkas(m.terpakai)}`}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {terpilih && !terpilih.belumAdaPenerimaan && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-bold text-emerald-900">Sisa stok saat ini</span>
+            <span className="text-base font-black text-emerald-900">
+              {angkaRingkas(terpilih.stok)} <span className="text-xs font-bold">{terpilih.satuan}</span>
+            </span>
+          </div>
+          <p className="text-[10px] text-emerald-800/80 mt-0.5">
+            Diterima {angkaRingkas(terpilih.masuk)} · terpakai {angkaRingkas(terpilih.terpakai)}
+            {terpilih.dalamProses > 0 && ` · ${angkaRingkas(terpilih.dalamProses)} dalam proses`}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">

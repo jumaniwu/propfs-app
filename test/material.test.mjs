@@ -120,6 +120,38 @@ assert(stokLapangan([], []).length === 0, 'kosong aman')
 const urut = stokLapangan([U('Zeng', 1), U('Aci', 1), U('Bata', 1)], [])
 assert(urut.map(m => m.nama).join(',') === 'Aci,Bata,Zeng', 'urut menurut nama')
 
+// ── Penerimaan lewat Delivery Order ────────────────────────────────────────
+// Barang yang datang lewat DO adalah bukti fisik; penandaan 'diterima' pada
+// request adalah cadangan untuk tim yang belum memakai alur PO. Keduanya bisa
+// menyebut barang yang sama, jadi tidak boleh dijumlahkan.
+const D = (nama, qty, satuan = 'sak') => ({ nama, qty, satuan })
+
+const d1 = stokLapangan([U('Semen', 20)], [], [D('Semen', 100), D('Semen', 50)])
+assert(d1[0].masuk === 150, 'DO dijumlah antar pengiriman')
+assert(d1[0].stok === 130, 'stok = DO − terpakai')
+assert(d1[0].belumAdaPenerimaan === false, 'DO menghitung sebagai penerimaan')
+
+// DO menang atas penandaan manual, bukan ditambahkan.
+const d2 = stokLapangan([], [R('Besi', 50, 'diterima')], [D('Besi', 50)])
+assert(d2[0].masuk === 50, 'DO menang, tidak dijumlah dengan request diterima')
+
+// Barang yang sudah datang tidak lagi dihitung "dalam perjalanan", meski
+// status request-nya belum sempat diperbarui dari 'dibeli'.
+const d3 = stokLapangan([], [R('Bata', 1000, 'dibeli')], [D('Bata', 600)])
+assert(d3[0].masuk === 600, 'DO mengisi stok walau request masih dibeli')
+assert(d3[0].dalamProses === 400, 'sisa yang belum datang saja yang dalam perjalanan')
+const d4 = stokLapangan([], [R('Bata', 1000, 'dibeli')], [D('Bata', 1200)])
+assert(d4[0].dalamProses === 0, 'kelebihan kirim tidak membuat dalamProses negatif')
+
+// Material yang HANYA muncul di DO tetap masuk daftar saran.
+const d5 = stokLapangan([], [], [D('Keramik 60x60', 30, 'dus')])
+assert(d5.length === 1 && d5[0].satuan === 'dus', 'material dari DO ikut disarankan')
+
+// Tanpa argumen ketiga, perilaku lama tidak berubah.
+assert(stokLapangan([], [R('Semen', 10, 'diterima')])[0].masuk === 10,
+  'tanpa data DO, penandaan manual tetap dipakai')
+assert(stokLapangan([], [], null).length === 0, 'penerimaan null aman')
+
 // ── cariMaterial ───────────────────────────────────────────────────────────
 const daftar = stokLapangan([
   U('Semen Portland 50kg', 1), U('Besi Beton D13', 1),
