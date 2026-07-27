@@ -36,7 +36,7 @@ import TabPenerimaan from '@/components/cost/TabPenerimaan'
 import { penerimaanApi } from '@/lib/penerimaanApi'
 import { statusTerima, type DeliveryOrder } from '@/lib/penerimaan'
 import {
-  belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
+  belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, waEfektifPo, statusPoSetelah,
   ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
   profilAwal,
   LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
@@ -170,7 +170,7 @@ export default function ProcurementPage() {
             )}
             {sub === 'po' && (
               <TabPo
-                pos={pos} requests={siapDipesan} vendors={vendorAktif} items={items}
+                pos={pos} requests={siapDipesan} vendors={vendorAktif} semuaVendor={vendors} items={items}
                 projectName={projectInfo?.projectName ?? ''}
                 namaSaya={profile?.full_name ?? ''}
                 bolehUbah={bolehUbah} bolehApprove={bolehApprove}
@@ -783,10 +783,13 @@ function FormBarangManual({ vendors, onBatal, onSukses }: {
 }
 
 // ══ TAB PURCHASE ORDER ══════════════════════════════════════════════════════
-function TabPo({ pos, requests, vendors, items, projectName, namaSaya, bolehUbah, bolehApprove, onUbah }: {
+function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSaya, bolehUbah, bolehApprove, onUbah }: {
   pos: PurchaseOrder[]
   requests: MaterialRequest[]
+  /** Vendor aktif — hanya ini yang boleh dipilih saat membuat PO. */
   vendors: Vendor[]
+  /** Seluruh vendor, termasuk yang nonaktif: dipakai mencari nomor WA PO lama. */
+  semuaVendor: Vendor[]
   items: VendorItem[]
   projectName: string
   namaSaya: string
@@ -849,7 +852,7 @@ function TabPo({ pos, requests, vendors, items, projectName, namaSaya, bolehUbah
       ) : (
         <div className="space-y-3">
           {pos.map(po => (
-            <KartuPo key={po.id} po={po} namaSaya={namaSaya}
+            <KartuPo key={po.id} po={po} namaSaya={namaSaya} vendors={semuaVendor}
               bolehUbah={bolehUbah} bolehApprove={bolehApprove} onUbah={onUbah} />
           ))}
         </div>
@@ -1070,9 +1073,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
 }
 
 // ── Kartu PO: tanda tangan → persetujuan → kirim ────────────────────────────
-function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
+function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
   po: PurchaseOrder
   namaSaya: string
+  vendors: Vendor[]
   bolehUbah: boolean
   bolehApprove: boolean
   onUbah: () => void
@@ -1085,7 +1089,7 @@ function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
   const [proses, setProses] = useState(false)
   const [buka, setBuka] = useState(false)
 
-  const izin = bolehKirimPo(po)
+  const izin = bolehKirimPo(po, vendors)
 
   async function simpanTtd() {
     if (!ttdUntuk) return
@@ -1124,8 +1128,19 @@ function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
   }
 
   async function kirimWa() {
+    const wa = waEfektifPo(po, vendors)
+    if (!wa) {
+      toast({ title: 'Nomor WhatsApp vendor belum ada', variant: 'destructive' })
+      return
+    }
     setProses(true)
     try {
+      // Nomor yang dipakai disimpan balik ke PO. Bila salinannya tadinya
+      // kosong, dokumen ini jadi mencatat ke nomor mana ia benar-benar
+      // dikirim — bukan tetap kosong selamanya.
+      if (wa !== po.vendor_wa) {
+        await procurementApi().updatePo(po.id, { vendor_wa: wa }).catch(() => { /* bukan penghalang kirim */ })
+      }
       const ok = await procurementApi().kirimPo(po.id)
       if (!ok) throw new Error('Server menolak: pastikan PO sudah ditandatangani dan disetujui.')
       const link = poViewLink(po.view_token)
@@ -1141,7 +1156,7 @@ function KartuPo({ po, namaSaya, bolehUbah, bolehApprove, onUbah }: {
         '',
         'Mohon konfirmasi ketersediaan barang. Terima kasih.',
       ].join('\n')
-      window.open(waKe(po.vendor_wa, pesan), '_blank')
+      window.open(waKe(wa, pesan), '_blank')
       toast({ title: 'PO dikirim', description: 'Qty terpesan pada request material sudah diperbarui.' })
       onUbah()
     } catch (e) {

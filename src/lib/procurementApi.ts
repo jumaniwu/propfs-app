@@ -59,6 +59,12 @@ export interface ProcurementApi {
 
   listPo(): Promise<PurchaseOrder[]>
   createPo(input: BuatPoInput): Promise<PurchaseOrder>
+  /**
+   * Perbaiki data PO yang boleh berubah setelah terbit. Dipakai menyelaraskan
+   * nomor WA vendor: salinannya bisa kosong bila PO dibuat sebelum nomor
+   * vendornya diisi, dan itu tidak boleh membuat PO tak pernah bisa dikirim.
+   */
+  updatePo(id: string, patch: Partial<Pick<PurchaseOrder, 'vendor_wa' | 'vendor_nama' | 'catatan'>>): Promise<void>
   /** Tanda tangan pembuat atau persetujuan; status ikut disesuaikan. */
   signPo(id: string, peran: 'pembuat' | 'approver', data: {
     nama: string; jabatan: string; signature: string; catatan?: string
@@ -204,6 +210,7 @@ const realApi: ProcurementApi = {
   createPo: (input) => sisip<PurchaseOrder>(
     'purchase_orders', milikWorkspace({ ...input, status: 'draft' }, dataOwnerId()), 'purchase order',
   ),
+  updatePo: (id, patch) => ubah(`purchase_orders?id=eq.${id}`, patch, 'purchase order'),
 
   async signPo(id, peran, data, status) {
     const patch = peran === 'pembuat'

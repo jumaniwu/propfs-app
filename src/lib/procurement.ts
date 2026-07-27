@@ -315,8 +315,43 @@ export function menungguTandaTanganPo<T extends Pick<MaterialRequest, 'id' | 'st
  * persetujuan; keduanya diperiksa ulang di server oleh po_tandai_terkirim().
  * Mengembalikan alasan penolakan agar tombolnya bisa menjelaskan diri sendiri.
  */
-export function bolehKirimPo(po: Pick<PurchaseOrder,
-  'pembuat_signature' | 'approver_signature' | 'status' | 'items' | 'vendor_wa'>,
+/** Bagian PO yang dibutuhkan untuk menemukan nomor WA vendornya. */
+export type PoUntukWa = Pick<PurchaseOrder, 'vendor_id' | 'vendor_nama' | 'vendor_wa'>
+type VendorUntukWa = Pick<Vendor, 'id' | 'nama' | 'no_wa'>
+
+/**
+ * Nomor WA yang benar-benar bisa dipakai mengirim PO ini.
+ *
+ * PO menyimpan `vendor_wa` sebagai SALINAN saat diterbitkan — itu memang
+ * disengaja untuk harga dan nama, supaya dokumen yang sudah terbit tidak
+ * berubah nilainya. Tapi nomor WA bukan syarat dagang, melainkan saluran
+ * kontak: membekukannya berarti PO yang dibuat sebelum nomor vendor diisi
+ * TIDAK PERNAH bisa dikirim, walau nomornya sudah dilengkapi setelah itu.
+ *
+ * Maka bila salinannya kosong, dipakai nomor vendor yang berlaku sekarang.
+ * Pencocokan lewat vendor_id lebih dulu; nama dipakai sebagai cadangan untuk
+ * PO lama yang vendornya belum tercatat sebagai baris vendor.
+ */
+export function waEfektifPo(
+  po: PoUntukWa | null | undefined,
+  vendors: VendorUntukWa[] = [],
+): string {
+  const salinan = (po?.vendor_wa ?? '').trim()
+  if (salinan) return salinan
+
+  const id = po?.vendor_id ?? ''
+  const nama = (po?.vendor_nama ?? '').trim().toLowerCase()
+  const daftar = vendors ?? []
+  const cocok =
+    (id ? daftar.find(v => v?.id === id) : undefined)
+    ?? (nama ? daftar.find(v => (v?.nama ?? '').trim().toLowerCase() === nama) : undefined)
+  return (cocok?.no_wa ?? '').trim()
+}
+
+export function bolehKirimPo(
+  po: Pick<PurchaseOrder,
+    'pembuat_signature' | 'approver_signature' | 'status' | 'items'> & PoUntukWa,
+  vendors: VendorUntukWa[] = [],
 ): { boleh: boolean; alasan: string } {
   if (!po.items || po.items.length === 0) return { boleh: false, alasan: 'PO belum punya barang.' }
   if (po.status === 'ditolak') return { boleh: false, alasan: 'PO sudah ditolak.' }
@@ -325,7 +360,12 @@ export function bolehKirimPo(po: Pick<PurchaseOrder,
   }
   if (!po.pembuat_signature) return { boleh: false, alasan: 'Belum ditandatangani pembuat PO.' }
   if (!po.approver_signature) return { boleh: false, alasan: 'Belum disetujui Owner / Manajemen / Project Manager.' }
-  if (!po.vendor_wa) return { boleh: false, alasan: 'Nomor WhatsApp vendor belum ada.' }
+  if (!waEfektifPo(po, vendors)) {
+    return {
+      boleh: false,
+      alasan: `Nomor WhatsApp ${po.vendor_nama || 'vendor'} belum ada. Isi lewat tab Vendor → Edit, lalu buka lagi halaman ini.`,
+    }
+  }
   return { boleh: true, alasan: '' }
 }
 
