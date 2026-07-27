@@ -80,11 +80,11 @@ export interface MaterialApi {
     urgensi: Urgensi; butuhTanggal: string | null; catatan: string; photos: string[]
   }): Promise<boolean>
   /**
-   * Pemakaian & request yang sudah tercatat pada log ini, untuk halaman
-   * laporan publik. Dipakai menyarankan nama material dan menampilkan sisa
-   * stok — supaya tukang tidak mengetik nama dari nol.
+   * Pemakaian, request, dan penerimaan barang di proyek pemilik token ini,
+   * untuk halaman laporan publik. Dipakai menyarankan nama material dan
+   * menampilkan sisa stok — supaya tukang tidak mengetik nama dari nol.
    */
-  byToken(token: string): Promise<{ usage: MaterialUsage[]; requests: MaterialRequest[] }>
+  byToken(token: string): Promise<StokMentah>
 }
 
 // ── REST langsung (pola sama dengan fieldReports.ts) ─────────────────────────
@@ -185,11 +185,19 @@ const realApi: MaterialApi = {
     }) === true
   },
   async byToken(token) {
-    const rows = await rpc<Array<{ usage: MaterialUsage[]; requests: MaterialRequest[] }>>(
-      'material_by_report_token', { p_token: token },
-    )
-    const r = rows?.[0]
-    return { usage: r?.usage ?? [], requests: r?.requests ?? [] }
+    // Cakupannya per PROYEK, bukan per link — request yang dibuat dari dalam
+    // aplikasi tidak punya log_id, dan satu proyek bisa punya banyak link.
+    try {
+      const rows = await rpc<StokMentah[]>('material_stok_by_report_token', { p_token: token })
+      const r = rows?.[0]
+      return { usage: r?.usage ?? [], requests: r?.requests ?? [], penerimaan: r?.penerimaan ?? [] }
+    } catch {
+      // migration_stok_lapangan.sql belum dijalankan: mundur ke fungsi lama
+      // supaya halaman tetap jalan, meski daftarnya hanya sebatas link ini.
+      const rows = await rpc<StokMentah[]>('material_by_report_token', { p_token: token })
+      const r = rows?.[0]
+      return { usage: r?.usage ?? [], requests: r?.requests ?? [], penerimaan: [] }
+    }
   },
 }
 
@@ -297,10 +305,20 @@ export function ringkasKekurangan(
 
 // ── Stok di lapangan, untuk halaman laporan publik ─────────────────────────
 
+/** Bentuk minimal yang dibutuhkan perhitungan stok — bukan seluruh baris. */
+export interface BarisStok { nama: string; satuan?: string; qty: number }
+export interface BarisStokRequest extends BarisStok { status?: string }
+export interface StokMentah {
+  usage: BarisStok[]
+  requests: BarisStokRequest[]
+  /** Item pada Delivery Order — barang yang benar-benar sudah datang. */
+  penerimaan: BarisStok[]
+}
+
 export interface StokMaterial {
   nama: string
   satuan: string
-  /** Qty request yang sudah ditandai DITERIMA di lapangan. */
+  /** Qty yang sudah masuk gudang: dari DO bila ada, kalau tidak dari request 'diterima'. */
   masuk: number
   /** Qty yang sudah dicatat terpakai. */
   terpakai: number
@@ -318,21 +336,28 @@ export interface StokMaterial {
  * Dipakai halaman /l/:token supaya tukang tidak perlu mengetik nama material
  * dari nol — nama, satuan, dan sisa stok datang dari data yang sudah ada.
  *
- * Sengaja dihitung HANYA dari pemakaian & request milik log ini, bukan dari
- * Material Schedule: halaman itu publik dan tidak boleh menarik rencana RAB,
- * dan rencana bukan stok — rencana adalah niat, bukan barang yang ada.
+ * Sengaja dihitung dari pemakaian, request, dan penerimaan barang saja, bukan
+ * dari Material Schedule: rencana bukan stok — rencana adalah niat, bukan
+ * barang yang ada.
  *
- * `masuk` mengandalkan request yang ditandai 'diterima'. Bila tim belum
- * membiasakan menandainya, stoknya akan nol; itulah sebabnya
- * `belumAdaPenerimaan` ada — supaya tampilan bisa mengatakan "belum tercatat"
- * alih-alih menampilkan angka 0 yang terbaca seperti "barangnya habis".
+ * Sumber `masuk` ada dua dan tidak boleh dijumlahkan, karena satu barang yang
+ * sama bisa tercatat di keduanya: Delivery Order mencatat barang yang benar
+ * benar datang, sedangkan status 'diterima' pada request adalah penandaan
+ * manual dari tim yang belum memakai alur PO. Maka **DO yang menang**: bila
+ * material ini punya penerimaan DO, angka itulah yang dipakai; penandaan
+ * manual hanya menjadi cadangan.
+ *
+ * Bila keduanya kosong, `belumAdaPenerimaan` menyala supaya tampilan bisa
+ * mengatakan "belum tercatat" alih-alih menampilkan angka 0 yang terbaca
+ * seperti "barangnya habis".
  */
 export function stokLapangan(
-  pemakaian: MaterialUsage[] | null | undefined,
-  requests: MaterialRequest[] | null | undefined,
+  pemakaian: BarisStok[] | null | undefined,
+  requests: BarisStokRequest[] | null | undefined,
+  penerimaan?: BarisStok[] | null,
 ): StokMaterial[] {
-  const map = new Map<string, StokMaterial>()
-  const ambil = (nama: string, satuan: string): StokMaterial | null => {
+  const map = new Map<string, StokMaterial & { _do: number; _manual: number }>()
+  const ambil = (nama: string, satuan: string) => {
     const bersih = (nama ?? '').trim()
     if (!bersih) return null
     const k = kunciNama(bersih)
@@ -341,9 +366,10 @@ export function stokLapangan(
       if (!ada.satuan && satuan?.trim()) ada.satuan = satuan.trim()
       return ada
     }
-    const baru: StokMaterial = {
+    const baru = {
       nama: bersih, satuan: (satuan ?? '').trim(),
       masuk: 0, terpakai: 0, stok: 0, dalamProses: 0, belumAdaPenerimaan: true,
+      _do: 0, _manual: 0,
     }
     map.set(k, baru)
     return baru
@@ -357,12 +383,27 @@ export function stokLapangan(
     const row = ambil(q?.nama ?? '', q?.satuan ?? '')
     if (!row) continue
     const qty = Math.max(0, Number(q.qty) || 0)
-    if (q.status === 'diterima') { row.masuk += qty; row.belumAdaPenerimaan = false }
+    if (q.status === 'diterima') row._manual += qty
     else if (q.status !== 'ditolak') row.dalamProses += qty
+  }
+  for (const d of penerimaan ?? []) {
+    const row = ambil(d?.nama ?? '', d?.satuan ?? '')
+    if (row) row._do += Math.max(0, Number(d.qty) || 0)
   }
 
   return [...map.values()]
-    .map(r => ({ ...r, stok: r.masuk - r.terpakai }))
+    .map(({ _do, _manual, ...r }) => {
+      const masuk = _do > 0 ? _do : _manual
+      return {
+        ...r,
+        masuk,
+        // Barang yang sudah datang lewat DO tidak lagi "dalam perjalanan",
+        // meski status request-nya masih 'dibeli' dan belum sempat diperbarui.
+        dalamProses: Math.max(0, r.dalamProses - _do),
+        stok: masuk - r.terpakai,
+        belumAdaPenerimaan: masuk === 0 && _do === 0 && _manual === 0,
+      }
+    })
     .sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
 }
 
