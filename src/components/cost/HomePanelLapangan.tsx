@@ -23,7 +23,8 @@ import {
   type ProyekUntukProgres, type StatusProgres,
 } from '@/lib/dashboardLapangan'
 import { can, type TeamRole } from '@/lib/teamRoles'
-import { belumTerpesan } from '@/lib/procurement'
+import { belumTerpesan, menungguTandaTanganPo, type PurchaseOrder } from '@/lib/procurement'
+import { procurementApi } from '@/lib/procurementApi'
 import type { MaterialScheduleItem } from '@/types/cost.types'
 import { useToast } from '@/hooks/use-toast'
 
@@ -75,6 +76,9 @@ export default function HomePanelLapangan({
   const { toast } = useToast()
   const [requests, setRequests] = useState<MaterialRequest[]>([])
   const [pemakaian, setPemakaian] = useState<MaterialUsage[]>([])
+  // PO ikut dimuat karena qty_dipesan baru bertambah saat PO DIKIRIM. Tanpa
+  // daftar PO, request yang PO-nya sudah dibuat masih terhitung "siap dipesan".
+  const [pos, setPos] = useState<PurchaseOrder[]>([])
   const [memuat, setMemuat] = useState(true)
   const [gagal, setGagal] = useState('')
   const [proses, setProses] = useState<string | null>(null)
@@ -88,8 +92,12 @@ export default function HomePanelLapangan({
     if (!diam) setMemuat(true)
     try {
       const api = materialApi()
-      const [r, u] = await Promise.all([api.listRequests(), api.listUsage()])
-      setRequests(r); setPemakaian(u); setGagal('')
+      const [r, u, p] = await Promise.all([
+        api.listRequests(), api.listUsage(),
+        // PO opsional: bila modul procurement belum dipasang, panel lain tetap jalan.
+        procurementApi().listPo().catch(() => [] as PurchaseOrder[]),
+      ])
+      setRequests(r); setPemakaian(u); setPos(p); setGagal('')
     } catch (e) {
       // panel tambahan — kegagalan tidak boleh merusak Home, cukup diberi tahu
       setGagal(e instanceof Error ? e.message : 'Gagal memuat data material.')
@@ -115,9 +123,12 @@ export default function HomePanelLapangan({
     [requests],
   )
 
-  // Request yang sudah disetujui tapi belum penuh terpesan — langkah
+  // Request yang sudah disetujui dan belum masuk PO mana pun — langkah
   // berikutnya bagi pemakai adalah membuat PO.
-  const siapDipesan = useMemo(() => belumTerpesan(requests).length, [requests])
+  const siapDipesan = useMemo(() => belumTerpesan(requests, pos).length, [requests, pos])
+  // Yang PO-nya sudah dibuat tapi belum ditandatangani. Ditampilkan terpisah
+  // supaya requestnya tidak sekadar hilang dari Beranda tanpa keterangan.
+  const tungguTtdPo = useMemo(() => menungguTandaTanganPo(requests, pos).length, [requests, pos])
 
   const progres = useMemo(() => ringkasProgres(proyek), [proyek])
   const dataGrafik = useMemo(() => progres.map(p => ({
@@ -228,14 +239,26 @@ export default function HomePanelLapangan({
           )}
 
           {/* Setelah disetujui, langkah berikutnya adalah memesan ke vendor —
-              jadi pintasannya ditaruh di sini, bukan disembunyikan di menu. */}
-          {siapDipesan > 0 && (
+              jadi pintasannya ditaruh di sini, bukan disembunyikan di menu.
+              Begitu PO-nya dibuat, ajakannya berubah jadi menandatangani:
+              membuat PO lagi untuk request yang sama justru salah. */}
+          {(siapDipesan > 0 || tungguTtdPo > 0) && (
             <div className="mt-3 pt-3 border-t border-border">
               <button onClick={onBukaProcurement}
-                className="w-full h-10 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-navy/90">
+                className={`w-full h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 ${
+                  siapDipesan > 0
+                    ? 'bg-navy text-white hover:bg-navy/90'
+                    : 'border border-border text-navy hover:bg-slate-50'}`}>
                 <FileText className="w-3.5 h-3.5" />
-                Buat PO — {siapDipesan} request siap dipesan
+                {siapDipesan > 0
+                  ? `Buat PO — ${siapDipesan} request siap dipesan`
+                  : `Tanda tangani PO — ${tungguTtdPo} request menunggu`}
               </button>
+              {siapDipesan > 0 && tungguTtdPo > 0 && (
+                <p className="text-[11px] text-muted-foreground text-center mt-1.5">
+                  {tungguTtdPo} request lain sudah masuk PO, menunggu tanda tangan.
+                </p>
+              )}
             </div>
           )}
         </div>
