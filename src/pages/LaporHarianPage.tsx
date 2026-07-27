@@ -273,7 +273,7 @@ function FormPakaiMaterial({ token, header, onDone }: {
   useEffect(() => {
     let batal = false
     materialApi().byToken(token)
-      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan)) })
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan, d)) })
       .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
       .finally(() => { if (!batal) setSiapDaftar(true) })
     return () => { batal = true }
@@ -470,7 +470,7 @@ function FormRequestMaterial({ token, header, onDone }: {
   useEffect(() => {
     let batal = false
     materialApi().byToken(token)
-      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan)) })
+      .then(d => { if (!batal) setStok(stokLapangan(d.usage, d.requests, d.penerimaan, d)) })
       .catch(() => { /* daftar saran hanya mempercepat, bukan syarat */ })
       .finally(() => { if (!batal) setSiapDaftar(true) })
     return () => { batal = true }
