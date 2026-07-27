@@ -43,6 +43,40 @@ export interface VendorItem {
   catatan: string
 }
 
+/** Profil vendor tanpa kolom yang dikelola server (id, status, token). */
+export type ProfilVendor = Omit<Vendor, 'id' | 'status' | 'self_token' | 'created_at'>
+
+export const PROFIL_VENDOR_KOSONG: ProfilVendor = {
+  nama: '', pic: '', no_wa: '', email: '', alamat: '', npwp: '',
+  kategori: '', term: 'cash', term_hari: 0, catatan: '',
+}
+
+/**
+ * Nilai awal form profil vendor.
+ *
+ * Vendor yang dibuat sekali-klik dari nota pembelian hanya membawa nama;
+ * kolom lain bisa null dari basis data (default '' baru berlaku untuk baris
+ * baru, bukan untuk kolom yang ditambahkan belakangan). Tanpa penyeragaman
+ * ini React akan berpindah dari input tak-terkendali ke terkendali dan
+ * memuntahkan peringatan, dan `null` ikut terkirim balik saat menyimpan.
+ */
+export function profilAwal(v?: Partial<Vendor> | null): ProfilVendor {
+  if (!v) return { ...PROFIL_VENDOR_KOSONG }
+  const teks = (x: unknown) => (typeof x === 'string' ? x : '')
+  return {
+    nama: teks(v.nama),
+    pic: teks(v.pic),
+    no_wa: teks(v.no_wa),
+    email: teks(v.email),
+    alamat: teks(v.alamat),
+    npwp: teks(v.npwp),
+    kategori: teks(v.kategori),
+    term: v.term === 'term' ? 'term' : 'cash',
+    term_hari: Math.max(0, Math.trunc(Number(v.term_hari) || 0)),
+    catatan: teks(v.catatan),
+  }
+}
+
 export const LABEL_TERM: Record<TermPembayaran, string> = {
   cash: 'Cash / Tunai',
   term: 'Tempo',
