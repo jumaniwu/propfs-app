@@ -30,6 +30,7 @@ import {
 } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
 import { waKe, nomorWaInternasional } from '@/lib/waLink'
+import { tokenSudahPendek } from '@/lib/tautanPendek'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
   ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
@@ -141,7 +142,7 @@ export default function ProcurementPage() {
             {sub === 'vendor' && (
               <TabVendor
                 vendors={vendors} items={items} token={token} bolehUbah={bolehUbah}
-                onUbah={muat} />
+                onUbah={muat} onTokenBaru={setToken} />
             )}
             {sub === 'katalog' && (
               <TabKatalog items={items} vendors={vendors} realisasi={semuaRealisasi()}
@@ -163,12 +164,13 @@ export default function ProcurementPage() {
 }
 
 // ══ TAB VENDOR ══════════════════════════════════════════════════════════════
-function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
+function TabVendor({ vendors, items, token, bolehUbah, onUbah, onTokenBaru }: {
   vendors: Vendor[]
   items: VendorItem[]
   token: string
   bolehUbah: boolean
   onUbah: () => void
+  onTokenBaru: (token: string) => void
 }) {
   const { toast } = useToast()
   const [formOpen, setFormOpen] = useState(false)
@@ -176,7 +178,26 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
   // supaya jelas profil siapa yang sedang diubah saat daftarnya panjang.
   const [suntingId, setSuntingId] = useState<string | null>(null)
   const [cari, setCari] = useState('')
+  const [memutar, setMemutar] = useState(false)
   const tautan = token ? vendorDaftarLink(token) : ''
+  const tokenPanjang = !!token && !tokenSudahPendek(token)
+
+  async function putarUlangToken() {
+    if (!window.confirm(
+      'Terbitkan link registrasi vendor yang baru?\n\n'
+      + 'Link yang sekarang langsung tidak berlaku. Calon vendor yang sudah '
+      + 'menerimanya tapi belum mendaftar harus dikirimi link baru.',
+    )) return
+    setMemutar(true)
+    try {
+      const baru = await procurementApi().vendorTokenPutarUlang()
+      if (!baru) throw new Error('Server tidak mengembalikan link baru.')
+      onTokenBaru(baru)
+      toast({ title: 'Link registrasi baru diterbitkan', description: vendorDaftarLink(baru) })
+    } catch (e) {
+      toast({ title: 'Gagal menerbitkan link', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
+    } finally { setMemutar(false) }
+  }
 
   const jumlahItem = (id: string) => items.filter(i => i.vendor_id === id).length
   const tersaring = vendors.filter(v =>
@@ -231,7 +252,23 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
               className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold inline-flex items-center gap-1.5">
               <Send className="w-3.5 h-3.5" /> Bagikan via WA
             </button>
+            {bolehUbah && (
+              <button onClick={putarUlangToken} disabled={memutar}
+                className="h-8 px-3 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50">
+                {memutar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                {tokenPanjang ? 'Perpendek Link' : 'Terbitkan Ulang'}
+              </button>
+            )}
           </div>
+        )}
+        {/* Token yang sudah terlanjur dibuat tidak diperpendek otomatis:
+            mengganti diam-diam akan mematikan tautan yang sudah tersebar. */}
+        {tautan && tokenPanjang && bolehUbah && (
+          <p className="text-[11px] text-gold/90 mt-2.5 leading-relaxed">
+            Link ini masih versi panjang. <b>Perpendek Link</b> menerbitkan yang baru dan
+            jauh lebih ringkas — tetapi link lama langsung tidak berlaku, jadi bagikan
+            ulang ke calon vendor yang belum sempat mendaftar.
+          </p>
         )}
       </div>
 

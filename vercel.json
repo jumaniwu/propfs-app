@@ -1,17 +1,69 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-
-    { "source": "/tim/masuk", "destination": "/share/tim-masuk.html" },
-    { "source": "/vendor/daftar/:token", "destination": "/share/vendor-daftar.html" },
-    { "source": "/vendor/item/:token", "destination": "/share/vendor-item.html" },
-    { "source": "/po/:token", "destination": "/share/po.html" },
-    { "source": "/lapor/:token", "destination": "/share/lapor.html" },
-    { "source": "/progress/:token", "destination": "/share/progress.html" },
-    { "source": "/spk/sign/:token", "destination": "/share/spk-sign.html" },
-    { "source": "/opname/isi/:token", "destination": "/share/opname.html" },
-
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/tim/masuk",
+      "destination": "/share/tim-masuk.html"
+    },
+    {
+      "source": "/v/:token",
+      "destination": "/share/vendor-daftar.html"
+    },
+    {
+      "source": "/vendor/daftar/:token",
+      "destination": "/share/vendor-daftar.html"
+    },
+    {
+      "source": "/i/:token",
+      "destination": "/share/vendor-item.html"
+    },
+    {
+      "source": "/vendor/item/:token",
+      "destination": "/share/vendor-item.html"
+    },
+    {
+      "source": "/po/:token",
+      "destination": "/share/po.html"
+    },
+    {
+      "source": "/l/:token",
+      "destination": "/share/lapor.html"
+    },
+    {
+      "source": "/lapor/:token",
+      "destination": "/share/lapor.html"
+    },
+    {
+      "source": "/p/:token",
+      "destination": "/share/progress.html"
+    },
+    {
+      "source": "/progress/:token",
+      "destination": "/share/progress.html"
+    },
+    {
+      "source": "/s/:token",
+      "destination": "/share/spk-sign.html"
+    },
+    {
+      "source": "/spk/sign/:token",
+      "destination": "/share/spk-sign.html"
+    },
+    {
+      "source": "/o/:token",
+      "destination": "/share/opname.html"
+    },
+    {
+      "source": "/opname/isi/:token",
+      "destination": "/share/opname.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "crons": [
     {

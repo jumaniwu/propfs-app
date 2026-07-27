@@ -1,7 +1,8 @@
 // Test pratinjau tautan: meta per jenis halaman diganti, sisanya utuh.
 import {
-  HALAMAN_BAGIKAN, terapkanMeta, rewritesVercel, SITUS,
+  HALAMAN_BAGIKAN, terapkanMeta, rewritesVercel, ruteHalaman, SITUS,
 } from '../src/lib/ogShare.ts'
+import { POLA_TAUTAN } from '../src/lib/tautanPendek.ts'
 
 let ok = 0
 const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
@@ -91,12 +92,43 @@ for (const r of ['/tim/masuk', '/vendor/daftar/:token', '/po/:token', '/lapor/:t
   assert(rute.includes(r), `rute ${r} punya pratinjau sendiri`)
 }
 
+// ── ruteHalaman: jalur pendek DAN lama sama-sama dapat pratinjau ───────────
+for (const h of HALAMAN_BAGIKAN) {
+  const jalur = ruteHalaman(h)
+  assert(jalur.length >= 1, `${h.berkas}: punya rute`)
+  if (!h.jenis) {
+    assert(jalur.length === 1 && jalur[0] === h.rute, `${h.berkas}: halaman tanpa token punya satu rute`)
+    continue
+  }
+  const { pendek, lama } = POLA_TAUTAN[h.jenis]
+  assert(jalur.includes(`${pendek}/:token`), `${h.berkas}: jalur pendek dapat pratinjau`)
+  assert(jalur.includes(`${lama}/:token`), `${h.berkas}: jalur LAMA tetap dapat pratinjau`)
+}
+assert(ruteHalaman(HALAMAN_BAGIKAN.find(h => h.jenis === 'po')).length === 1,
+  'po tidak didaftarkan dua kali karena jalurnya memang sama')
+
 // ── rewritesVercel ─────────────────────────────────────────────────────────
 const rw = rewritesVercel()
-assert(rw.length === HALAMAN_BAGIKAN.length, 'tiap halaman punya rewrite')
+const jumlahRute = HALAMAN_BAGIKAN.reduce((n, h) => n + ruteHalaman(h).length, 0)
+assert(rw.length === jumlahRute, 'tiap rute punya rewrite')
 assert(rw.every(r => r.destination.startsWith('/share/') && r.destination.endsWith('.html')),
   'tujuan rewrite mengarah ke berkas share hasil build')
+assert(new Set(rw.map(r => r.source)).size === rw.length, 'tidak ada rewrite kembar')
+
 const poRw = rw.find(r => r.source === '/po/:token')
 assert(poRw.destination === '/share/po.html', 'rewrite PO menunjuk berkas yang benar')
+
+// Jalur pendek dan lama harus menunjuk berkas pratinjau yang SAMA.
+for (const [pendek, lama, berkas] of [
+  ['/v/:token', '/vendor/daftar/:token', '/share/vendor-daftar.html'],
+  ['/i/:token', '/vendor/item/:token', '/share/vendor-item.html'],
+  ['/l/:token', '/lapor/:token', '/share/lapor.html'],
+  ['/p/:token', '/progress/:token', '/share/progress.html'],
+  ['/s/:token', '/spk/sign/:token', '/share/spk-sign.html'],
+  ['/o/:token', '/opname/isi/:token', '/share/opname.html'],
+]) {
+  assert(rw.find(r => r.source === pendek)?.destination === berkas, `${pendek} → ${berkas}`)
+  assert(rw.find(r => r.source === lama)?.destination === berkas, `${lama} → ${berkas} (tautan lama)`)
+}
 
 console.log(`✅ ogShare: ${ok} assertion lolos`)

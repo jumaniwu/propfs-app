@@ -15,11 +15,21 @@
 // Modul ini sengaja bebas DOM & impor Node supaya bisa diuji langsung.
 // ============================================================
 
+// Ekstensi .ts ditulis eksplisit karena modul ini dimuat langsung oleh
+// test Node (lihat src/engine/siteplan untuk pola yang sama).
+import { POLA_TAUTAN, type JenisTautan } from './tautanPendek.ts'
+
 export interface HalamanBagikan {
   /** Nama berkas keluaran, relatif terhadap dist/ (tanpa awalan share/). */
   berkas: string
-  /** Pola rute Vercel yang diarahkan ke berkas ini. */
+  /**
+   * Pola rute Vercel yang diarahkan ke berkas ini. Halaman bertoken punya
+   * lebih dari satu: jalur pendek untuk tautan baru, jalur panjang agar
+   * tautan yang sudah tersebar tetap mendapat pratinjau yang benar.
+   */
   rute: string
+  /** Jenis tautan publik; kosong untuk halaman tanpa token. */
+  jenis?: JenisTautan
   judul: string
   deskripsi: string
   /** Nama berkas gambar di /og/. */
@@ -42,6 +52,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'vendor-daftar',
+    jenis: 'vendor_daftar',
     rute: '/vendor/daftar/:token',
     judul: 'Pendaftaran Vendor — PropFS Kontraktor AI',
     deskripsi: 'Daftarkan usaha Anda sebagai vendor: isi profil, nomor WhatsApp, daftar barang beserta harga jual dan syarat pembayaran.',
@@ -49,6 +60,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'vendor-item',
+    jenis: 'vendor_item',
     rute: '/vendor/item/:token',
     judul: 'Perbarui Daftar Barang & Harga — PropFS',
     deskripsi: 'Perbarui barang yang Anda jual beserta harganya agar pesanan yang masuk selalu memakai harga terbaru.',
@@ -56,6 +68,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'po',
+    jenis: 'po',
     rute: '/po/:token',
     judul: 'Purchase Order — PropFS Kontraktor AI',
     deskripsi: 'Lihat rincian pesanan pembelian, syarat pembayaran, dan unduh PDF-nya. Dokumen sudah ditandatangani dan disetujui secara digital.',
@@ -63,6 +76,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'lapor',
+    jenis: 'lapor',
     rute: '/lapor/:token',
     judul: 'Laporan Harian Lapangan — PropFS',
     deskripsi: 'Isi laporan kegiatan harian, pemakaian material, dan permintaan material langsung dari HP. Tanpa perlu login.',
@@ -70,6 +84,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'progress',
+    jenis: 'progress',
     rute: '/progress/:token',
     judul: 'Progres Proyek — PropFS Kontraktor AI',
     deskripsi: 'Pantau progres pekerjaan harian lengkap dengan foto lapangan, langsung dari HP Anda.',
@@ -77,6 +92,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'spk-sign',
+    jenis: 'spk_sign',
     rute: '/spk/sign/:token',
     judul: 'Tanda Tangan SPK Digital — PropFS',
     deskripsi: 'Baca Surat Perintah Kerja dan tanda tangani secara digital langsung dari HP. Sah dan tersimpan otomatis.',
@@ -84,6 +100,7 @@ export const HALAMAN_BAGIKAN: HalamanBagikan[] = [
   },
   {
     berkas: 'opname',
+    jenis: 'opname',
     rute: '/opname/isi/:token',
     judul: 'Form Opname Pekerjaan — PropFS',
     deskripsi: 'Isi realisasi volume pekerjaan di lapangan. Hasilnya langsung masuk ke laporan proyek.',
@@ -136,10 +153,19 @@ export function terapkanMeta(html: string, h: HalamanBagikan, situs = SITUS): st
   return out
 }
 
+/**
+ * Semua jalur yang harus mengarah ke berkas pratinjau sebuah halaman.
+ * Halaman bertoken menghasilkan dua: jalur pendek dan jalur lama.
+ */
+export function ruteHalaman(h: HalamanBagikan): string[] {
+  if (!h.jenis) return [h.rute]
+  const { pendek, lama } = POLA_TAUTAN[h.jenis]
+  const jalur = pendek === lama ? [pendek] : [pendek, lama]
+  return jalur.map(j => `${j}/:token`)
+}
+
 /** Rewrite Vercel: rute → berkas HTML hasil build. */
 export function rewritesVercel(): Array<{ source: string; destination: string }> {
-  return HALAMAN_BAGIKAN.map(h => ({
-    source: h.rute.replace(/:([a-z]+)/gi, ':$1'),
-    destination: `/share/${h.berkas}.html`,
-  }))
+  return HALAMAN_BAGIKAN.flatMap(h =>
+    ruteHalaman(h).map(source => ({ source, destination: `/share/${h.berkas}.html` })))
 }

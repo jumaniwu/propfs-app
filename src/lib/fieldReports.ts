@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useAuthStore } from '@/store/authStore'
+import { tautanPublik } from './tautanPendek'
 
 export interface FieldLog {
   id: string
@@ -138,8 +139,9 @@ export function fieldApi(): FieldApi {
 }
 
 // ── Link publik ──────────────────────────────────────────────────────────────
-export function laporLink(token: string): string { return `${window.location.origin}/lapor/${token}` }
-export function progresLink(token: string): string { return `${window.location.origin}/progress/${token}` }
+// Jalur pendek; bentuk lamanya tetap dilayani, lihat lib/tautanPendek.ts.
+export function laporLink(token: string): string { return tautanPublik('lapor', token, window.location.origin) }
+export function progresLink(token: string): string { return tautanPublik('progress', token, window.location.origin) }
 export function waShare(message: string): string { return `https://wa.me/?text=${encodeURIComponent(message)}` }
 
 // ── Google Drive webhook (Apps Script) ───────────────────────────────────────

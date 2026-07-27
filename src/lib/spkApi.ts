@@ -7,6 +7,7 @@
 
 import { useAuthStore } from '@/store/authStore'
 import type { OpnameItem } from './akuntan'
+import { tautanPublik } from './tautanPendek'
 
 export interface SpkLingkupItem {
   uraian: string
@@ -267,10 +268,10 @@ export function spkApi(): SpkApi {
 
 /** Link publik halaman tanda tangan / isi opname. */
 export function spkSignLink(token: string): string {
-  return `${window.location.origin}/spk/sign/${token}`
+  return tautanPublik('spk_sign', token, window.location.origin)
 }
 export function opnameFillLink(token: string): string {
-  return `${window.location.origin}/opname/isi/${token}`
+  return tautanPublik('opname', token, window.location.origin)
 }
 
 /** Link WhatsApp siap kirim (wa.me) berisi pesan + link. */
