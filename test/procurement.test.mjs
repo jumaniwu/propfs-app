@@ -4,7 +4,7 @@ import {
   nomorPo, hitungTotalPo, sisaQty, belumTerpesan, bolehKirimPo,
   statusPoSetelah, ringkasKatalog, hargaVendorUntuk, teksTerm,
   katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
-  milikWorkspace,
+  milikWorkspace, profilAwal, PROFIL_VENDOR_KOSONG,
   LABEL_STATUS_PO, LABEL_TERM,
 } from '../src/lib/procurement.ts'
 
@@ -261,5 +261,41 @@ for (const kosong of [null, undefined, '']) {
   try { milikWorkspace({ nama: 'X' }, kosong) } catch { kena = true }
   assert(kena, `tanpa pemilik (${JSON.stringify(kosong)}) harus gagal cepat, bukan kirim 403 ke server`)
 }
+
+// ── profilAwal ─────────────────────────────────────────────────────────────
+// Vendor sekali-klik dari nota hanya membawa nama; sisanya bisa null dari
+// basis data. Semua kolom harus keluar sebagai string/angka supaya input React
+// tetap terkendali dan null tidak ikut terkirim balik saat menyimpan.
+const KOLOM = ['nama', 'pic', 'no_wa', 'email', 'alamat', 'npwp', 'kategori', 'term', 'term_hari', 'catatan']
+
+const baru = profilAwal()
+assert(KOLOM.every(k => k in baru), 'profil kosong punya semua kolom')
+assert(baru.nama === '' && baru.term === 'cash' && baru.term_hari === 0, 'nilai bawaan profil kosong')
+assert(profilAwal(null).nama === '', 'null diperlakukan sama dengan tanpa argumen')
+
+// Salinan, bukan rujukan bersama — kalau tidak, dua form saling menimpa.
+profilAwal().nama = 'diubah'
+assert(PROFIL_VENDOR_KOSONG.nama === '', 'PROFIL_VENDOR_KOSONG tidak ikut termutasi')
+
+const profilNota = profilAwal({ id: 'v1', nama: 'TOKO PERMATA', status: 'aktif' })
+assert(profilNota.nama === 'TOKO PERMATA', 'nama terbawa')
+assert(KOLOM.filter(k => k !== 'term_hari').every(k => typeof profilNota[k] === 'string'),
+  'kolom teks yang hilang jadi string kosong, bukan undefined')
+assert(typeof profilNota.term_hari === 'number', 'term_hari selalu angka')
+assert(!('id' in profilNota) && !('status' in profilNota),
+  'kolom milik server tidak ikut masuk form')
+
+const kotor = profilAwal({
+  nama: 'X', pic: null, no_wa: null, email: null, alamat: null, npwp: null,
+  kategori: null, catatan: null, term: null, term_hari: null,
+})
+assert(KOLOM.filter(k => k !== 'term_hari').every(k => typeof kotor[k] === 'string'), 'null jadi string kosong')
+assert(kotor.term === 'cash', 'term tidak dikenal jatuh ke cash')
+assert(kotor.term_hari === 0, 'term_hari null jadi 0')
+
+assert(profilAwal({ term: 'term', term_hari: '30' }).term_hari === 30, 'term_hari teks diubah jadi angka')
+assert(profilAwal({ term: 'term', term_hari: 30 }).term === 'term', 'term tempo dipertahankan')
+assert(profilAwal({ term_hari: -5 }).term_hari === 0, 'term_hari negatif tidak diteruskan')
+assert(profilAwal({ term_hari: 14.7 }).term_hari === 14, 'term_hari pecahan dipotong')
 
 console.log(`✅ procurement: ${ok} assertion lolos`)

@@ -29,10 +29,11 @@ import {
   type ProfilVendorPublik,
 } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
-import { waKe } from '@/lib/waLink'
+import { waKe, nomorWaInternasional } from '@/lib/waLink'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, statusPoSetelah,
   ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
+  profilAwal,
   LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
   type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
 } from '@/lib/procurement'
@@ -171,6 +172,9 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
 }) {
   const { toast } = useToast()
   const [formOpen, setFormOpen] = useState(false)
+  // id vendor yang sedang disunting — formnya tampil di dalam kartunya sendiri
+  // supaya jelas profil siapa yang sedang diubah saat daftarnya panjang.
+  const [suntingId, setSuntingId] = useState<string | null>(null)
   const [cari, setCari] = useState('')
   const tautan = token ? vendorDaftarLink(token) : ''
 
@@ -259,7 +263,13 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-3">
-          {tersaring.map(v => (
+          {tersaring.map(v => suntingId === v.id ? (
+            <div key={v.id} className="md:col-span-2">
+              <FormVendor vendor={v}
+                onBatal={() => setSuntingId(null)}
+                onSukses={() => { setSuntingId(null); onUbah() }} />
+            </div>
+          ) : (
             <div key={v.id} className={`bg-white rounded-2xl border p-4 space-y-2.5 ${
               v.status === 'baru' ? 'border-amber-300' : 'border-border'}`}>
               <div className="flex items-start justify-between gap-2">
@@ -281,6 +291,15 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
                 <p>📦 {jumlahItem(v.id)} barang terdaftar</p>
               </div>
 
+              {/* Vendor dari nota pembelian lahir hanya dengan nama — tanpa
+                  nomor WA, PO tidak bisa dikirim ke mana pun. */}
+              {bolehUbah && !v.no_wa && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
+                  Belum ada nomor WhatsApp. Lengkapi lewat <b>Edit</b> agar PO bisa dikirim
+                  ke vendor ini.
+                </p>
+              )}
+
               {v.status === 'baru' && (
                 <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
                   Vendor ini mendaftar sendiri lewat link. Periksa datanya, lalu aktifkan agar
@@ -301,6 +320,10 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
                       <X className="w-3 h-3" /> Nonaktifkan
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    onClick={() => { setFormOpen(false); setSuntingId(v.id) }}>
+                    <PenLine className="w-3 h-3" /> Edit
+                  </Button>
                   {v.no_wa && (
                     <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
                       onClick={() => window.open(waKe(v.no_wa, `Halo ${v.pic || v.nama},`), '_blank')}>
@@ -321,15 +344,46 @@ function TabVendor({ vendors, items, token, bolehUbah, onUbah }: {
   )
 }
 
-function FormVendor({ onBatal, onSukses }: { onBatal: () => void; onSukses: () => void }) {
+function Kolom({ label, wajib, lebar, children }: {
+  label: string
+  wajib?: boolean
+  lebar?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <label className={`block ${lebar ? 'sm:col-span-2' : ''}`}>
+      <span className="block text-[11px] font-bold text-muted-foreground mb-1">
+        {label}{wajib && <span className="text-rose-600"> *</span>}
+      </span>
+      {children}
+    </label>
+  )
+}
+
+/**
+ * Satu form untuk menambah maupun menyunting profil vendor.
+ *
+ * Vendor yang lahir dari nota pembelian hanya punya nama — kontak, alamat, dan
+ * syarat pembayarannya belum terisi, padahal PO membutuhkan nomor WA untuk
+ * dikirim. Karena itu mode sunting memakai form yang sama persis, bukan form
+ * ringkas terpisah: apa pun yang bisa diisi saat mendaftar harus bisa
+ * dilengkapi belakangan.
+ */
+function FormVendor({ vendor, onBatal, onSukses }: {
+  vendor?: Vendor
+  onBatal: () => void
+  onSukses: () => void
+}) {
   const { toast } = useToast()
-  const [f, setF] = useState<ProfilVendorPublik>({
-    nama: '', pic: '', no_wa: '', email: '', alamat: '', npwp: '',
-    kategori: '', term: 'cash', term_hari: 0, catatan: '',
-  })
+  const sunting = !!vendor
+  const [f, setF] = useState<ProfilVendorPublik>(() => profilAwal(vendor))
   const [kirim, setKirim] = useState(false)
   const set = <K extends keyof ProfilVendorPublik>(k: K, v: ProfilVendorPublik[K]) =>
     setF(p => ({ ...p, [k]: v }))
+
+  // Nomor WA dinilai memakai penormal yang sama dengan pembuat tautan, supaya
+  // yang terlihat benar di sini pasti bisa dibuka saat PO dikirim.
+  const waSiap = nomorWaInternasional(f.no_wa)
 
   async function simpan() {
     if (f.nama.trim().length < 2) {
@@ -337,9 +391,15 @@ function FormVendor({ onBatal, onSukses }: { onBatal: () => void; onSukses: () =
       return
     }
     setKirim(true)
+    const bersih = { ...f, nama: f.nama.trim(), pic: f.pic.trim(), no_wa: f.no_wa.trim() }
     try {
-      await procurementApi().createVendor({ ...f, nama: f.nama.trim(), status: 'aktif' })
-      toast({ title: 'Vendor ditambahkan' })
+      if (vendor) {
+        await procurementApi().updateVendor(vendor.id, bersih)
+        toast({ title: `Profil ${bersih.nama} diperbarui` })
+      } else {
+        await procurementApi().createVendor({ ...bersih, status: 'aktif' })
+        toast({ title: 'Vendor ditambahkan' })
+      }
       onSukses()
     } catch (e) {
       toast({ title: 'Gagal menyimpan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
@@ -349,27 +409,77 @@ function FormVendor({ onBatal, onSukses }: { onBatal: () => void; onSukses: () =
   return (
     <div className="bg-white rounded-2xl border-2 border-gold/40 p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-navy text-sm">Tambah Vendor Manual</h3>
+        <h3 className="font-bold text-navy text-sm">
+          {sunting ? `Edit Profil — ${vendor.nama}` : 'Tambah Vendor Manual'}
+        </h3>
         <button onClick={onBatal} className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
       </div>
+      {/* Label ditulis di atas kolom, bukan hanya placeholder: dalam mode
+          sunting kolom datang sudah terisi, sehingga placeholder tidak pernah
+          terlihat dan isinya jadi tidak jelas milik kolom apa. */}
       <div className="grid sm:grid-cols-2 gap-3">
-        <input value={f.nama} onChange={e => set('nama', e.target.value)} placeholder="Nama vendor *" className={inputCls} />
-        <input value={f.pic} onChange={e => set('pic', e.target.value)} placeholder="Nama kontak" className={inputCls} />
-        <input value={f.no_wa} onChange={e => set('no_wa', e.target.value)} placeholder="Nomor WhatsApp" className={inputCls} />
-        <input value={f.kategori} onChange={e => set('kategori', e.target.value)} placeholder="Kategori barang" className={inputCls} />
-        <select value={f.term} onChange={e => set('term', e.target.value as 'cash' | 'term')}
-          className={`${inputCls} font-semibold`}>
-          {(['cash', 'term'] as const).map(t => <option key={t} value={t}>{LABEL_TERM[t]}</option>)}
-        </select>
+        <Kolom label="Nama vendor" wajib>
+          <input value={f.nama} onChange={e => set('nama', e.target.value)}
+            placeholder="mis. Toko Permata" className={inputCls} />
+        </Kolom>
+        <Kolom label="Nama kontak">
+          <input value={f.pic} onChange={e => set('pic', e.target.value)}
+            placeholder="mis. Pak Rudi" className={inputCls} />
+        </Kolom>
+        <Kolom label="Nomor WhatsApp">
+          <input value={f.no_wa} onChange={e => set('no_wa', e.target.value)} inputMode="tel"
+            placeholder="mis. 0812…" className={inputCls} />
+          {f.no_wa.trim() !== '' && (
+            <p className={`text-[11px] mt-1 ${waSiap ? 'text-emerald-700' : 'text-rose-600'}`}>
+              {waSiap
+                ? `Akan dihubungi sebagai +${waSiap}`
+                : 'Nomor belum bisa dipakai — tulis seperti 0812… atau 62812…'}
+            </p>
+          )}
+        </Kolom>
+        <Kolom label="Email">
+          <input value={f.email} onChange={e => set('email', e.target.value)} inputMode="email"
+            placeholder="mis. toko@email.com" className={inputCls} />
+        </Kolom>
+        <Kolom label="Kategori barang">
+          <input value={f.kategori} onChange={e => set('kategori', e.target.value)}
+            placeholder="mis. Besi & Baja" className={inputCls} />
+        </Kolom>
+        <Kolom label="NPWP">
+          <input value={f.npwp} onChange={e => set('npwp', e.target.value)}
+            placeholder="Opsional" className={inputCls} />
+        </Kolom>
+        <Kolom label="Syarat pembayaran">
+          <select value={f.term} onChange={e => set('term', e.target.value as 'cash' | 'term')}
+            className={`${inputCls} font-semibold`}>
+            {(['cash', 'term'] as const).map(t => <option key={t} value={t}>{LABEL_TERM[t]}</option>)}
+          </select>
+        </Kolom>
         {f.term === 'term' && (
-          <input type="number" min={1} value={f.term_hari || ''}
-            onChange={e => set('term_hari', Number(e.target.value) || 0)}
-            placeholder="Tempo (hari)" className={inputCls} />
+          <Kolom label="Lama tempo (hari)">
+            <input type="number" min={1} value={f.term_hari || ''}
+              onChange={e => set('term_hari', Number(e.target.value) || 0)}
+              placeholder="mis. 30" className={inputCls} />
+          </Kolom>
+        )}
+        <Kolom label="Alamat" lebar>
+          <input value={f.alamat} onChange={e => set('alamat', e.target.value)}
+            placeholder="Alamat toko / gudang" className={inputCls} />
+        </Kolom>
+        <Kolom label="Catatan" lebar>
+          <input value={f.catatan} onChange={e => set('catatan', e.target.value)}
+            placeholder="Opsional" className={inputCls} />
+        </Kolom>
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={simpan} disabled={kirim} className="gap-2 bg-navy hover:bg-navy/90 font-bold">
+          {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : sunting ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          {sunting ? 'Simpan Perubahan' : 'Simpan Vendor'}
+        </Button>
+        {sunting && (
+          <Button onClick={onBatal} variant="outline" disabled={kirim} className="font-bold">Batal</Button>
         )}
       </div>
-      <Button onClick={simpan} disabled={kirim} className="gap-2 bg-navy hover:bg-navy/90 font-bold">
-        {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Simpan Vendor
-      </Button>
     </div>
   )
 }
