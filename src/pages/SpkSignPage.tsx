@@ -75,7 +75,7 @@ export default function SpkSignPage() {
             <div className="p-5 sm:p-7 space-y-5 text-sm">
               <p>
                 {isKonsumen
-                  ? <>Perjanjian pemesanan/jual-beli kepada <span className="font-bold">{spk.vendor_name}</span></>
+                  ? <>Perjanjian pekerjaan renovasi/pembangunan dengan <span className="font-bold">{spk.vendor_name}</span></>
                   : <>Dengan ini memberikan perintah kerja kepada <span className="font-bold">{spk.vendor_name}</span></>}
                 {spk.project_name && <> untuk proyek <span className="font-bold">{spk.project_name}</span></>} dengan ketentuan berikut:
               </p>

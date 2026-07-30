@@ -118,7 +118,7 @@ export default function TabSPK() {
 
       <p className="text-xs text-muted-foreground max-w-2xl">
         <b>SPK Vendor</b> = perintah kerja ke pelaksana/pemborong. <b>Kontrak Konsumen</b> = perjanjian
-        pemesanan/jual-beli ke pembeli/pemilik (wajib lampirkan RAB / Surat Penawaran Harga).
+        renovasi/pembangunan dengan pemilik yang memesan (wajib lampirkan RAB / Surat Penawaran Harga).
         Anda tanda tangan selaku Pihak Pertama → kirim link → pihak kedua tanda tangan digital dari HP.
       </p>
 
@@ -398,7 +398,7 @@ function SpkFormDialog({ open, jenis, onClose, onSaved, defaultProject, defaultP
             {isEdit
               ? 'Ubah isi dokumen. Perubahan hanya bisa dilakukan sebelum pihak kedua menandatangani.'
               : isKonsumen
-                ? <>Perjanjian pemesanan/jual-beli ke pembeli — <b>wajib lampirkan RAB / Surat Penawaran Harga</b>. Nomor: <b>{nomorSpkOtomatis(count)}</b></>
+                ? <>Perjanjian renovasi/pembangunan dengan pemilik — <b>wajib lampirkan RAB / Surat Penawaran Harga</b>. Nomor: <b>{nomorSpkOtomatis(count)}</b></>
                 : <>Perintah kerja ke pelaksana/vendor. Nomor otomatis: <b>{nomorSpkOtomatis(count)}</b></>}
           </DialogDescription>
         </DialogHeader>
