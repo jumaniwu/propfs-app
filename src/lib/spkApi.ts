@@ -364,53 +364,77 @@ export function defaultPasal(ctx: PasalContext): SpkPasal[] {
   ]
 }
 
-/** Template pasal untuk KONSUMEN/PEMILIK (perjanjian pemesanan/jual-beli
- *  antara pengembang dan pembeli). Spesifikasi mengikat pada RAB/penawaran
- *  yang WAJIB dilampirkan. Bisa diedit user. */
+/**
+ * Template pasal untuk KONSUMEN/PEMILIK.
+ *
+ * Ini perjanjian PEKERJAAN — kontraktor mengerjakan renovasi/pembangunan milik
+ * pemesan — bukan jual-beli unit. Bedanya bukan sekadar kata: pada jual-beli
+ * yang berpindah adalah barangnya, sedangkan di sini yang dijanjikan adalah
+ * pekerjaan di atas properti yang sudah menjadi milik pemesan. Pasal yang
+ * dibutuhkan pun berbeda — akses lokasi, pekerjaan tambah-kurang, masa
+ * pemeliharaan, dan keselamatan kerja, yang semuanya tidak ada di jual-beli.
+ *
+ * Kedudukan pihak tetap seperti dokumen lain di aplikasi ini: PIHAK PERTAMA
+ * adalah pemakai aplikasi (pelaksana), PIHAK KEDUA lawan bicaranya.
+ * Spesifikasi mengikat pada RAB/penawaran yang WAJIB dilampirkan. Bisa diedit.
+ */
 export function defaultPasalKonsumen(ctx: PasalContext): SpkPasal[] {
   const terminStr = ctx.termin.length
     ? ctx.termin.map((t, i) => `${i + 1}. ${t.nama}: ${t.pct}% (${rupiah((ctx.nilai * t.pct) / 100)})`).join('\n')
     : 'Dibayarkan sesuai kesepakatan para pihak.'
   const nilaiStr = `${rupiah(ctx.nilai)} (${terbilang(ctx.nilai)} rupiah)`
+  const objek = ctx.proyek ? `"${ctx.proyek}"` : 'yang disepakati para pihak'
   return [
     {
-      judul: 'PASAL 1 — OBJEK PERJANJIAN',
-      isi: `PIHAK PERTAMA (Penjual/Pengembang) menjual dan menyerahkan kepada PIHAK KEDUA (Pembeli/Pemilik), dan PIHAK KEDUA membeli${ctx.proyek ? ` unit/bangunan pada proyek "${ctx.proyek}"` : ' unit/bangunan'} beserta spesifikasi sebagaimana tercantum dalam Rincian & Spesifikasi serta RAB / Surat Penawaran Harga yang TERLAMPIR dan menjadi bagian tidak terpisahkan dari perjanjian ini.`,
+      judul: 'PASAL 1 — OBJEK & LINGKUP PEKERJAAN',
+      isi: `PIHAK PERTAMA (Pelaksana) menyanggupi dan PIHAK KEDUA (Pemilik/Pemberi Kerja) menyerahkan pelaksanaan pekerjaan renovasi/pembangunan pada ${objek}. Lingkup, volume, dan spesifikasi pekerjaan mengikuti Rincian Pekerjaan serta RAB / Surat Penawaran Harga yang TERLAMPIR dan menjadi bagian tidak terpisahkan dari perjanjian ini.`,
     },
     {
-      judul: 'PASAL 2 — HARGA & CARA PEMBAYARAN',
-      isi: `Harga disepakati sebesar ${nilaiStr}. Pembayaran dilakukan menurut jadwal berikut:\n${terminStr}\nPembayaran dianggap sah setelah dana diterima PIHAK PERTAMA dan dikonfirmasi.`,
+      judul: 'PASAL 2 — NILAI & CARA PEMBAYARAN',
+      isi: `Nilai pekerjaan disepakati sebesar ${nilaiStr}. Pembayaran dilakukan menurut jadwal berikut:\n${terminStr}\nPembayaran dianggap sah setelah dana diterima PIHAK PERTAMA dan dikonfirmasi.`,
     },
     {
       judul: 'PASAL 3 — SPESIFIKASI & LAMPIRAN',
-      isi: `Spesifikasi teknis, material, dan volume mengikuti RAB / Surat Penawaran Harga terlampir. Setiap perubahan spesifikasi (tambah/kurang) atas permintaan PIHAK KEDUA diperhitungkan sebagai pekerjaan tambah-kurang dan disepakati tertulis.`,
+      isi: `Spesifikasi teknis, material, merek, dan volume mengikuti RAB / Surat Penawaran Harga terlampir. Penggantian material dengan mutu setara hanya boleh dilakukan atas persetujuan tertulis PIHAK KEDUA.`,
     },
     {
-      judul: 'PASAL 4 — JANGKA WAKTU & SERAH TERIMA',
-      isi: `PIHAK PERTAMA menyelesaikan dan menyerahkan objek dalam estimasi ${ctx.durasi} (${terbilang(ctx.durasi)}) hari kalender sejak ${ctx.tglMulai || 'perjanjian ditandatangani dan pembayaran tahap pertama diterima'}. Serah terima dituangkan dalam Berita Acara Serah Terima (BAST).`,
+      judul: 'PASAL 4 — JANGKA WAKTU & KETERLAMBATAN',
+      isi: `Pekerjaan diselesaikan dalam ${ctx.durasi} (${terbilang(ctx.durasi)}) hari kalender sejak ${ctx.tglMulai || 'perjanjian ditandatangani dan pembayaran tahap pertama diterima'}. Keterlambatan yang bukan karena keadaan kahar maupun kelalaian PIHAK KEDUA dikenakan denda ${ctx.denda}‰ (${terbilang(ctx.denda)} permil) per hari dari nilai pekerjaan, setinggi-tingginya 5% (lima persen).`,
     },
     {
-      judul: 'PASAL 5 — KEWAJIBAN PIHAK PERTAMA (PENJUAL)',
-      isi: `PIHAK PERTAMA wajib: (a) membangun/menyediakan objek sesuai spesifikasi lampiran; (b) menyerahkan objek tepat waktu dalam kondisi baik; (c) memberikan masa pemeliharaan/garansi sesuai kesepakatan.`,
+      judul: 'PASAL 5 — KEWAJIBAN PIHAK PERTAMA (PELAKSANA)',
+      isi: `PIHAK PERTAMA wajib: (a) melaksanakan pekerjaan sesuai lampiran, tepat mutu dan tepat waktu; (b) menyediakan tenaga kerja, peralatan, dan material sesuai lingkup; (c) menjaga kebersihan serta merapikan lokasi setelah pekerjaan selesai; (d) memperbaiki pekerjaan yang tidak sesuai spesifikasi atas biaya sendiri.`,
     },
     {
-      judul: 'PASAL 6 — KEWAJIBAN PIHAK KEDUA (PEMBELI)',
-      isi: `PIHAK KEDUA wajib: (a) melakukan pembayaran sesuai jadwal pada Pasal 2; (b) melakukan pemeriksaan pada saat serah terima; (c) melunasi seluruh kewajiban sebelum penyerahan hak/sertifikat.`,
+      judul: 'PASAL 6 — KEWAJIBAN PIHAK KEDUA (PEMILIK)',
+      isi: `PIHAK KEDUA wajib: (a) memberikan akses lokasi selama jam kerja yang disepakati; (b) menyediakan sambungan air dan listrik kerja, kecuali diperjanjikan lain; (c) menyelesaikan perizinan yang menjadi hak pemilik; (d) melakukan pembayaran sesuai jadwal pada Pasal 2.`,
     },
     {
-      judul: 'PASAL 7 — PEMBATALAN & SANKSI',
-      isi: `Apabila PIHAK KEDUA membatalkan secara sepihak, pembayaran yang telah masuk dapat diperhitungkan sebagai denda/biaya administrasi sesuai kesepakatan. Apabila PIHAK PERTAMA gagal menyerahkan objek, PIHAK PERTAMA mengembalikan pembayaran PIHAK KEDUA.`,
+      judul: 'PASAL 7 — PEKERJAAN TAMBAH & KURANG',
+      isi: `Setiap perubahan lingkup atas permintaan PIHAK KEDUA diperhitungkan sebagai pekerjaan tambah/kurang, dihitung memakai harga satuan pada RAB terlampir, dan HARUS disepakati tertulis sebelum dikerjakan. Pekerjaan tambah dapat memperpanjang jangka waktu Pasal 4 secara proporsional.`,
     },
     {
-      judul: 'PASAL 8 — KEADAAN KAHAR (FORCE MAJEURE)',
-      isi: `Keterlambatan akibat keadaan kahar (bencana alam, kebijakan pemerintah, dan sebab lain di luar kendali) bukan merupakan kelalaian, sepanjang diberitahukan secara tertulis paling lambat 7 (tujuh) hari sejak kejadian.`,
+      judul: 'PASAL 8 — SERAH TERIMA & MASA PEMELIHARAAN',
+      isi: `Penyelesaian pekerjaan dituangkan dalam Berita Acara Serah Terima (BAST). Setelah serah terima berlaku masa pemeliharaan selama 90 (sembilan puluh) hari kalender; kerusakan akibat mutu pengerjaan dalam masa tersebut diperbaiki PIHAK PERTAMA tanpa biaya tambahan. Kerusakan akibat pemakaian yang tidak wajar atau perubahan oleh pihak lain tidak termasuk.`,
     },
     {
-      judul: 'PASAL 9 — PENYELESAIAN PERSELISIHAN',
+      judul: 'PASAL 9 — KESELAMATAN KERJA & TANGGUNG JAWAB',
+      isi: `PIHAK PERTAMA bertanggung jawab atas keselamatan pekerjanya serta kerusakan bangunan atau harta benda PIHAK KEDUA yang timbul karena kelalaian pelaksanaan. Barang berharga milik PIHAK KEDUA di area kerja diamankan sendiri oleh PIHAK KEDUA sebelum pekerjaan dimulai.`,
+    },
+    {
+      judul: 'PASAL 10 — KEADAAN KAHAR (FORCE MAJEURE)',
+      isi: `Keterlambatan akibat keadaan kahar (bencana alam, kerusuhan, kebijakan pemerintah, dan sebab lain di luar kendali) bukan merupakan kelalaian, sepanjang diberitahukan secara tertulis paling lambat 7 (tujuh) hari sejak kejadian.`,
+    },
+    {
+      judul: 'PASAL 11 — PEMUTUSAN PERJANJIAN',
+      isi: `Perjanjian dapat diputus apabila salah satu pihak lalai dan tidak memperbaikinya dalam 14 (empat belas) hari sejak teguran tertulis. Pada pemutusan, pekerjaan yang telah terpasang diukur bersama dan diperhitungkan terhadap pembayaran yang sudah diterima.`,
+    },
+    {
+      judul: 'PASAL 12 — PENYELESAIAN PERSELISIHAN',
       isi: `Segala perselisihan diselesaikan secara musyawarah untuk mufakat. Apabila tidak tercapai, para pihak menyelesaikannya melalui jalur hukum yang berlaku di wilayah hukum Republik Indonesia.`,
     },
     {
-      judul: 'PASAL 10 — PENUTUP',
+      judul: 'PASAL 13 — PENUTUP',
       isi: `Perjanjian ini dibuat dan ditandatangani secara digital oleh para pihak, berlaku sah dan mengikat sejak ditandatangani. Hal yang belum diatur disepakati kemudian sebagai adendum yang menjadi bagian tidak terpisahkan.`,
     },
   ]
@@ -426,6 +450,6 @@ export function pasalTemplate(ctx: PasalContext, jenis: SpkJenis): SpkPasal[] {
 /** Judul dokumen menurut jenis / peran pihak kedua. */
 export function spkTitle(peran?: string): string {
   return (peran || '').toLowerCase() === 'konsumen'
-    ? 'SURAT PERJANJIAN / PEMESANAN'
+    ? 'SURAT PERJANJIAN RENOVASI'
     : 'SURAT PERINTAH KERJA'
 }
