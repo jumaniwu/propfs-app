@@ -10,6 +10,7 @@ import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import IndikatorSimpan from '@/components/cost/IndikatorSimpan'
+import PilihProyek from '@/components/cost/PilihProyek'
 import { Button } from '@/components/ui/button'
 import RABUploader from '@/components/cost/RABUploader'
 import TrialExpiredGate from '@/components/trial/TrialExpiredGate'
@@ -481,10 +482,7 @@ export default function CostDashboard() {
         <KontraktorHeader
           onMenu={() => setDrawerOpen(true)}
           judul={JUDUL_TAB[activeTab]}
-          subjudul={<>
-            <Building2 className="inline h-3 w-3 mr-1" />
-            {projectInfo.projectName}{projectInfo.location && ` · ${projectInfo.location}`}
-          </>}
+          subjudul={<PilihProyek />}
           kembaliKe="/kontraktor"
           aksi={
             <div className="flex items-center gap-2 w-full sm:w-auto">

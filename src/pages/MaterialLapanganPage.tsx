@@ -12,6 +12,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import PilihProyek from '@/components/cost/PilihProyek'
+import { saringProyek, SEMUA_PROYEK } from '@/lib/lingkupProyek'
 import PhotoLightbox from '@/components/PhotoLightbox'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
@@ -42,8 +44,17 @@ export default function MaterialLapanganPage() {
     const s = params.get('sub')
     return s === 'request' || s === 'kurang' ? s : 'pakai'
   })
-  const [usage, setUsage] = useState<MaterialUsage[]>([])
-  const [requests, setRequests] = useState<MaterialRequest[]>([])
+  const [usageSemua, setUsage] = useState<MaterialUsage[]>([])
+  const [requestsSemua, setRequests] = useState<MaterialRequest[]>([])
+
+  // Daftar ini dulu menampilkan SELURUH proyek sekaligus tanpa penyaring, jadi
+  // angka dari proyek berbeda tercampur di satu layar. Lingkupnya mengikuti
+  // proyek aktif, dan bisa dilebarkan ke semua proyek lewat pemilih di header.
+  const [lingkup, setLingkup] = useState<string>(() => projectInfo?.id ?? SEMUA_PROYEK)
+  useEffect(() => { if (projectInfo?.id) setLingkup(projectInfo.id) }, [projectInfo?.id])
+  const namaLingkup = lingkup === SEMUA_PROYEK ? '' : (projectInfo?.projectName ?? '')
+  const usage = useMemo(() => saringProyek(usageSemua, namaLingkup), [usageSemua, namaLingkup])
+  const requests = useMemo(() => saringProyek(requestsSemua, namaLingkup), [requestsSemua, namaLingkup])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
@@ -148,7 +159,10 @@ export default function MaterialLapanganPage() {
     <div className="min-h-screen bg-slate-100/70 pb-10">
       <KontraktorHeader
         judul="Material Lapangan"
-        subjudul="Penggunaan, permintaan, dan kekurangan material dari lapangan"
+        subjudul={<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <PilihProyek izinkanSemua nilai={lingkup} onPilih={setLingkup} />
+          <span className="text-white/60">Penggunaan, permintaan, dan kekurangan material</span>
+        </span>}
         kembaliKe="/kontraktor"
         aksi={
           <div className="flex gap-2">
