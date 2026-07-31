@@ -124,9 +124,21 @@ function storedAccessToken(url: string): string | null {
   } catch { return null }
 }
 
-async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
+/**
+ * `publik: true` memakai KUNCI ANON saja, tidak pernah JWT pengguna.
+ *
+ * Halaman bertoken dibuka tanpa login, tetapi perangkatnya bisa saja menyimpan
+ * sesi Supabase yang sudah kedaluwarsa — milik pemakai aplikasi yang membuka
+ * linknya sendiri, atau sisa login lama. JWT kedaluwarsa yang ikut terkirim
+ * ditolak sebagai HTTP 401, dan halamannya gagal walau tokennya sah. Muat ulang
+ * "menyembuhkan" karena supabase-js sempat menyegarkan token di latar belakang
+ * — itulah kenapa gagalnya hanya di pembukaan pertama.
+ */
+async function restFetch(
+  path: string, init: RequestInit = {}, ms = 15000, publik = false,
+): Promise<Response> {
   const { url, key } = supaConf()
-  const token = storedAccessToken(url)
+  const token = publik ? null : storedAccessToken(url)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   try {
@@ -196,8 +208,9 @@ const realApi: SpkApi = {
     await restDelete('spk_docs', `id=eq.${id}`)
   },
   async getSpkByToken(token) {
-    // RPC publik via REST (tanpa session — token argumen di body)
-    const res = await restFetch('rpc/spk_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) })
+    // RPC publik via REST: kunci anon saja, JANGAN JWT pengguna.
+    const res = await restFetch(
+      'rpc/spk_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) }, 15000, true)
     if (!res.ok) throw new Error(`Gagal memuat SPK (HTTP ${res.status}).`)
     const data = await res.json()
     const row = Array.isArray(data) ? data[0] : data
@@ -206,7 +219,7 @@ const realApi: SpkApi = {
   async signSpkByToken(token, signatureDataUrl, name) {
     const res = await restFetch('rpc/spk_sign_by_token', {
       method: 'POST', body: JSON.stringify({ p_token: token, p_signature: signatureDataUrl, p_name: name }),
-    })
+    }, 15000, true)
     if (!res.ok) throw new Error(`Gagal menyimpan tanda tangan (HTTP ${res.status}).`)
     return (await res.json()) === true
   },
@@ -224,7 +237,8 @@ const realApi: SpkApi = {
     await restDelete('opname_forms', `id=eq.${id}`)
   },
   async getOpnameByToken(token) {
-    const res = await restFetch('rpc/opname_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) })
+    const res = await restFetch(
+      'rpc/opname_get_by_token', { method: 'POST', body: JSON.stringify({ p_token: token }) }, 15000, true)
     if (!res.ok) throw new Error(`Gagal memuat form (HTTP ${res.status}).`)
     const data = await res.json()
     const row = Array.isArray(data) ? data[0] : data
@@ -233,7 +247,7 @@ const realApi: SpkApi = {
   async fillOpnameByToken(token, items, by) {
     const res = await restFetch('rpc/opname_fill_by_token', {
       method: 'POST', body: JSON.stringify({ p_token: token, p_items: items, p_by: by }),
-    })
+    }, 15000, true)
     if (!res.ok) throw new Error(`Gagal mengirim opname (HTTP ${res.status}).`)
     return (await res.json()) === true
   },

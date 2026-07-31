@@ -60,9 +60,21 @@ function storedAccessToken(url: string): string | null {
     return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
   } catch { return null }
 }
-async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
+/**
+ * `publik: true` memakai KUNCI ANON saja, tidak pernah JWT pengguna.
+ *
+ * Halaman bertoken dibuka tanpa login, tetapi perangkatnya bisa saja menyimpan
+ * sesi Supabase yang sudah kedaluwarsa — milik pemakai aplikasi yang membuka
+ * linknya sendiri, atau sisa login lama. JWT kedaluwarsa yang ikut terkirim
+ * ditolak sebagai HTTP 401, dan halamannya gagal walau tokennya sah. Muat ulang
+ * "menyembuhkan" karena supabase-js sempat menyegarkan token di latar belakang
+ * — itulah kenapa gagalnya hanya di pembukaan pertama.
+ */
+async function restFetch(
+  path: string, init: RequestInit = {}, ms = 15000, publik = false,
+): Promise<Response> {
   const { url, key } = supaConf()
-  const token = storedAccessToken(url)
+  const token = publik ? null : storedAccessToken(url)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   try {
@@ -75,8 +87,8 @@ async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Prom
     throw e
   } finally { clearTimeout(timer) }
 }
-async function rpc<T>(fn: string, body: unknown): Promise<T> {
-  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) })
+async function rpc<T>(fn: string, body: unknown, publik = false): Promise<T> {
+  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) }, 15000, publik)
   if (!res.ok) throw new Error(`Gagal (HTTP ${res.status}).`)
   return await res.json() as T
 }
@@ -118,17 +130,17 @@ const realApi: FieldApi = {
     if (!res.ok) throw new Error(`Gagal menghapus laporan (HTTP ${res.status}).`)
   },
   async getLogByReportToken(token) {
-    const data = await rpc<Array<{ project_name: string; drive_webhook: string }>>('field_log_by_report_token', { p_token: token })
+    const data = await rpc<Array<{ project_name: string; drive_webhook: string }>>('field_log_by_report_token', { p_token: token }, true)
     return (Array.isArray(data) ? data[0] : data) ?? null
   },
   async submitReport(token, r) {
     return await rpc<boolean>('field_report_submit', {
       p_token: token, p_tanggal: r.tanggal, p_pelapor: r.pelapor,
       p_kegiatan: r.kegiatan, p_catatan: r.catatan, p_photos: r.photos,
-    }) === true
+    }, true) === true
   },
   async getOwnerView(token) {
-    const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token })
+    const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token }, true)
     const row = Array.isArray(data) ? data[0] : data
     return row ? { project_name: row.project_name, reports: row.reports ?? [] } : null
   },
