@@ -7,8 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon,
-} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -66,6 +65,11 @@ export const MENU_ITEMS: MenuItem[] = [
   { key: 'kurva_s',   label: 'Kurva S',          icon: TrendingUp,      kategori: 'proyek', tab: 'kurva_s',   tone: TONE.emerald, feature: 'scurve', alias: 'progress kurva' },
   { key: 'realisasi', label: 'Realisasi Biaya',  icon: ReceiptIcon,     kategori: 'proyek', tab: 'realisasi', tone: TONE.rose,    feature: 'cost_realisasi', alias: 'pengeluaran nota ai' },
   { key: 'laporan',   label: 'Laporan & Export', icon: FileDown,        kategori: 'proyek', tab: 'laporan',   tone: TONE.slate },
+  // AI Architect dipindah ke sini dari menu produk terpisah: merancang layout
+  // dan merendernya adalah pekerjaan kontraktor juga, bukan hanya milik studi
+  // kelayakan. Halamannya tetap /siteplan supaya tautan lama tidak putus.
+  { key: 'arsitek', label: 'AI Architect', icon: Compass, kategori: 'proyek', path: '/siteplan', tone: TONE.violet, tag: 'BARU',
+    alias: 'siteplan layout kavling render 3d visual desain arsitek denah tata letak' },
 
   // ── Keuangan ──────────────────────────────────────────────────────────────
   // Halaman Akuntan sudah memuat Laba Rugi & Neraca, Pemasukan, Inventori,
