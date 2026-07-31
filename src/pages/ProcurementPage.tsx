@@ -17,6 +17,8 @@ import {
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import PilihProyek from '@/components/cost/PilihProyek'
+import { saringProyek, SEMUA_PROYEK } from '@/lib/lingkupProyek'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
@@ -64,9 +66,18 @@ export default function ProcurementPage() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [items, setItems] = useState<VendorItem[]>([])
-  const [pos, setPos] = useState<PurchaseOrder[]>([])
-  const [requests, setRequests] = useState<MaterialRequest[]>([])
+  const [posSemua, setPos] = useState<PurchaseOrder[]>([])
+  const [requestsSemua, setRequests] = useState<MaterialRequest[]>([])
   const [dos, setDos] = useState<DeliveryOrder[]>([])
+
+  // Vendor & katalog memang milik perusahaan, bukan proyek — keduanya tidak
+  // disaring. Yang disaring adalah PO dan Material Request, karena keduanya
+  // lahir dari satu proyek tertentu.
+  const [lingkup, setLingkup] = useState<string>(() => projectInfo?.id ?? SEMUA_PROYEK)
+  useEffect(() => { if (projectInfo?.id) setLingkup(projectInfo.id) }, [projectInfo?.id])
+  const namaLingkup = lingkup === SEMUA_PROYEK ? '' : (projectInfo?.projectName ?? '')
+  const pos = useMemo(() => saringProyek(posSemua, namaLingkup), [posSemua, namaLingkup])
+  const requests = useMemo(() => saringProyek(requestsSemua, namaLingkup), [requestsSemua, namaLingkup])
   const [token, setToken] = useState('')
   const [memuat, setMemuat] = useState(true)
   const [error, setError] = useState('')
@@ -121,7 +132,10 @@ export default function ProcurementPage() {
     <div className="min-h-screen bg-slate-100/70 pb-10">
       <KontraktorHeader
         judul="Procurement"
-        subjudul={`${vendors.length} vendor · ${pos.length} purchase order`}
+        subjudul={<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <PilihProyek izinkanSemua nilai={lingkup} onPilih={setLingkup} />
+          <span className="text-white/60">{vendors.length} vendor · {pos.length} purchase order</span>
+        </span>}
         kembaliKe="/kontraktor"
         aksi={
           <Button onClick={() => muat()} variant="outline" size="sm"
