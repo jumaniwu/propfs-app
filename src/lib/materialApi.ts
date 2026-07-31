@@ -105,9 +105,21 @@ function storedAccessToken(url: string): string | null {
     return p.access_token ?? p.currentSession?.access_token ?? p.session?.access_token ?? null
   } catch { return null }
 }
-async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Promise<Response> {
+/**
+ * `publik: true` memakai KUNCI ANON saja, tidak pernah JWT pengguna.
+ *
+ * Halaman bertoken dibuka tanpa login, tetapi perangkatnya bisa saja menyimpan
+ * sesi Supabase yang sudah kedaluwarsa — milik pemakai aplikasi yang membuka
+ * linknya sendiri, atau sisa login lama. JWT kedaluwarsa yang ikut terkirim
+ * ditolak sebagai HTTP 401, dan halamannya gagal walau tokennya sah. Muat ulang
+ * "menyembuhkan" karena supabase-js sempat menyegarkan token di latar belakang
+ * — itulah kenapa gagalnya hanya di pembukaan pertama.
+ */
+async function restFetch(
+  path: string, init: RequestInit = {}, ms = 15000, publik = false,
+): Promise<Response> {
   const { url, key } = supaConf()
-  const token = storedAccessToken(url)
+  const token = publik ? null : storedAccessToken(url)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   try {
@@ -120,8 +132,8 @@ async function restFetch(path: string, init: RequestInit = {}, ms = 15000): Prom
     throw e
   } finally { clearTimeout(timer) }
 }
-async function rpc<T>(fn: string, body: unknown): Promise<T> {
-  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) })
+async function rpc<T>(fn: string, body: unknown, publik = false): Promise<T> {
+  const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) }, 15000, publik)
   if (!res.ok) throw new Error(`Gagal (HTTP ${res.status}).`)
   return await res.json() as T
 }
@@ -176,21 +188,21 @@ const realApi: MaterialApi = {
     return await rpc<boolean>('material_usage_submit', {
       p_token: token, p_tanggal: u.tanggal, p_pelapor: u.pelapor, p_nama: u.nama,
       p_satuan: u.satuan, p_qty: u.qty, p_lokasi: u.lokasi, p_catatan: u.catatan, p_photos: u.photos,
-    }) === true
+    }, true) === true
   },
   async submitRequest(token, r) {
     return await rpc<boolean>('material_request_submit', {
       p_token: token, p_tanggal: r.tanggal, p_pemohon: r.pemohon, p_nama: r.nama,
       p_satuan: r.satuan, p_qty: r.qty, p_urgensi: r.urgensi,
       p_butuh_tanggal: r.butuhTanggal, p_catatan: r.catatan, p_photos: r.photos,
-    }) === true
+    }, true) === true
   },
   async byToken(token) {
     // Cakupannya per PROYEK, bukan per link — request yang dibuat dari dalam
     // aplikasi tidak punya log_id, dan satu proyek bisa punya banyak link.
     const kosong = { usage: [], requests: [], penerimaan: [], pembelian: [], penyesuaian: [] }
     try {
-      const rows = await rpc<Partial<StokMentah>[]>('material_stok_by_report_token', { p_token: token })
+      const rows = await rpc<Partial<StokMentah>[]>('material_stok_by_report_token', { p_token: token }, true)
       const r = rows?.[0]
       // Kolom pembelian & penyesuaian baru ada sejak migration_stok_gudang.sql;
       // versi fungsi yang lebih tua tetap terpakai tanpa membuat halaman gagal.
@@ -198,7 +210,7 @@ const realApi: MaterialApi = {
     } catch {
       // migration_stok_lapangan.sql belum dijalankan: mundur ke fungsi lama
       // supaya halaman tetap jalan, meski daftarnya hanya sebatas link ini.
-      const rows = await rpc<Partial<StokMentah>[]>('material_by_report_token', { p_token: token })
+      const rows = await rpc<Partial<StokMentah>[]>('material_by_report_token', { p_token: token }, true)
       const r = rows?.[0]
       return { ...kosong, usage: r?.usage ?? [], requests: r?.requests ?? [] }
     }
