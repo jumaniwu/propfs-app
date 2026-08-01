@@ -36,6 +36,7 @@ const MaterialLapanganPage = lazy(() => import('./pages/MaterialLapanganPage'))
 const TimPage = lazy(() => import('./pages/TimPage'))
 const TimLoginPage = lazy(() => import('./pages/TimLoginPage'))
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'))
+const ChatAiPage = lazy(() => import('./pages/ChatAiPage'))
 const VendorDaftarPage = lazy(() => import('./pages/VendorDaftarPage'))
 const VendorItemPage = lazy(() => import('./pages/VendorItemPage'))
 const PoViewPage = lazy(() => import('./pages/PoViewPage'))
@@ -160,6 +161,8 @@ export default function App() {
           <Route path="/kontraktor/material" element={<FeatureRoute feature="cost_control"><MaterialLapanganPage /></FeatureRoute>} />
           <Route path="/kontraktor/tim" element={<FeatureRoute feature="cost_control"><TimPage /></FeatureRoute>} />
           <Route path="/kontraktor/procurement" element={<FeatureRoute feature="cost_control"><ProcurementPage /></FeatureRoute>} />
+          {/* Chat AI: menu kedua di navigasi bawah — satu pintu ke semua modul */}
+          <Route path="/kontraktor/chat" element={<FeatureRoute feature="cost_control"><ChatAiPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 

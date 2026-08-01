@@ -22,6 +22,7 @@ export type Modul =
   | 'lapangan'     // Laporan harian, kalender progres
   | 'material'     // Penggunaan & request material
   | 'procurement'  // Vendor, katalog harga, purchase order
+  | 'studi'        // Feasibility Study — fitur tambahan, bukan pekerjaan lapangan
   | 'tim'          // Tim, pengguna, pengaturan
 
 export type Aksi = 'baca' | 'tulis' | 'approve'
@@ -51,6 +52,7 @@ export const MODUL_LABEL: Record<Modul, string> = {
   lapangan: 'Laporan Lapangan',
   material: 'Material (Pakai & Request)',
   procurement: 'Procurement (Vendor & PO)',
+  studi: 'Feasibility Study',
   tim: 'Tim & Pengaturan',
 }
 
@@ -62,13 +64,13 @@ type Izin = '-' | 'r' | 'rw' | 'rwa'
 // menyetujui PO buatannya sendiri; keuangan hanya melihat untuk keperluan
 // pembayaran; pengawas melihat agar tahu barang sudah dipesan atau belum.
 const MATRIKS: Record<TeamRole, Record<Modul, Izin>> = {
-  pemilik:   { rab: 'rwa', realisasi: 'rwa', akuntan: 'rwa', spk: 'rwa', lapangan: 'rwa', material: 'rwa', procurement: 'rwa', tim: 'rwa' },
-  manajemen: { rab: 'rw',  realisasi: 'rw',  akuntan: 'rw',  spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', tim: 'r' },
-  keuangan:  { rab: 'r',   realisasi: 'rw',  akuntan: 'rw',  spk: 'r',   lapangan: '-',   material: 'r',   procurement: 'r',   tim: '-' },
-  pm:        { rab: 'rw',  realisasi: 'rw',  akuntan: 'r',   spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', tim: '-' },
-  pengawas:  { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'rw',  material: 'rw',  procurement: 'r',   tim: '-' },
-  logistik:  { rab: 'r',   realisasi: '-',   akuntan: '-',   spk: '-',   lapangan: 'r',   material: 'rw',  procurement: 'rw',  tim: '-' },
-  viewer:    { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'r',   material: 'r',   procurement: '-',   tim: '-' },
+  pemilik:   { rab: 'rwa', realisasi: 'rwa', akuntan: 'rwa', spk: 'rwa', lapangan: 'rwa', material: 'rwa', procurement: 'rwa', studi: 'rwa',   tim: 'rwa' },
+  manajemen: { rab: 'rw',  realisasi: 'rw',  akuntan: 'rw',  spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: 'r',   tim: 'r' },
+  keuangan:  { rab: 'r',   realisasi: 'rw',  akuntan: 'rw',  spk: 'r',   lapangan: '-',   material: 'r',   procurement: 'r',   studi: 'r',   tim: '-' },
+  pm:        { rab: 'rw',  realisasi: 'rw',  akuntan: 'r',   spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: '-',   tim: '-' },
+  pengawas:  { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'rw',  material: 'rw',  procurement: 'r',   studi: '-',   tim: '-' },
+  logistik:  { rab: 'r',   realisasi: '-',   akuntan: '-',   spk: '-',   lapangan: 'r',   material: 'rw',  procurement: 'rw',  studi: '-',   tim: '-' },
+  viewer:    { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'r',   material: 'r',   procurement: '-',   studi: '-',   tim: '-' },
 }
 
 /** Apakah `role` boleh melakukan `aksi` pada `modul`. */
@@ -108,5 +110,6 @@ export const MENU_KE_MODUL: Record<string, Modul> = {
   lapangan: 'lapangan',
   material_lapangan: 'material',
   procurement: 'procurement',
+  feasibility: 'studi',
   tim: 'tim', settings: 'tim',
 }

@@ -10,8 +10,20 @@ const semuaRole = ROLES.map(r => r.key)
 const semuaModul = Object.keys(MODUL_LABEL)
 
 assert(semuaRole.length === 7, '7 jabatan terdaftar')
-assert(semuaModul.length === 8, '8 modul terdaftar')
+assert(semuaModul.length === 9, '9 modul terdaftar')
 assert(semuaModul.includes('procurement'), 'modul procurement terdaftar')
+assert(semuaModul.includes('studi'), 'modul studi (Feasibility Study) terdaftar')
+
+// ── Feasibility Study ──────────────────────────────────────────────────────
+// Studi kelayakan adalah pekerjaan kantor, bukan pekerjaan lapangan: yang
+// menyusunnya pemilik, yang membacanya manajemen & keuangan. Sisanya tidak
+// perlu — dan menampilkannya ke mandor hanya menambah ikon yang tak terpakai.
+const lihatStudi = semuaRole.filter(r => can(r, 'studi', 'baca'))
+assert(lihatStudi.join(',') === 'pemilik,manajemen,keuangan',
+  `yang melihat Feasibility Study: pemilik, manajemen, keuangan (dapat ${lihatStudi.join(',')})`)
+const ubahStudi = semuaRole.filter(r => can(r, 'studi', 'tulis'))
+assert(ubahStudi.join(',') === 'pemilik', 'hanya pemilik yang menyusun studi kelayakan')
+assert(!can('pengawas', 'studi', 'baca'), 'mandor tidak dibebani studi kelayakan')
 
 // ── Procurement ────────────────────────────────────────────────────────────
 // Yang boleh menyetujui PO harus sama dengan yang boleh menyetujui material —

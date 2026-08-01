@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Eye, EyeOff, Plus, ChevronRight, ArrowRight,
-  Building2, MapPin, X, ReceiptIcon, Info,
+  Building2, MapPin, X, ReceiptIcon, Info, MessageSquare,
 } from 'lucide-react'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import HomePanelLapangan from '@/components/cost/HomePanelLapangan'
@@ -23,6 +23,7 @@ import {
 } from '@/lib/teamApi'
 import { aksesLewatPerusahaan } from '@/lib/teamLogin'
 import { can, MENU_KE_MODUL, ROLES } from '@/lib/teamRoles'
+import { saringTambahan } from '@/lib/fiturTambahan'
 import { useBuatProyek } from '@/hooks/useBuatProyek'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 
@@ -65,7 +66,8 @@ function ringkasProyek(p: SavedCostProject) {
 
 export default function KontraktorHomePage() {
   const navigate = useNavigate()
-  const { profile, isFeatureEnabled } = useAuthStore()
+  const { profile, isFeatureEnabled, fiturTambahan } = useAuthStore()
+  const superadmin = profile?.role === 'superadmin'
   const { savedProjects, loadProjects, loadProject, projectInfo } = useCostStore()
 
   // Gerbang kuota + dialog buat proyek, sama persis dengan yang dipakai
@@ -117,7 +119,14 @@ export default function KontraktorHomePage() {
   )
 
   const menuTersaring = useMemo(() => {
-    const byFeature = MENU_ITEMS.filter(i => !i.feature || isFeatureEnabled(i.feature))
+    // Fitur tambahan disaring lebih dulu: yang belum dirilis tidak boleh sampai
+    // ke pemeriksaan paket, karena pemeriksaan itu sendiri sudah bocor
+    // (superadmin selalu lolos) dan akan memunculkannya untuk orang yang salah.
+    const byTambahan = saringTambahan(MENU_ITEMS, fiturTambahan, kunci => ({
+      superadmin,
+      berlangganan: kunci === 'fs_module' ? isFeatureEnabled('fs_module') : undefined,
+    }))
+    const byFeature = byTambahan.filter(i => i.tambahan || !i.feature || isFeatureEnabled(i.feature))
     // saring sesuai role pada workspace aktif (pemilik sendiri = akses penuh)
     const byRole = byFeature.filter(i => {
       const modul = MENU_KE_MODUL[i.key]
@@ -125,7 +134,7 @@ export default function KontraktorHomePage() {
     })
     const byKategori = kategori === 'semua' ? byRole : byRole.filter(i => i.kategori === kategori)
     return cariMenu(byKategori, q)
-  }, [kategori, q, isFeatureEnabled, role])
+  }, [kategori, q, isFeatureEnabled, role, fiturTambahan, superadmin])
 
   function bukaMenu(item: MenuItem, projectId?: string) {
     if (butuhProyek(item)) {
@@ -232,14 +241,22 @@ export default function KontraktorHomePage() {
           </select>
         ) : undefined}
       >
-        {/* Search */}
-        <div className="mt-4 relative">
-          <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Cari menu, proyek, laporan…"
-            className="w-full h-11 pl-11 pr-4 rounded-full bg-white text-navy text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-gold"
-          />
+        {/* Search + pintasan Chat AI. Chat AI diletakkan di sini, bukan di grid
+            ikon, karena ia bukan modul melainkan cara memakai semua modul. */}
+        <div className="mt-4 flex gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Cari menu, proyek, laporan…"
+              className="w-full h-11 pl-11 pr-4 rounded-full bg-white text-navy text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-gold"
+            />
+          </div>
+          <button onClick={() => navigate('/kontraktor/chat')}
+            title="Chat AI — catat nota, pemasukan, & pembayaran sekaligus"
+            className="h-11 px-4 shrink-0 rounded-full bg-gold text-navy text-xs font-black flex items-center gap-1.5 hover:brightness-105 transition">
+            <MessageSquare className="w-4 h-4" /> Chat AI
+          </button>
         </div>
 
         <p className="mt-4 text-sm text-white/80">
