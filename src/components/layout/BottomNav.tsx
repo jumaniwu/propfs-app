@@ -18,13 +18,14 @@
  * Isi & aturan penyalaan ada di lib/navBawah.ts supaya bisa diuji di Node.
  */
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Home, MessageSquare, User } from 'lucide-react'
+import { Home, MessageSquare, Users, User } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { ITEM_NAV, itemAktif, navTampil } from '@/lib/navBawah'
 
 const IKON: Record<string, React.ComponentType<{ className?: string }>> = {
   '/kontraktor': Home,
   '/kontraktor/chat': MessageSquare,
+  '/kontraktor/tim-chat': Users,
   '/profile': User,
 }
 

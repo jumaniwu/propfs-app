@@ -28,6 +28,7 @@ export const ITEM_NAV: ItemNav[] = [
     match: ['/kontraktor', '/cost-control', '/cost-report', '/home', '/dashboard', '/siteplan', '/input', '/result', '/report'],
   },
   { path: '/kontraktor/chat', label: 'Chat AI', match: ['/kontraktor/chat'] },
+  { path: '/kontraktor/tim-chat', label: 'Chat Tim', match: ['/kontraktor/tim-chat'] },
   { path: '/profile', label: 'Profil', match: ['/profile', '/pricing', '/payment'] },
 ]
 
