@@ -9,6 +9,7 @@
 
 import { useAuthStore } from '@/store/authStore'
 import { tautanPublik } from './tautanPendek'
+import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
 
 export interface FieldLog {
   id: string
@@ -80,14 +81,24 @@ async function restFetch(
   path: string, init: RequestInit = {}, ms = 15000, publik = false,
 ): Promise<Response> {
   const { url, key } = supaConf()
+  // Token dari localStorage bisa saja sudah kedaluwarsa — supabase-js
+  // menyegarkannya di latar belakang, dan pada pembukaan PERTAMA halaman
+  // sering mendahuluinya. Dulu itu tampil sebagai "HTTP 401, muat ulang dulu".
+  // Sekali ditolak, sesinya disegarkan lalu permintaannya diulang satu kali.
   const token = publik ? null : storedAccessToken(url)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   try {
-    return await fetch(`${url}/rest/v1/${path}`, {
+    // Dikirim lewat fungsi supaya bisa diulang dengan token baru tanpa
+    // menyusun ulang permintaannya — badan dan header harus persis sama.
+    const kirim = (jwt: string | null) => fetch(`${url}/rest/v1/${path}`, {
       ...init, signal: ctrl.signal,
-      headers: { apikey: key, Authorization: `Bearer ${token ?? key}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+      headers: { apikey: key, Authorization: `Bearer ${jwt ?? key}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
     })
+    const res = await kirim(token)
+    if (!perluSegarkan(res.status, !!token)) return res
+    const baru = await segarkanToken()
+    return baru && baru !== token ? await kirim(baru) : res
   } catch (e) {
     if (e instanceof DOMException && e.name === 'AbortError') throw new Error('Waktu habis — periksa koneksi internet lalu coba lagi.')
     throw e
