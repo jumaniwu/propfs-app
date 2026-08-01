@@ -47,6 +47,15 @@ export default function TabSPK() {
   const [jenis, setJenis] = useState<SpkJenis>('vendor')
   const [editDoc, setEditDoc] = useState<SpkDoc | null>(null)
   const [signPemberi, setSignPemberi] = useState<SpkDoc | null>(null)
+  /**
+   * Mengganti NAMA LEGAL pihak kedua. Sengaja dipisah dari tombol Edit yang
+   * mengubah isi perjanjian, dan tetap tersedia SETELAH ditandatangani:
+   * salah ketik nama badan hukum adalah koreksi pencatatan, bukan perubahan
+   * kesepakatan. Rekaman tanda tangannya tidak ikut diubah.
+   */
+  const [gantiNama, setGantiNama] = useState<SpkDoc | null>(null)
+  const [namaLegal, setNamaLegal] = useState('')
+  const [simpanNama, setSimpanNama] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -142,7 +151,11 @@ export default function TabSPK() {
             const vendorSigned = spk.status === 'ditandatangani' && !!spk.signed_name
             const pemberiSigned = !!spk.pemberi_signed_at
             return (
-              <div key={spk.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
+              // `min-w-0` WAJIB di sini: kartu ini adalah item grid, dan item
+              // grid bawaannya tidak boleh menyempit di bawah lebar isinya.
+              // Tanpa itu, nama panjang membuat seluruh kartu melebar melewati
+              // layar dan `truncate` di dalamnya tidak pernah bekerja.
+              <div key={spk.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -152,22 +165,25 @@ export default function TabSPK() {
                         {(spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen' ? 'Konsumen' : 'Vendor'}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground truncate">👷 {spk.vendor_name}{spk.project_name && <> · 🏗️ {spk.project_name}</>}</p>
+                    <p className="text-xs text-muted-foreground truncate">👷 {spk.vendor_name}</p>
+                    {spk.project_name && (
+                      <p className="text-xs text-muted-foreground truncate">🏗️ {spk.project_name}</p>
+                    )}
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 flex items-center gap-1 ${STATUS_BADGE[spk.status]}`}>
-                    {spk.status === 'ditandatangani' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                    {spk.status}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 flex items-center gap-1 max-w-[45%] ${STATUS_BADGE[spk.status]}`}>
+                    {spk.status === 'ditandatangani' ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <Clock className="w-3 h-3 shrink-0" />}
+                    <span className="truncate">{spk.status}</span>
                   </span>
                 </div>
                 <p className="text-base font-black text-navy">{fmt(spk.nilai_kontrak)}</p>
 
                 {/* status dua tanda tangan */}
                 <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                  <div className={`rounded-lg px-2 py-1 ${pemberiSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
+                  <div className={`rounded-lg px-2 py-1 min-w-0 ${pemberiSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
                     {pemberiSigned ? '✅' : '○'} Pemberi Kerja
                     {pemberiSigned && <div className="truncate font-semibold">{spk.pemberi_signed_name}</div>}
                   </div>
-                  <div className={`rounded-lg px-2 py-1 ${vendorSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
+                  <div className={`rounded-lg px-2 py-1 min-w-0 ${vendorSigned ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'}`}>
                     {vendorSigned ? '✅' : '○'} Pelaksana
                     {vendorSigned && <div className="truncate font-semibold">{spk.signed_name}</div>}
                   </div>
@@ -194,6 +210,10 @@ export default function TabSPK() {
                       void tandaiTerkirim(spk)
                     }}>
                     <Link2 className="w-3 h-3" /> Salin Link
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    onClick={() => { setGantiNama(spk); setNamaLegal(spk.vendor_name) }}>
+                    <Pencil className="w-3 h-3" /> Nama Legal
                   </Button>
                   {!vendorSigned && (
                     <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
@@ -232,6 +252,53 @@ export default function TabSPK() {
         count={docs.length}
         editDoc={editDoc}
       />
+
+      {/* Ganti nama legal — koreksi pencatatan, bukan perubahan kesepakatan. */}
+      <Dialog open={!!gantiNama} onOpenChange={o => { if (!o) setGantiNama(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Ganti Nama Legal</DialogTitle>
+            <DialogDescription>
+              Nama pihak kedua sebagaimana tercetak di dokumen {gantiNama?.nomor}.
+              Rekaman tanda tangan yang sudah masuk TIDAK ikut berubah — yang
+              tersimpan di sana tetap nama yang benar-benar menandatangani.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1">
+            <Label className="text-xs">Nama legal / badan hukum</Label>
+            <Input value={namaLegal} onChange={e => setNamaLegal(e.target.value)}
+              placeholder="mis. PT Griya Nusa Sejahtera" />
+            {gantiNama?.signed_name && (
+              <p className="text-[11px] text-muted-foreground">
+                Ditandatangani oleh: <b>{gantiNama.signed_name}</b>
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGantiNama(null)}>Batal</Button>
+            <Button
+              disabled={simpanNama || !namaLegal.trim() || namaLegal.trim() === gantiNama?.vendor_name}
+              onClick={async () => {
+                if (!gantiNama) return
+                setSimpanNama(true)
+                try {
+                  await spkApi().updateSpk(gantiNama.id, { vendor_name: namaLegal.trim() })
+                  toast({ title: 'Nama legal diperbarui' })
+                  setGantiNama(null); load()
+                } catch (e) {
+                  toast({
+                    title: 'Gagal memperbarui nama',
+                    description: e instanceof Error ? e.message : String(e),
+                    variant: 'destructive',
+                  })
+                } finally { setSimpanNama(false) }
+              }}
+              className="bg-navy hover:bg-navy/90 gap-2">
+              {simpanNama && <Loader2 className="w-4 h-4 animate-spin" />} Simpan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SignPemberiDialog
         spk={signPemberi}

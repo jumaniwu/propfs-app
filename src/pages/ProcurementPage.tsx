@@ -17,8 +17,6 @@ import {
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
-import PilihProyek from '@/components/cost/PilihProyek'
-import { saringProyek, SEMUA_PROYEK } from '@/lib/lingkupProyek'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
@@ -70,14 +68,13 @@ export default function ProcurementPage() {
   const [requestsSemua, setRequests] = useState<MaterialRequest[]>([])
   const [dos, setDos] = useState<DeliveryOrder[]>([])
 
-  // Vendor & katalog memang milik perusahaan, bukan proyek — keduanya tidak
-  // disaring. Yang disaring adalah PO dan Material Request, karena keduanya
-  // lahir dari satu proyek tertentu.
-  const [lingkup, setLingkup] = useState<string>(() => projectInfo?.id ?? SEMUA_PROYEK)
-  useEffect(() => { if (projectInfo?.id) setLingkup(projectInfo.id) }, [projectInfo?.id])
-  const namaLingkup = lingkup === SEMUA_PROYEK ? '' : (projectInfo?.projectName ?? '')
-  const pos = useMemo(() => saringProyek(posSemua, namaLingkup), [posSemua, namaLingkup])
-  const requests = useMemo(() => saringProyek(requestsSemua, namaLingkup), [requestsSemua, namaLingkup])
+  // Procurement adalah halaman tingkat PERUSAHAAN, bukan per proyek: vendor,
+  // katalog, dan daftar PO memang dilihat menyeluruh. Proyek sebuah PO tidak
+  // ditentukan dari pemilih di layar melainkan dari Material Request yang
+  // dipesan — itu jawaban yang pasti benar, sedangkan pemilih di layar hanya
+  // menebak dari proyek yang kebetulan sedang aktif.
+  const pos = posSemua
+  const requests = requestsSemua
   const [token, setToken] = useState('')
   const [memuat, setMemuat] = useState(true)
   const [error, setError] = useState('')
@@ -132,10 +129,7 @@ export default function ProcurementPage() {
     <div className="min-h-screen bg-slate-100/70 pb-10">
       <KontraktorHeader
         judul="Procurement"
-        subjudul={<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <PilihProyek izinkanSemua nilai={lingkup} onPilih={setLingkup} />
-          <span className="text-white/60">{vendors.length} vendor · {pos.length} purchase order</span>
-        </span>}
+        subjudul={`${vendors.length} vendor · ${pos.length} purchase order · semua proyek`}
         kembaliKe="/kontraktor"
         aksi={
           <Button onClick={() => muat()} variant="outline" size="sm"
@@ -913,7 +907,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
     const dipesan = new Set(baris.filter(b => b.pilih && b.qty > 0).map(b => b.request_id))
     return requests.find(r => dipesan.has(r.id) && (r.project_name ?? '').trim())?.project_name?.trim() ?? ''
   }, [baris, requests])
-  const proyekPo = projectName.trim() || proyekDariRequest
+  // Request yang menang: barang inilah yang benar-benar dipesan, jadi
+  // proyeknya pasti. Proyek aktif hanya cadangan bila requestnya belum
+  // membawa nama proyek sama sekali.
+  const proyekPo = proyekDariRequest || projectName.trim()
 
   // Harga terisi otomatis dari katalog vendor; tetap bisa diubah manual karena
   // vendor belum tentu mendaftarkan setiap barang yang diminta.
@@ -962,7 +959,7 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         // yatim: surat jalannya tercatat tapi barangnya tidak pernah sampai ke
         // stok proyek mana pun. Material Request yang dipesan tahu proyeknya,
         // jadi itu yang dipakai sebagai cadangan.
-        project_name: projectName.trim() || proyekDariRequest,
+        project_name: proyekPo,
         butuh_tanggal: butuh || null,
         term: vendor.term,
         term_hari: vendor.term_hari,
@@ -1098,9 +1095,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
           lalu buat PO-nya dari sana.
         </p>
       )}
-      {dipilih.length > 0 && !projectName.trim() && proyekPo && (
+      {dipilih.length > 0 && proyekPo && (
         <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5">
-          Proyek diambil dari barang yang dipilih: <b>{proyekPo}</b>.
+          PO ini untuk proyek <b>{proyekPo}</b>
+          {proyekDariRequest ? ' — diambil dari barang yang dipilih.' : ' — dari proyek yang sedang aktif.'}
         </p>
       )}
 
