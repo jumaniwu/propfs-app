@@ -22,7 +22,7 @@ assert(bit > 55, `12 karakter memberi ${bit.toFixed(1)} bit — masih di atas 55
 
 // ── POLA_TAUTAN ────────────────────────────────────────────────────────────
 const jenisSemua = Object.keys(POLA_TAUTAN)
-assert(jenisSemua.length === 7, 'tujuh jenis tautan publik terdaftar')
+assert(jenisSemua.length === 8, 'delapan jenis tautan publik terdaftar')
 
 for (const [jenis, p] of Object.entries(POLA_TAUTAN)) {
   assert(p.pendek.startsWith('/'), `${jenis}: jalur pendek diawali /`)
@@ -33,6 +33,12 @@ for (const [jenis, p] of Object.entries(POLA_TAUTAN)) {
 // Awalan pendek tidak boleh bertabrakan satu sama lain.
 const pendekSemua = Object.values(POLA_TAUTAN).map(p => p.pendek)
 assert(new Set(pendekSemua).size === pendekSemua.length, 'tiap jenis punya awalan pendek sendiri')
+
+// ...termasuk bila hurufnya dibesarkan. Pencocokan rute React Router tidak
+// peka huruf besar, jadi '/L' dan '/l' adalah jalur yang SAMA.
+const pendekKecil = pendekSemua.map(p => p.toLowerCase())
+assert(new Set(pendekKecil).size === pendekKecil.length,
+  `awalan tetap berbeda walau huruf besar/kecil disamakan (${pendekKecil.join(', ')})`)
 
 // Awalan pendek tidak boleh menabrak halaman aplikasi yang sudah ada.
 const HALAMAN_APLIKASI = [

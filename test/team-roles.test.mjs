@@ -10,7 +10,7 @@ const semuaRole = ROLES.map(r => r.key)
 const semuaModul = Object.keys(MODUL_LABEL)
 
 assert(semuaRole.length === 7, '7 jabatan terdaftar')
-assert(semuaModul.length === 9, '9 modul terdaftar')
+assert(semuaModul.length === 10, '10 modul terdaftar')
 assert(semuaModul.includes('procurement'), 'modul procurement terdaftar')
 assert(semuaModul.includes('studi'), 'modul studi (Feasibility Study) terdaftar')
 
@@ -24,6 +24,20 @@ assert(lihatStudi.join(',') === 'pemilik,manajemen,keuangan',
 const ubahStudi = semuaRole.filter(r => can(r, 'studi', 'tulis'))
 assert(ubahStudi.join(',') === 'pemilik', 'hanya pemilik yang menyusun studi kelayakan')
 assert(!can('pengawas', 'studi', 'baca'), 'mandor tidak dibebani studi kelayakan')
+
+// ── Cari Leads ─────────────────────────────────────────────────────────────
+// Pemasaran: pemilik & manajemen menindaklanjuti, PM ikut karena dialah yang
+// mensurvei lokasi, keuangan melihat untuk perkiraan omzet. Orang lapangan
+// tidak — daftar calon konsumen bukan urusan mereka.
+const lihatLeads = semuaRole.filter(r => can(r, 'leads', 'baca'))
+assert(lihatLeads.join(',') === 'pemilik,manajemen,keuangan,pm',
+  `yang melihat leads (dapat ${lihatLeads.join(',')})`)
+assert(can('pm', 'leads', 'tulis') && !can('pm', 'leads', 'approve'),
+  'PM menindaklanjuti leads tapi bukan pemutus')
+assert(can('keuangan', 'leads', 'baca') && !can('keuangan', 'leads', 'tulis'),
+  'keuangan hanya melihat leads')
+assert(!can('pengawas', 'leads', 'baca') && !can('logistik', 'leads', 'baca'),
+  'orang lapangan tidak melihat daftar calon konsumen')
 
 // ── Procurement ────────────────────────────────────────────────────────────
 // Yang boleh menyetujui PO harus sama dengan yang boleh menyetujui material —
