@@ -1,5 +1,6 @@
 // Test navigasi bawah: isinya, dan item mana yang menyala di tiap jalur.
 import { ITEM_NAV, TANPA_NAV, navTampil, itemAktif } from '../src/lib/navBawah.ts'
+import { POLA_TAUTAN, jalurTautan } from '../src/lib/tautanPendek.ts'
 
 let ok = 0
 const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
@@ -55,5 +56,20 @@ for (const p of TANPA_NAV) {
 }
 assert(navTampil('/adminx', true) === true, '/admin tidak mengklaim /adminx')
 assert(navTampil('/legalitas', true) === true, '/legal tidak mengklaim /legalitas')
+
+// ── Halaman publik bertoken: TIDAK PERNAH menampilkan navigasi ─────────────
+// Yang membukanya tukang, vendor, dan calon konsumen — orang luar tanpa akun.
+// Menawarkan menu Kontraktor AI kepada mereka hanya melempar ke halaman login.
+for (const jenis of Object.keys(POLA_TAUTAN)) {
+  for (const jalur of jalurTautan(jenis)) {
+    assert(navTampil(`${jalur}/K7M2P9QR4T6V`, true) === false,
+      `${jenis}: ${jalur}/<token> tanpa navigasi walau pemiliknya sedang login`)
+  }
+}
+// Termasuk yang paling mudah terlewat: form leads yang baru ditambahkan.
+assert(navTampil('/k/K7M2P9QR4T6V', true) === false, 'form leads tanpa navigasi')
+assert(navTampil('/leads/K7M2P9QR4T6V', true) === false, 'jalur lama form leads juga')
+// Tapi halaman aplikasi yang kebetulan berawalan mirip tidak ikut kena.
+assert(navTampil('/kontraktor/leads', true) === true, 'halaman pengelolaan leads TETAP bernavigasi')
 
 console.log(`nav-bawah: ${ok} assert lulus`)

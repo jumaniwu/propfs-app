@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator,} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -98,6 +98,12 @@ export const MENU_ITEMS: MenuItem[] = [
   // Satu halaman memuat Pakai Material, Request Material, dan Kekurangan.
   { key: 'material_lapangan', label: 'Material Lapangan', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.rose,
     alias: 'pakai penggunaan request permintaan bahan kekurangan stok menipis' },
+
+  // Cari Leads berdiri di kategori Tim, bukan Keuangan: yang mengerjakannya
+  // orang — menyebar tautan, menelepon, mensurvei — bukan angka.
+  { key: 'leads', label: 'Cari Leads', icon: UserPlus, kategori: 'tim', path: '/kontraktor/leads',
+    tone: TONE.emerald, tag: 'BARU',
+    alias: 'calon konsumen prospek form konsultasi renovasi pemasaran marketing wa whatsapp' },
 
   // ── Tim ───────────────────────────────────────────────────────────────────
   // Satu halaman memuat daftar pengguna, pembuatan akun, dan matriks role.

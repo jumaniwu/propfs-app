@@ -35,6 +35,7 @@ export const PANJANG_TOKEN = 12
 export type JenisTautan =
   | 'vendor_daftar' | 'vendor_item' | 'po'
   | 'lapor' | 'progress' | 'spk_sign' | 'opname'
+  | 'lead'
 
 export interface PolaTautan {
   /** Jalur pendek yang dipakai untuk tautan baru. */
@@ -55,6 +56,12 @@ export const POLA_TAUTAN: Record<JenisTautan, PolaTautan> = {
   progress: { pendek: '/p', lama: '/progress' },
   spk_sign: { pendek: '/s', lama: '/spk/sign' },
   opname: { pendek: '/o', lama: '/opname/isi' },
+  // Form konsultasi calon konsumen. 'k' dari konsultasi — 'l' sudah dipakai
+  // lapor harian, dan HURUF BESAR bukan jalan keluar: pencocokan rute React
+  // Router tidak peka huruf besar, jadi '/L' akan bertabrakan dengan '/l'.
+  // Jalur ini akan dicetak di kartu nama dan bio media sosial, jadi pendeknya
+  // benar-benar berarti.
+  lead: { pendek: '/k', lama: '/leads' },
 }
 
 /** Jalur pendek dan lama sebuah jenis; `po` hanya menghasilkan satu. */

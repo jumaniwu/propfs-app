@@ -5,6 +5,8 @@
 // menyala" bisa diuji di Node — komponen .tsx tidak bisa dijalankan Node.
 // ============================================================
 
+import { POLA_TAUTAN } from './tautanPendek.ts'
+
 export interface ItemNav {
   path: string
   label: string
@@ -32,8 +34,22 @@ export const ITEM_NAV: ItemNav[] = [
   { path: '/profile', label: 'Profil', match: ['/profile', '/pricing', '/payment'] },
 ]
 
-/** Halaman yang tidak menampilkan navigasi bawah sama sekali. */
-export const TANPA_NAV = ['/auth', '/tim/masuk', '/legal', '/reset-password', '/admin']
+/**
+ * Halaman yang tidak menampilkan navigasi bawah sama sekali.
+ *
+ * Seluruh halaman PUBLIK bertoken ikut di sini, diturunkan langsung dari
+ * POLA_TAUTAN supaya jenis tautan baru tidak pernah lupa didaftarkan. Yang
+ * membukanya adalah tukang, vendor, dan calon konsumen — orang luar yang tidak
+ * punya akun. Menampilkan navigasi Kontraktor AI kepada mereka hanya
+ * menawarkan tombol yang akan melempar mereka ke halaman login.
+ *
+ * Pemiliknya sendiri pun sebaiknya melihat halaman itu persis seperti yang
+ * dilihat orang luar ketika ia memeriksa tautannya.
+ */
+export const TANPA_NAV = [
+  '/auth', '/tim/masuk', '/legal', '/reset-password', '/admin',
+  ...Object.values(POLA_TAUTAN).flatMap(p => (p.pendek === p.lama ? [p.pendek] : [p.pendek, p.lama])),
+]
 
 /** true bila navigasi bawah pantas tampil di jalur ini. */
 export function navTampil(pathname: string, masuk: boolean): boolean {

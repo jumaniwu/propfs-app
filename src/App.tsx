@@ -38,6 +38,8 @@ const TimLoginPage = lazy(() => import('./pages/TimLoginPage'))
 const ProcurementPage = lazy(() => import('./pages/ProcurementPage'))
 const ChatAiPage = lazy(() => import('./pages/ChatAiPage'))
 const ChatTimPage = lazy(() => import('./pages/ChatTimPage'))
+const LeadsPage = lazy(() => import('./pages/LeadsPage'))
+const LeadFormPage = lazy(() => import('./pages/LeadFormPage'))
 const VendorDaftarPage = lazy(() => import('./pages/VendorDaftarPage'))
 const VendorItemPage = lazy(() => import('./pages/VendorItemPage'))
 const PoViewPage = lazy(() => import('./pages/PoViewPage'))
@@ -144,6 +146,8 @@ export default function App() {
           {ruteToken('vendor_daftar', <VendorDaftarPage />)}
           {ruteToken('vendor_item', <VendorItemPage />)}
           {ruteToken('po', <PoViewPage />)}
+          {/* Cari Leads: form konsultasi calon konsumen, tanpa login */}
+          {ruteToken('lead', <LeadFormPage />)}
 
           {/* ── Protected Routes ── */}
           <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />
@@ -166,6 +170,7 @@ export default function App() {
           <Route path="/kontraktor/chat" element={<FeatureRoute feature="cost_control"><ChatAiPage /></FeatureRoute>} />
           {/* Chat Tim: menu ketiga — percakapan tim + kabar sistem, per workspace */}
           <Route path="/kontraktor/tim-chat" element={<FeatureRoute feature="cost_control"><ChatTimPage /></FeatureRoute>} />
+          <Route path="/kontraktor/leads" element={<FeatureRoute feature="cost_control"><LeadsPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 

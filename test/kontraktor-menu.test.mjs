@@ -10,7 +10,7 @@ const cari = (q) => cariMenu(MENU_ITEMS, q).map(i => i.label)
 const item = (key) => MENU_ITEMS.find(i => i.key === key)
 
 // ── Bentuk katalog ─────────────────────────────────────────────────────────
-assert(MENU_ITEMS.length === 16, `16 ikon (kini ${MENU_ITEMS.length})`)
+assert(MENU_ITEMS.length === 17, `17 ikon (kini ${MENU_ITEMS.length})`)
 
 // tidak ada key ganda
 const keys = MENU_ITEMS.map(i => i.key)
@@ -53,6 +53,10 @@ assert(item('feasibility')?.path === '/dashboard', 'Feasibility Study memakai ha
 assert(item('feasibility')?.tambahan === 'fs_module', 'Feasibility Study digerbangi setelan backend')
 assert(MENU_ITEMS.filter(i => i.tambahan).length === 1, 'baru satu fitur tambahan')
 
+// Cari Leads: form publik untuk calon konsumen.
+assert(item('leads')?.path === '/kontraktor/leads', 'Cari Leads menuju halamannya sendiri')
+assert(item('leads')?.kategori === 'tim', 'Cari Leads berdiri di kategori Tim')
+
 // ── Pencarian: label lama harus tetap menemukan ikon gabungannya ───────────
 const petaCari = {
   opname: 'Akuntan', pemasukan: 'Akuntan', inventori: 'Akuntan', neraca: 'Akuntan',
@@ -64,6 +68,7 @@ const petaCari = {
   vendor: 'Procurement', supplier: 'Procurement', 'purchase order': 'Procurement',
   pengadaan: 'Procurement',
   'studi kelayakan': 'Feasibility Study', irr: 'Feasibility Study',
+  'calon konsumen': 'Cari Leads', prospek: 'Cari Leads', marketing: 'Cari Leads',
 }
 for (const [kata, label] of Object.entries(petaCari)) {
   assert(cari(kata).includes(label), `cari "${kata}" menemukan ${label}`)
