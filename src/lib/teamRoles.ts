@@ -101,7 +101,7 @@ export const IZIN_LABEL: Record<Izin, string> = {
 
 /** Peta menu Home/sidebar → modul, agar penyaringan role konsisten. */
 export const MENU_KE_MODUL: Record<string, Modul> = {
-  overview: 'rab', rab: 'rab', material: 'rab',
+  overview: 'rab', rab: 'rab', material: 'rab', arsitek: 'rab',
   realisasi: 'realisasi', kurva_s: 'realisasi', laporan: 'realisasi',
   akuntan: 'akuntan', konsolidasi: 'akuntan',
   spk: 'spk',

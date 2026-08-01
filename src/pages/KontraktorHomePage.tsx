@@ -212,7 +212,6 @@ export default function KontraktorHomePage() {
       {/* ══ HEADER — komponen yang sama dipakai seluruh halaman Kontraktor AI ══ */}
       <KontraktorHeader
         pbExtra
-        adaNotifikasi={banner.length > 0}
         identitas={timSession ? (
           // sesi tim dikunci ke satu perusahaan — tidak ada penukar workspace
           <p className="mt-0.5 text-[11px] text-white/70">

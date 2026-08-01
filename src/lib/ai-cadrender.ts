@@ -5,6 +5,8 @@
 // menjawab → AI me-render bird-eye view mengikuti denah tsb.
 // ============================================================
 
+import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
+
 export interface CadQuestion {
   id: string
   question: string
@@ -203,4 +205,39 @@ ${CAD_ANGLE_PROMPTS[angle]}
     onProgress?.(i + 1, angles.length, CAD_ANGLE_LABELS[angle])
   }
   return views
+}
+
+// ── Render dari prompt bebas ────────────────────────────────────────────────
+
+export interface HasilRenderPrompt {
+  dataUrl: string
+  judul: string
+}
+
+/**
+ * Render satu gambar dari kalimat bebas pemakainya.
+ *
+ * Berbeda dari `renderCadViews` yang menjalankan kuesioner tetap dan daftar
+ * sudut, di sini pemakainya menuliskan sendiri apa yang ia mau. Gambar
+ * sebelumnya dilampirkan sebagai acuan supaya bangunannya tetap sama ketika
+ * yang diminta hanya berganti sudut atau waktu.
+ */
+export async function renderDariPrompt(
+  planDataUrl: string,
+  pesan: string,
+  konteks: KonteksRender & { acuanDataUrl?: string | null } = {},
+): Promise<HasilRenderPrompt> {
+  const mock = (window as {
+    __aiPromptRenderMock?: (pesan: string) => Promise<HasilRenderPrompt>
+  }).__aiPromptRenderMock
+  if (mock) return mock(pesan)
+
+  const acuan = konteks.acuanDataUrl ?? null
+  const prompt = susunPromptRender(pesan, { ...konteks, adaAcuan: !!acuan })
+  const parts: Part[] = [{ text: prompt }, dataUrlToPart(planDataUrl)]
+  if (acuan) parts.push(dataUrlToPart(acuan))
+
+  const { image } = await callGemini(GEMINI_IMAGE_MODELS, parts, true)
+  if (!image) throw new Error('Model tidak mengembalikan gambar. Coba ulangi dengan kalimat yang lebih sederhana.')
+  return { dataUrl: image, judul: judulRender(pesan) }
 }

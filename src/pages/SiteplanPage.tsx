@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OcrScanDialog from '@/components/siteplan/OcrScanDialog'
+import ChatRender3D from '@/components/siteplan/ChatRender3D'
 import RenderMasterplanDialog from '@/components/siteplan/RenderMasterplanDialog'
 import CadRenderDialog from '@/components/siteplan/CadRenderDialog'
 import NumInput from '@/components/siteplan/NumInput'
@@ -316,6 +317,20 @@ export default function SiteplanPage() {
     const preferred = alts.find(a => a.key === roadStyle) ?? alts[0]
     showResult(preferred.result)
   }
+
+  /** Ringkasan sebaris tentang isi layout — dipakai memberi konteks ke AI. */
+  const ringkasLayout = useMemo(() => {
+    if (!result) return undefined
+    const c = result.stats.counts
+    const bagian = [
+      c.kavling ? `${c.kavling} kavling rumah` : '',
+      c.komersial ? `${c.komersial} unit ruko/komersial` : '',
+      c.tower ? `${c.tower} tower` : '',
+      `luas lahan ${Math.round(result.stats.totalAreaM2).toLocaleString('id-ID')} m²`,
+      `efisiensi ${result.stats.efficiencyPct.toFixed(0)}%`,
+    ].filter(Boolean)
+    return bagian.join(', ')
+  }, [result])
 
   const summaryOrder: ParcelType[] = ['kavling', 'komersial', 'tower', 'plaza', 'parkir', 'jalan', 'fasum', 'rth']
 
@@ -826,6 +841,15 @@ export default function SiteplanPage() {
               </div>
             )}
           </div>
+
+          {/* Kolom chat render 3D. Diletakkan tepat di bawah kanvas supaya
+              layout dan hasil rendernya terlihat berdampingan. */}
+          {result && (
+            <ChatRender3D
+              ambilLayout={() => canvasRef.current?.toDataURL('image/png') ?? null}
+              deskripsiLayout={ringkasLayout}
+            />
+          )}
 
           {result && alternatives.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
