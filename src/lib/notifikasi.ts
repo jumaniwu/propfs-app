@@ -53,6 +53,13 @@ export interface Notifikasi {
   proyek?: string
   /** true bila masih menunggu tindakan (mis. request belum di-approve). */
   menunggu?: boolean
+  /**
+   * Nama orang yang menyebabkan kejadian ini, apa adanya dari barisnya.
+   * Dipakai Chat Tim untuk menghubungkan kejadian ke anggota tim; dibiarkan
+   * kosong bila barisnya memang tidak menyebut siapa pun — menebaknya dari
+   * judul akan salah orang, dan salah orang lebih buruk daripada tidak tahu.
+   */
+  oleh?: string
 }
 
 // ── Bentuk masukan: sesempit mungkin, supaya modul ini tidak ikut berubah
@@ -96,6 +103,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       judul: `Laporan harian dari ${teks(r.pelapor) || 'lapangan'}`,
       rincian: teks(r.kegiatan) || 'Tanpa keterangan kegiatan.',
       tautan: '/kontraktor', proyek: teks(r.project_name) || undefined,
+      oleh: teks(r.pelapor) || undefined,
     })
   }
 
@@ -107,6 +115,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       judul: `${teks(u.pelapor) || 'Lapangan'} memakai ${teks(u.nama)}`,
       rincian: `${angka(u.qty).toLocaleString('id-ID')} ${teks(u.satuan)}`.trim(),
       tautan: '/kontraktor/material', proyek: teks(u.project_name) || undefined,
+      oleh: teks(u.pelapor) || undefined,
     })
   }
 
@@ -125,6 +134,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
         urgen && urgen !== 'normal' ? urgen.toUpperCase() : '',
       ].filter(Boolean).join(' · '),
       tautan: '/kontraktor/material', proyek: teks(q.project_name) || undefined,
+      oleh: teks(q.pemohon) || undefined,
     })
   }
 
@@ -140,6 +150,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
         teks(d.penerima) ? `diterima ${teks(d.penerima)}` : '',
       ].filter(Boolean).join(' · '),
       tautan: '/kontraktor/procurement',
+      oleh: teks(d.penerima) || undefined,
     })
   }
 
@@ -153,6 +164,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       judul: `${teks(s.signed_name) || teks(s.vendor_name) || 'Pihak kedua'} menandatangani ${teks(s.nomor) || 'dokumen'}`,
       rincian: 'Dokumen sudah lengkap tanda tangannya.',
       tautan: '/kontraktor', proyek: teks(s.project_name) || undefined,
+      oleh: teks(s.signed_name) || undefined,
     })
   }
 
@@ -164,6 +176,7 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       judul: `Opname "${teks(o.judul) || 'tanpa judul'}" sudah diisi`,
       rincian: teks(o.filled_by) ? `Diisi oleh ${teks(o.filled_by)}` : 'Menunggu persetujuan.',
       tautan: '/kontraktor', proyek: teks(o.project_name) || undefined,
+      oleh: teks(o.filled_by) || undefined,
     })
   }
 

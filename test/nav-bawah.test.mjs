@@ -6,8 +6,8 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
 const aktif = (jalur) => itemAktif(ITEM_NAV, jalur)?.label
 
 // ── Isi navigasi ───────────────────────────────────────────────────────────
-assert(ITEM_NAV.length === 3, `tiga tombol (kini ${ITEM_NAV.length})`)
-assert(ITEM_NAV.map(i => i.label).join(',') === 'Beranda,Chat AI,Profil', 'urutan tombol')
+assert(ITEM_NAV.length === 4, `empat tombol (kini ${ITEM_NAV.length})`)
+assert(ITEM_NAV.map(i => i.label).join(',') === 'Beranda,Chat AI,Chat Tim,Profil', 'urutan tombol')
 
 // Yang diminta hilang memang hilang sebagai TUJUAN tombol.
 const tujuan = ITEM_NAV.map(i => i.path)
@@ -16,6 +16,7 @@ assert(!tujuan.includes('/dashboard'), 'Feasibility Study tidak punya tombol lag
 assert(!tujuan.includes('/siteplan'), 'AI Architect tidak punya tombol lagi')
 assert(tujuan[0] === '/kontraktor', 'Beranda menuju Home Kontraktor AI')
 assert(tujuan[1] === '/kontraktor/chat', 'tombol kedua adalah Chat AI')
+assert(tujuan[2] === '/kontraktor/tim-chat', 'tombol ketiga adalah Chat Tim')
 
 // Tidak ada dua tombol dengan tujuan sama.
 assert(new Set(tujuan).size === tujuan.length, 'tiap tombol menuju halaman berbeda')
@@ -23,6 +24,7 @@ assert(new Set(tujuan).size === tujuan.length, 'tiap tombol menuju halaman berbe
 // ── itemAktif: kecocokan terpanjang yang menang ────────────────────────────
 assert(aktif('/kontraktor') === 'Beranda', 'home kontraktor menyalakan Beranda')
 assert(aktif('/kontraktor/chat') === 'Chat AI', 'chat menyalakan Chat AI, bukan Beranda')
+assert(aktif('/kontraktor/tim-chat') === 'Chat Tim', 'chat tim menyalakan Chat Tim, bukan Beranda')
 assert(aktif('/kontraktor/procurement') === 'Beranda', 'halaman modul lain tetap Beranda')
 assert(aktif('/cost-control') === 'Beranda', 'workspace proyek menyalakan Beranda')
 assert(aktif('/cost-report/p1') === 'Beranda', 'laporan proyek menyalakan Beranda')
