@@ -4,8 +4,9 @@
 // Baris atas identik di mana pun; judul halaman & tombol kembali opsional.
 // ============================================================
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Users, Bell, Menu } from 'lucide-react'
+import { ArrowLeft, Users, Menu } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import PanelNotifikasi from '@/components/cost/PanelNotifikasi'
 
 interface Props {
   /** Judul halaman di bawah baris atas. Kosong = hanya baris atas (Home). */
@@ -21,8 +22,6 @@ interface Props {
   children?: React.ReactNode
   /** Ruang ekstra di bawah header agar konten bisa menimpanya (Home). */
   pbExtra?: boolean
-  /** Titik merah kecil di ikon notifikasi. */
-  adaNotifikasi?: boolean
   /** Mengganti blok identitas di kiri (Home memakai pemilih workspace). */
   identitas?: React.ReactNode
   /** Bila diisi, tombol menu (☰) tampil di kiri pada layar kecil. */
@@ -31,7 +30,7 @@ interface Props {
 
 export default function KontraktorHeader({
   judul, subjudul, kembaliKe, labelKembali = 'Home Kontraktor AI',
-  aksi, children, pbExtra, adaNotifikasi, identitas, onMenu,
+  aksi, children, pbExtra, identitas, onMenu,
 }: Props) {
   const navigate = useNavigate()
   const { profile } = useAuthStore()
@@ -63,10 +62,10 @@ export default function KontraktorHeader({
               className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center" title="Tim">
               <Users className="w-[18px] h-[18px]" />
             </button>
-            <button className="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center relative" title="Notifikasi">
-              <Bell className="w-[18px] h-[18px]" />
-              {adaNotifikasi && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-gold" />}
-            </button>
+            {/* Lonceng kini punya isi: kabar dari lapangan, diturunkan dari
+                data yang sudah ada. Penanda titik merah lama dihapus — lencana
+                berangka lebih berguna daripada titik tanpa keterangan. */}
+            <PanelNotifikasi />
             <button onClick={() => navigate('/profile')}
               className="w-9 h-9 rounded-full bg-gold text-navy font-black text-sm flex items-center justify-center shrink-0">
               {(profile?.full_name || 'P').charAt(0).toUpperCase()}

@@ -36,6 +36,12 @@ export interface FieldApi {
   updateLog(id: string, patch: Partial<Pick<FieldLog, 'project_name' | 'drive_webhook'>>): Promise<void>
   deleteLog(id: string): Promise<void>
   listReports(logId: string): Promise<FieldReport[]>
+  /**
+   * Laporan harian TERBARU lintas semua log, untuk lonceng notifikasi.
+   * Dibatasi jumlahnya karena yang dibutuhkan hanya kabar terkini — menarik
+   * seluruh riwayat hanya memperlambat pembukaan panel.
+   */
+  listReportsTerbaru(batas?: number): Promise<FieldReport[]>
   deleteReport(id: string): Promise<void>
   // publik (token)
   getLogByReportToken(token: string): Promise<{ project_name: string; drive_webhook: string } | null>
@@ -119,6 +125,12 @@ const realApi: FieldApi = {
   async deleteLog(id) {
     const res = await restFetch(`field_logs?id=eq.${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Gagal menghapus (HTTP ${res.status}).`)
+  },
+  async listReportsTerbaru(batas = 30) {
+    const res = await restFetch(
+      `field_reports?select=*&order=created_at.desc,tanggal.desc&limit=${Math.max(1, batas)}`)
+    if (!res.ok) throw new Error(`Gagal memuat laporan (HTTP ${res.status}).`)
+    return await res.json() as FieldReport[]
   },
   async listReports(logId) {
     const res = await restFetch(`field_reports?select=*&log_id=eq.${logId}&order=tanggal.desc,created_at.desc`)
