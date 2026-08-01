@@ -20,6 +20,7 @@ import {
   type Produk,
 } from '../lib/produk'
 import { normalisasiPaket } from '../lib/planCatalog'
+import { bacaPetaMode, type ModeFitur } from '../lib/fiturTambahan'
 
 
 // ── Plan feature definitions (mirrored from DB) ────────────
@@ -66,6 +67,12 @@ interface AuthStore {
   subscriptions: Subscription[]
   isSubscriptionEnabled: boolean
   globalFeatures: Record<AppFeature, boolean>
+  /**
+   * Fitur tambahan Kontraktor AI dan seberapa jauh ia sudah dirilis
+   * ('mati' | 'internal' | 'semua'). Diatur dari Admin → Pengaturan, bukan
+   * dari kode, supaya bisa dicoba ke sebagian pemakai lebih dulu.
+   */
+  fiturTambahan: Record<string, ModeFitur>
   bankDetails: BankDetails
   paymentSettings: PaymentSettings
   isPasswordRecovery: boolean
@@ -248,6 +255,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   subscriptions: [],
   isSubscriptionEnabled: false,
   globalFeatures: { fs_module: true, cost_control: true, cost_rab: true, cost_material: false, cost_realisasi: true, ai_solver: true, pdf_export: true, scurve: true, dashboard_admin: false },
+  fiturTambahan: {},
   bankDetails: DEFAULT_BANK_DETAILS,
   paymentSettings: { enableMidtrans: true, enableManual: true },
   isPasswordRecovery: false,
@@ -493,7 +501,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       const { data } = await supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['subscription_enabled', 'feature_flags', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'addon_user_price', 'max_team_users', 'affiliate_enabled'])
+        .in('key', ['subscription_enabled', 'feature_flags', 'fitur_tambahan', 'bank_details', 'trial_features', 'payment_settings', 'plan_catalog', 'addon_features_enabled', 'addon_fs_price', 'addon_cost_price', 'addon_user_price', 'max_team_users', 'affiliate_enabled'])
 
       const subEnabled = data?.find(i => i.key === 'subscription_enabled')?.value
       const flags = data?.find(i => i.key === 'feature_flags')?.value
@@ -510,6 +518,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({
         isSubscriptionEnabled: subEnabled === true || subEnabled === 'true',
         globalFeatures: typeof flags === 'object' && flags !== null ? { ...get().globalFeatures, ...flags } : get().globalFeatures,
+        fiturTambahan: bacaPetaMode(data?.find(i => i.key === 'fitur_tambahan')?.value),
         bankDetails: typeof bankDetails === 'object' && bankDetails !== null ? bankDetails : get().bankDetails,
         paymentSettings: typeof paymentSettingsData === 'object' && paymentSettingsData !== null ? { ...get().paymentSettings, ...(paymentSettingsData as object) } : get().paymentSettings,
         planCatalog: Array.isArray(planCatalogData) ? planCatalogData : [],

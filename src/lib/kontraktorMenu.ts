@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon, Compass,} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -32,6 +32,12 @@ export interface MenuItem {
   tag?: string
   /** Kata bantu pencarian selain label. */
   alias?: string
+  /**
+   * Kunci fitur tambahan di `lib/fiturTambahan.ts`. Item yang menyebutkannya
+   * baru tampil bila setelan backend mengizinkan — dipakai untuk merilis fitur
+   * bertahap tanpa merilis ulang aplikasi.
+   */
+  tambahan?: string
 }
 
 export const KATEGORI: { key: MenuKategori | 'semua'; label: string }[] = [
@@ -97,6 +103,15 @@ export const MENU_ITEMS: MenuItem[] = [
   // Satu halaman memuat daftar pengguna, pembuatan akun, dan matriks role.
   { key: 'tim', label: 'User Team', icon: Users, kategori: 'tim', path: '/kontraktor/tim', tone: TONE.navy,
     alias: 'anggota tim undang invite karyawan pengguna role hak akses jabatan kode perusahaan' },
+
+  // ── Fitur tambahan ────────────────────────────────────────────────────────
+  // Feasibility Study dulunya produk sendiri dengan menunya sendiri di navigasi
+  // bawah. Sekarang ia satu ikon di sini, dan tampil-tidaknya diatur dari
+  // backend (Admin → Pengaturan → Fitur Tambahan). Halamannya tetap /dashboard
+  // supaya tautan lama tidak putus.
+  { key: 'feasibility', label: 'Feasibility Study', icon: Calculator, kategori: 'proyek', path: '/dashboard',
+    tone: TONE.emerald, tambahan: 'fs_module', feature: 'fs_module',
+    alias: 'studi kelayakan fs analisa investasi npv irr bep proyeksi' },
 
   // ── Selalu paling belakang ────────────────────────────────────────────────
   // Berisi profil perusahaan (kop & logo laporan) dan auto-upload Google Drive.

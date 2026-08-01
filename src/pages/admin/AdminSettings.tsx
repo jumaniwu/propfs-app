@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock, Info } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock, Info, Sparkles } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
+import {
+  MODE_FITUR, LABEL_MODE, JELAS_MODE, modeFitur, type ModeFitur,
+} from '@/lib/fiturTambahan'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,10 +23,24 @@ const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
   { key: 'dashboard_admin', label: 'Admin Dashboard', desc: 'Akses ke panel admin ini.' },
 ]
 
+/**
+ * Fitur yang muncul sebagai ikon tambahan di dalam Kontraktor AI. Berbeda
+ * dari AVAILABLE_FEATURES yang hidup-mati, tiap fitur di sini punya tiga
+ * keadaan sehingga bisa dirilis bertahap.
+ */
+const FITUR_TAMBAHAN: { key: string; label: string; desc: string }[] = [
+  {
+    key: 'fs_module',
+    label: 'Feasibility Study',
+    desc: 'Analisa kelayakan proyek. Dulu produk terpisah dengan menunya sendiri di navigasi bawah; sekarang jadi satu ikon di dalam Kontraktor AI.',
+  },
+]
+
 export default function AdminSettings() {
   const [globalFlags, setGlobalFlags] = useState<Record<string, boolean>>({})
   const [toggling, setToggling] = useState(false)
-  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures, bankDetails, paymentSettings: storePaymentSettings } = useAuthStore()
+  const { isSubscriptionEnabled, loadFeatureFlags, globalFeatures, fiturTambahan, bankDetails, paymentSettings: storePaymentSettings } = useAuthStore()
+  const [simpanTambahan, setSimpanTambahan] = useState(false)
 
   // Payment Settings State
   const [paymentSettings, setPaymentSettings] = useState(storePaymentSettings || { enableMidtrans: true, enableManual: true })
@@ -136,6 +153,28 @@ export default function AdminSettings() {
     } else {
       await loadFeatureFlags()
       toast({ title: 'Setting Global diperbarui' })
+    }
+  }
+
+  /**
+   * Simpan seluruh peta mode sekaligus, bukan hanya kunci yang diubah:
+   * `upsert` mengganti nilai jsonb-nya utuh, jadi mengirim satu kunci saja
+   * akan menghapus setelan fitur lain.
+   */
+  async function simpanModeFitur(kunci: string, mode: ModeFitur) {
+    setSimpanTambahan(true)
+    try {
+      const baru = { ...fiturTambahan, [kunci]: mode }
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'fitur_tambahan', value: baru })
+      if (error) throw error
+      await loadFeatureFlags()
+      toast({ title: 'Fitur tambahan diperbarui', description: `${kunci}: ${LABEL_MODE[mode]}` })
+    } catch (e: any) {
+      toast({ title: 'Gagal menyimpan', description: e?.message ?? 'Coba lagi.', variant: 'destructive' })
+    } finally {
+      setSimpanTambahan(false)
     }
   }
 
@@ -717,6 +756,56 @@ export default function AdminSettings() {
                </label>
             ))}
          </div>
+      </div>
+
+      {/* ── Fitur tambahan Kontraktor AI ──
+          Berbeda dari Konfigurasi Modul di atas yang hanya hidup-mati: di sini
+          ada keadaan ketiga, "hanya superadmin", supaya fitur baru bisa dipakai
+          sendiri dulu di akun produksi sebelum ditawarkan ke pelanggan. */}
+      <div className="bg-card border border-border shadow-sm rounded-2xl p-6 lg:p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <h2 className="font-serif text-xl font-bold flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-gold" /> Fitur Tambahan Kontraktor AI
+          </h2>
+          <div className="px-2.5 py-1 rounded-md bg-violet-100 text-violet-700 text-[10px] font-bold uppercase tracking-widest">
+            Bertahap
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground/80">
+          Fitur berikut muncul sebagai ikon di dalam Kontraktor AI. Pilih seberapa jauh
+          tiap fitur sudah dirilis. Paket langganan pengguna tetap berlaku — setelan ini
+          hanya menentukan fiturnya <b>ditawarkan</b> atau tidak.
+        </p>
+
+        <div className="space-y-4">
+          {FITUR_TAMBAHAN.map(f => {
+            const mode = modeFitur(fiturTambahan, f.key)
+            return (
+              <div key={f.key} className="p-5 rounded-2xl border border-border bg-slate-50/50 space-y-3">
+                <div>
+                  <div className="text-base font-bold text-navy">{f.label}</div>
+                  <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{f.desc}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {MODE_FITUR.map(m => (
+                    <button key={m} type="button"
+                      disabled={simpanTambahan}
+                      onClick={() => void simpanModeFitur(f.key, m)}
+                      title={JELAS_MODE[m]}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors disabled:opacity-50 ${
+                        mode === m
+                          ? 'bg-navy text-white border-navy'
+                          : 'bg-white text-muted-foreground border-border hover:border-navy'
+                      }`}>
+                      {LABEL_MODE[m]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">{JELAS_MODE[mode]}</p>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
