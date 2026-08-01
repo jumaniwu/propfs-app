@@ -26,8 +26,10 @@ export interface LeadsApi {
   hapus(id: string): Promise<void>
   /** Tautan form milik pengguna; dibuatkan bila belum ada. */
   tokenSaya(): Promise<string>
-  /** Ganti tautan form — dipakai bila tautan lama terlanjur tersebar salah. */
+  /** Ganti tautan form dengan yang acak — bila tautan lama tersebar salah. */
   gantiToken(): Promise<string>
+  /** Pasang tautan pilihan sendiri, mis. "nexbuild". */
+  pasangSlug(slug: string): Promise<{ ok: boolean; alasan: string; slug: string }>
   /** Nomor WhatsApp official yang dituju calon konsumen setelah mengisi form. */
   simpanWaOfficial(nomor: string): Promise<void>
   bacaWaOfficial(): Promise<string>
@@ -148,6 +150,22 @@ const realApi: LeadsApi = {
     const res = await restFetch('rpc/leads_token_ganti', { method: 'POST', body: '{}' })
     if (!res.ok) throw new Error(`Gagal mengganti tautan form${sebab(res.status)}`)
     return (await res.json() as string) ?? ''
+  },
+
+  async pasangSlug(slug) {
+    const res = await restFetch('rpc/leads_token_set', {
+      method: 'POST', body: JSON.stringify({ p_slug: slug }),
+    })
+    if (!res.ok) {
+      // 404 di sini berarti migrasi slug belum dijalankan, bukan tautannya
+      // yang salah — pesannya harus menyebut berkas yang benar.
+      const apa = res.status === 404
+        ? ' — jalankan migration_leads_slug.sql di Supabase SQL Editor.'
+        : sebab(res.status)
+      throw new Error(`Gagal memasang tautan${apa}`)
+    }
+    const baris = await res.json() as Array<{ ok: boolean; alasan: string; slug: string }>
+    return baris[0] ?? { ok: false, alasan: 'Tidak ada jawaban dari server.', slug }
   },
 
   async simpanWaOfficial(nomor) {

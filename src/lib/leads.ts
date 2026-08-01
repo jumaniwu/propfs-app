@@ -123,6 +123,162 @@ export function tampilHp(input: unknown): string {
   return lokal.replace(/(\d{4})(\d{4})(\d+)/, '$1-$2-$3')
 }
 
+// ── Tautan pilihan sendiri ──────────────────────────────────────────────────
+//
+// Tautan bawaan berupa 32 huruf acak: propfs.id/k/cb84437a91f2… Aman, tetapi
+// tidak ada yang mau mencetaknya di kartu nama, dan di gelembung WhatsApp ia
+// terpotong jadi tidak terbaca. Sekarang pemiliknya bisa menggantinya menjadi
+// propfs.id/k/nexbuild.
+//
+// Ini AMAN dilakukan HANYA untuk tautan leads. Formnya memang dimaksudkan
+// tersebar seluas mungkin, jadi tautan yang mudah ditebak bukan kelemahan —
+// justru itu tujuannya. Tautan lain (surat jalan, PO, SPK, tanda tangan)
+// membuka data perusahaan kepada siapa pun yang memegangnya, dan token acaknya
+// TIDAK boleh diikutkan aturan ini.
+
+/** Panjang terpendek & terpanjang tautan pilihan sendiri. */
+export const MIN_SLUG = 3
+export const MAKS_SLUG = 32
+
+/**
+ * Kata yang tidak boleh dipakai. Sebagian karena membingungkan bila muncul di
+ * URL, sebagian lagi disimpan untuk keperluan sistem di kemudian hari.
+ */
+export const SLUG_TERLARANG = [
+  'admin', 'api', 'app', 'www', 'form', 'leads', 'lead', 'new', 'baru',
+  'edit', 'null', 'undefined', 'test', 'demo', 'propfs', 'login', 'daftar',
+]
+
+/**
+ * Rapikan ketikan menjadi bentuk yang sah: huruf kecil, spasi jadi tanda
+ * hubung, sisanya dibuang.
+ *
+ * Dijadikan huruf kecil karena pencocokan rute tidak peka huruf besar —
+ * "NexBuild" dan "nexbuild" akan membuka halaman yang sama, jadi menyimpan
+ * keduanya sebagai tautan berbeda hanya menyiapkan kebingungan.
+ */
+export function rapikanSlug(input: unknown): string {
+  return String(input ?? '')
+    .toLowerCase()
+    .replace(/[\s_.]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, MAKS_SLUG)
+}
+
+export interface HasilSlug {
+  sah: boolean
+  /** Bentuk yang akan benar-benar disimpan. */
+  slug: string
+  /** Alasan ditolak; kosong bila sah. */
+  alasan: string
+}
+
+/**
+ * Periksa tautan pilihan sendiri.
+ *
+ * Aturan yang sama ditegakkan ULANG di server (lihat migration_leads_slug.sql).
+ * Pemeriksaan di sini hanya supaya pemakainya tahu lebih cepat — RPC bisa
+ * dipanggil langsung, jadi server tidak boleh mempercayai klien.
+ */
+export function periksaSlug(input: unknown): HasilSlug {
+  const asli = String(input ?? '').trim()
+  const slug = rapikanSlug(asli)
+
+  if (!asli) return { sah: false, slug: '', alasan: 'Tautan belum diisi.' }
+  if (slug.length < MIN_SLUG) {
+    return { sah: false, slug, alasan: `Minimal ${MIN_SLUG} huruf atau angka.` }
+  }
+  if (SLUG_TERLARANG.includes(slug)) {
+    return { sah: false, slug, alasan: `"${slug}" sudah dipakai sistem. Coba yang lain.` }
+  }
+  // Yang murni angka mudah tertukar dengan nomor, dan tidak menjelaskan apa pun
+  // kepada orang yang membacanya di kartu nama.
+  if (/^\d+$/.test(slug)) {
+    return { sah: false, slug, alasan: 'Jangan hanya angka — sertakan huruf agar mudah dikenali.' }
+  }
+  return { sah: true, slug, alasan: '' }
+}
+
+// ── Tanggal rencana mulai ───────────────────────────────────────────────────
+//
+// Dulu kolom ini teks bebas ("bulan depan", "setelah lebaran"). Mudah diisi,
+// tetapi susah dipakai: tidak bisa diurutkan, tidak bisa dihitung berapa lama
+// lagi, dan "setelah lebaran" berarti tanggal yang berbeda tiap tahunnya.
+// Sekarang berupa tanggal, dipilih dari kalender bawaan HP.
+//
+// Nilai LAMA yang berupa teks tetap ditampilkan apa adanya — lead yang sudah
+// masuk sebelum perubahan ini tidak boleh berubah artinya.
+
+const duaAngka = (n: number) => String(n).padStart(2, '0')
+
+/**
+ * 'YYYY-MM-DD' hari ini menurut waktu SETEMPAT.
+ *
+ * Sengaja tidak memakai toISOString(): itu waktu UTC, dan bagi pemakai di
+ * Indonesia (UTC+7) tanggalnya masih tanggal kemarin sampai pukul 07.00.
+ * Akibatnya batas "tidak boleh sebelum hari ini" akan meleset satu hari.
+ */
+export function tanggalHariIni(sekarang = new Date()): string {
+  return `${sekarang.getFullYear()}-${duaAngka(sekarang.getMonth() + 1)}-${duaAngka(sekarang.getDate())}`
+}
+
+/**
+ * 'YYYY-MM-DD' sekian bulan dari sekarang.
+ *
+ * Tanggalnya dijepit ke akhir bulan bila perlu: menambah satu bulan pada
+ * 31 Januari akan melompat ke 3 Maret bila dibiarkan, dan "bulan depan" yang
+ * ternyata dua bulan lagi jelas bukan yang dimaksud siapa pun.
+ */
+export function tanggalTambahBulan(bulan: number, sekarang = new Date()): string {
+  const th = sekarang.getFullYear()
+  const bl = sekarang.getMonth() + Math.trunc(bulan)
+  const hari = sekarang.getDate()
+  // Hari ke-0 bulan berikutnya = hari terakhir bulan yang dituju.
+  const akhirBulan = new Date(th, bl + 1, 0).getDate()
+  const d = new Date(th, bl, Math.min(hari, akhirBulan))
+  return tanggalHariIni(d)
+}
+
+const NAMA_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+/**
+ * "2026-09-15" → "15 Sep 2026".
+ *
+ * Diurai per bagian, bukan lewat Date, supaya tidak bergeser sehari akibat
+ * zona waktu. Yang bukan tanggal dikembalikan apa adanya — itulah yang menjaga
+ * lead lama berisi "setelah lebaran" tetap terbaca.
+ */
+export function tampilTanggal(v: unknown): string {
+  const s = teks(v)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return s
+  const bl = Number(m[2])
+  if (bl < 1 || bl > 12) return s
+  return `${Number(m[3])} ${NAMA_BULAN[bl - 1]} ${m[1]}`
+}
+
+/** true bila nilainya sebuah tanggal 'YYYY-MM-DD' yang sah. */
+export function tanggalSah(v: unknown): boolean {
+  const s = teks(v)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return false
+  const [th, bl, hr] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  if (bl < 1 || bl > 12 || hr < 1) return false
+  return hr <= new Date(th, bl, 0).getDate()
+}
+
+/** Pilihan cepat di bawah kalender, supaya tidak perlu menggulir bulan. */
+export function pilihanCepatMulai(sekarang = new Date()): Array<{ label: string; nilai: string }> {
+  return [
+    { label: 'Secepatnya', nilai: tanggalHariIni(sekarang) },
+    { label: 'Bulan depan', nilai: tanggalTambahBulan(1, sekarang) },
+    { label: '3 bulan lagi', nilai: tanggalTambahBulan(3, sekarang) },
+    { label: '6 bulan lagi', nilai: tanggalTambahBulan(6, sekarang) },
+  ]
+}
+
 // ── Pemeriksaan form ────────────────────────────────────────────────────────
 
 export interface HasilPeriksa {
@@ -199,7 +355,9 @@ export function pesanWaLead(isi: IsiFormLead, perusahaan = ''): string {
     ['Luas', teks(isi?.luas)],
     ['Kondisi saat ini', teks(isi?.kondisi)],
     ['Perkiraan anggaran', teks(isi?.anggaran)],
-    ['Rencana mulai', teks(isi?.target_mulai)],
+    // Dicetak "15 Sep 2026", bukan "2026-09-15": yang membacanya orang di
+    // ujung WhatsApp, bukan mesin.
+    ['Rencana mulai', tampilTanggal(isi?.target_mulai)],
   ]
   for (const [label, nilai] of baris) if (nilai) b.push(`• ${label}: ${nilai}`)
   if (teks(isi?.catatan)) b.push(`• Catatan: ${teks(isi.catatan)}`)

@@ -8,19 +8,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Link2, Copy, RefreshCw, Loader2, Search, MessageCircle, Phone, Mail,
-  Trash2, ChevronDown, Info, Share2, Save, Users, Check,
+  Trash2, ChevronDown, Info, Share2, Save, Users, Check, Pencil,
 } from 'lucide-react'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/store/authStore'
 import { leadsApi } from '@/lib/leadsApi'
 import {
-  saringLeads, ringkasLeads, ringkasSatu, bacaStatus, tampilHp, rapikanHp,
+  saringLeads, ringkasLeads, ringkasSatu, bacaStatus, tampilHp, rapikanHp, tampilTanggal,
+  periksaSlug, rapikanSlug, MAKS_SLUG,
   pesanBalasLead, URUT_STATUS, LABEL_STATUS, TONE_STATUS,
   type Lead, type StatusLead,
 } from '@/lib/leads'
 import { waKe } from '@/lib/waLink'
-import { tautanPublik } from '@/lib/tautanPendek'
+import { tautanPublik, basisSitus } from '@/lib/tautanPendek'
 import { waktuLalu } from '@/lib/notifikasi'
 import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
@@ -40,6 +41,10 @@ export default function LeadsPage() {
   const [status, setStatus] = useState<StatusLead | 'semua'>('semua')
   const [buka, setBuka] = useState<string | null>(null)
   const [simpanWa, setSimpanWa] = useState(false)
+  const [ubahNama, setUbahNama] = useState(false)
+  const [slugDraf, setSlugDraf] = useState('')
+  const [slugGalat, setSlugGalat] = useState('')
+  const [simpanSlugJalan, setSimpanSlugJalan] = useState(false)
 
   async function muat() {
     setMemuat(true)
@@ -90,6 +95,32 @@ export default function LeadsPage() {
     } catch (e) {
       toast({ title: 'Gagal mengganti tautan', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
     }
+  }
+
+  /**
+   * Pasang tautan pilihan sendiri.
+   *
+   * Aturannya diperiksa di sini DAN di server. Yang di sini hanya supaya
+   * pemakainya tahu lebih cepat — RPC bisa dipanggil langsung, jadi server
+   * tidak boleh mempercayai klien. Bentrok dengan perusahaan lain hanya bisa
+   * diketahui server, dan alasannya dikembalikan apa adanya.
+   */
+  async function simpanSlug() {
+    const periksa = periksaSlug(slugDraf)
+    setSlugDraf(periksa.slug)
+    if (!periksa.sah) { setSlugGalat(periksa.alasan); return }
+
+    setSimpanSlugJalan(true)
+    try {
+      const hasil = await leadsApi().pasangSlug(periksa.slug)
+      if (!hasil.ok) { setSlugGalat(hasil.alasan || 'Tautan tidak bisa dipakai.'); return }
+      setToken(hasil.slug)
+      setUbahNama(false)
+      setSlugGalat('')
+      toast({ title: 'Tautan diperbarui', description: `Sekarang: /k/${hasil.slug}` })
+    } catch (e) {
+      setSlugGalat(e instanceof Error ? e.message : String(e))
+    } finally { setSimpanSlugJalan(false) }
   }
 
   async function simpanNomorWa() {
@@ -191,12 +222,59 @@ export default function LeadsPage() {
                   <MessageCircle className="w-3 h-3" /> Bagikan via WA
                 </a>
                 {bolehUbah && (
-                  <button onClick={() => void gantiTautan()}
-                    className="text-[11px] font-bold text-muted-foreground border border-border rounded-full px-3 py-1.5 hover:border-rose-400 hover:text-rose-600">
-                    Ganti tautan
-                  </button>
+                  <>
+                    <button onClick={() => { setUbahNama(v => !v); setSlugDraf(token); setSlugGalat('') }}
+                      className="text-[11px] font-bold text-navy border border-border rounded-full px-3 py-1.5 hover:border-navy flex items-center gap-1.5">
+                      <Pencil className="w-3 h-3" /> Ubah nama tautan
+                    </button>
+                    <button onClick={() => void gantiTautan()}
+                      className="text-[11px] font-bold text-muted-foreground border border-border rounded-full px-3 py-1.5 hover:border-rose-400 hover:text-rose-600">
+                      Acak ulang
+                    </button>
+                  </>
                 )}
               </div>
+
+              {/* Tautan pilihan sendiri. Yang bawaan berupa 32 huruf acak —
+                  aman, tetapi tidak ada yang mau mencetaknya di kartu nama,
+                  dan di gelembung WhatsApp ia terpotong jadi tidak terbaca. */}
+              {ubahNama && bolehUbah && (
+                <div className="rounded-xl border border-navy/25 bg-slate-50 p-3 space-y-2">
+                  <p className="text-[11px] font-bold text-navy">Nama tautan Anda</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground font-mono shrink-0">
+                      {basisSitus(window.location.origin).replace(/^https?:\/\//, '')}/k/
+                    </span>
+                    <input
+                      value={slugDraf} aria-label="Nama tautan"
+                      onChange={e => { setSlugDraf(rapikanSlug(e.target.value)); setSlugGalat('') }}
+                      onKeyDown={e => { if (e.key === 'Enter') void simpanSlug() }}
+                      placeholder="nexbuild" maxLength={MAKS_SLUG}
+                      className={`flex-1 min-w-0 h-9 rounded-lg border px-2.5 text-xs font-mono bg-white ${
+                        slugGalat ? 'border-rose-400' : 'border-border'}`} />
+                  </div>
+                  {slugGalat
+                    ? <p className="text-[11px] text-rose-600">{slugGalat}</p>
+                    : (
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        Huruf kecil, angka, dan tanda hubung. Tautan lama akan mati
+                        begitu diganti — perbarui yang sudah tercetak.
+                      </p>
+                    )}
+                  <div className="flex gap-2">
+                    <button onClick={() => void simpanSlug()}
+                      disabled={simpanSlugJalan || !slugDraf || slugDraf === token}
+                      className="h-9 px-4 rounded-lg bg-navy text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40">
+                      {simpanSlugJalan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Simpan
+                    </button>
+                    <button onClick={() => { setUbahNama(false); setSlugGalat('') }}
+                      className="h-9 px-4 rounded-lg border border-border text-muted-foreground text-xs font-bold">
+                      Batal
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -311,7 +389,8 @@ export default function LeadsPage() {
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                       {([
                         ['Kebutuhan', l.jenis], ['Lokasi', l.lokasi], ['Luas', l.luas],
-                        ['Anggaran', l.anggaran], ['Rencana mulai', l.target_mulai], ['Email', l.email],
+                        ['Anggaran', l.anggaran], ['Rencana mulai', tampilTanggal(l.target_mulai)],
+                        ['Email', l.email],
                       ] as Array<[string, string | undefined]>)
                         .filter(([, v]) => (v ?? '').trim())
                         .map(([k, v]) => (
