@@ -3,6 +3,8 @@ import {
   rapikanHp, tampilHp, periksaForm, siapkanKiriman,
   pesanWaLead, pesanBalasLead, ringkasLeads, saringLeads, ringkasSatu,
   bacaStatus, URUT_STATUS, LABEL_STATUS, TONE_STATUS, STATUS_SELESAI, JENIS_PROYEK,
+  tanggalHariIni, tanggalTambahBulan, tampilTanggal, tanggalSah, pilihanCepatMulai,
+  rapikanSlug, periksaSlug, MIN_SLUG, MAKS_SLUG, SLUG_TERLARANG,
 } from '../src/lib/leads.ts'
 
 let ok = 0
@@ -33,6 +35,97 @@ assert(rapikanHp('+1') === null, 'nomor luar negeri terlalu pendek ditolak')
 // ── tampilHp ───────────────────────────────────────────────────────────────
 assert(tampilHp('6281234567890') === '0812-3456-7890', 'ditampilkan dalam bentuk lokal')
 assert(tampilHp('tidak jelas') === 'tidak jelas', 'yang tidak terbaca ditampilkan apa adanya')
+
+// ── Tautan pilihan sendiri ─────────────────────────────────────────────────
+// rapikanSlug: apa pun yang diketik dijadikan bentuk yang sah.
+assert(rapikanSlug('NexBuild') === 'nexbuild', 'huruf besar jadi kecil')
+assert(rapikanSlug('Nex Build Indonesia') === 'nex-build-indonesia', 'spasi jadi tanda hubung')
+assert(rapikanSlug('nex_build') === 'nex-build', 'garis bawah jadi tanda hubung')
+assert(rapikanSlug('nex.build') === 'nex-build', 'titik jadi tanda hubung')
+assert(rapikanSlug('nex@#$build') === 'nexbuild', 'tanda baca lain dibuang')
+assert(rapikanSlug('nex---build') === 'nex-build', 'tanda hubung berurutan dirapatkan')
+assert(rapikanSlug('---nexbuild---') === 'nexbuild', 'tanda hubung di tepi dibuang')
+assert(rapikanSlug('  nexbuild  ') === 'nexbuild', 'spasi di tepi tidak menyisakan tanda hubung')
+assert(rapikanSlug('a'.repeat(50)).length === MAKS_SLUG, `dipotong ke ${MAKS_SLUG} karakter`)
+assert(rapikanSlug('') === '' && rapikanSlug(null) === '', 'masukan kosong aman')
+assert(rapikanSlug('日本語') === '', 'huruf non-latin dibuang seluruhnya')
+// Sudah rapi berarti tidak berubah lagi bila dirapikan dua kali.
+assert(rapikanSlug(rapikanSlug('Nex Build!')) === rapikanSlug('Nex Build!'), 'merapikan bersifat tetap')
+
+// periksaSlug
+{
+  const b = periksaSlug('NexBuild Indonesia')
+  assert(b.sah === true && b.slug === 'nexbuild-indonesia', 'dirapikan lalu diterima')
+  assert(b.alasan === '', 'yang sah tidak membawa alasan')
+}
+assert(periksaSlug('ab').sah === false, `kurang dari ${MIN_SLUG} huruf ditolak`)
+assert(/Minimal/.test(periksaSlug('ab').alasan), 'alasannya menyebut batasnya')
+assert(periksaSlug('abc').sah === true, `tepat ${MIN_SLUG} huruf diterima`)
+assert(periksaSlug('').sah === false && /belum diisi/.test(periksaSlug('').alasan), 'kosong ditolak')
+assert(periksaSlug('!!!').sah === false, 'yang habis dirapikan jadi kosong ikut ditolak')
+
+// Angka saja: mudah tertukar dengan nomor, dan tidak menjelaskan apa pun.
+assert(periksaSlug('12345').sah === false, 'angka saja ditolak')
+assert(/sertakan huruf/.test(periksaSlug('12345').alasan), 'alasannya menuntun, bukan sekadar menolak')
+assert(periksaSlug('nex123').sah === true, 'huruf + angka diterima')
+
+// Kata yang disimpan sistem.
+for (const kata of SLUG_TERLARANG) {
+  assert(periksaSlug(kata).sah === false, `"${kata}" ditolak`)
+}
+assert(periksaSlug('ADMIN').sah === false, 'huruf besar tidak menembus daftar terlarang')
+assert(periksaSlug('administrasi').sah === true, 'yang sekadar berawalan sama tetap boleh')
+assert(MIN_SLUG === 3 && MAKS_SLUG === 32, 'batas panjang')
+
+// ── Tanggal rencana mulai ──────────────────────────────────────────────────
+// Waktu SETEMPAT, bukan UTC: bagi pemakai di Indonesia (UTC+7) toISOString()
+// masih menunjuk tanggal kemarin sampai pukul 07.00, dan batas "tidak boleh
+// sebelum hari ini" akan meleset sehari.
+{
+  const dini = new Date(2026, 7, 1, 2, 48) // 1 Agustus 2026, 02:48 waktu setempat
+  assert(tanggalHariIni(dini) === '2026-08-01',
+    `dini hari tetap tanggal hari ini menurut waktu setempat (dapat ${tanggalHariIni(dini)})`)
+  assert(tanggalHariIni(new Date(2026, 0, 9)) === '2026-01-09', 'bulan & tanggal diberi nol di depan')
+}
+
+// tanggalTambahBulan: dijepit ke akhir bulan supaya "bulan depan" tidak
+// diam-diam melompat dua bulan.
+assert(tanggalTambahBulan(1, new Date(2026, 0, 31)) === '2026-02-28',
+  `31 Jan + 1 bulan = 28 Feb, bukan 3 Mar (dapat ${tanggalTambahBulan(1, new Date(2026, 0, 31))})`)
+assert(tanggalTambahBulan(1, new Date(2024, 0, 31)) === '2024-02-29', 'tahun kabisat dihormati')
+assert(tanggalTambahBulan(1, new Date(2026, 7, 15)) === '2026-09-15', 'bulan depan biasa')
+assert(tanggalTambahBulan(3, new Date(2026, 7, 15)) === '2026-11-15', 'tiga bulan lagi')
+assert(tanggalTambahBulan(6, new Date(2026, 7, 15)) === '2027-02-15', 'melewati pergantian tahun')
+assert(tanggalTambahBulan(0, new Date(2026, 7, 15)) === '2026-08-15', 'nol bulan = hari ini')
+
+// tampilTanggal: yang BUKAN tanggal dikembalikan apa adanya — itulah yang
+// menjaga lead lama berisi teks bebas tetap terbaca.
+assert(tampilTanggal('2026-09-15') === '15 Sep 2026', 'tanggal jadi enak dibaca')
+assert(tampilTanggal('2026-01-05') === '5 Jan 2026', 'nol di depan tanggal dibuang')
+assert(tampilTanggal('2026-12-31') === '31 Des 2026', 'Desember disingkat Des')
+assert(tampilTanggal('setelah lebaran') === 'setelah lebaran', 'teks lama tetap terbaca apa adanya')
+assert(tampilTanggal('bulan depan') === 'bulan depan', 'teks bebas tidak dirusak')
+assert(tampilTanggal('') === '' && tampilTanggal(null) === '', 'kosong tetap kosong')
+assert(tampilTanggal('2026-13-01') === '2026-13-01', 'bulan ke-13 bukan tanggal, dikembalikan utuh')
+
+// tanggalSah
+assert(tanggalSah('2026-09-15') === true, 'tanggal sah')
+assert(tanggalSah('2026-02-29') === false, '29 Feb 2026 bukan tahun kabisat')
+assert(tanggalSah('2024-02-29') === true, '29 Feb 2024 sah')
+assert(tanggalSah('2026-04-31') === false, 'April tidak punya tanggal 31')
+assert(tanggalSah('setelah lebaran') === false, 'teks bebas bukan tanggal')
+assert(tanggalSah('15-09-2026') === false, 'urutan lain tidak diterima')
+
+// pilihanCepatMulai
+{
+  const cepat = pilihanCepatMulai(new Date(2026, 7, 15))
+  assert(cepat.length === 4, 'empat pilihan cepat')
+  assert(cepat[0].label === 'Secepatnya' && cepat[0].nilai === '2026-08-15', 'Secepatnya = hari ini')
+  assert(cepat[1].nilai === '2026-09-15', 'Bulan depan')
+  assert(cepat[3].nilai === '2027-02-15', '6 bulan lagi melewati tahun')
+  assert(cepat.every(c => tanggalSah(c.nilai)), 'semua pilihan menghasilkan tanggal yang sah')
+  assert(new Set(cepat.map(c => c.nilai)).size === 4, 'tidak ada pilihan yang bertabrakan')
+}
 
 // ── periksaForm ────────────────────────────────────────────────────────────
 {
@@ -91,7 +184,7 @@ assert(siapkanKiriman({ nama: 'X', no_hp: '0812345' }).no_hp === '0812345',
     nama: 'Budi', jenis: 'Renovasi rumah', lokasi: 'Bandung',
     luas: '100 m2', kondisi: 'Atap bocor, dinding lembab',
     anggaran: '150-200 juta', catatan: 'Tolong dibalas sore',
-    foto: ['a', 'b'],
+    target_mulai: '2026-09-15', foto: ['a', 'b'],
   }, 'PT Contoh Jaya')
 
   assert(/^Halo PT Contoh Jaya, saya Budi\./.test(pesan), 'menyapa perusahaan & menyebut diri')
@@ -100,7 +193,15 @@ assert(siapkanKiriman({ nama: 'X', no_hp: '0812345' }).no_hp === '0812345',
   assert(/150-200 juta/.test(pesan), 'anggaran ikut')
   assert(/2 foto/.test(pesan), 'jumlah foto disebut')
   assert(/Tolong dibalas sore/.test(pesan), 'catatan ikut')
+  // Yang membaca pesan ini orang di ujung WhatsApp, bukan mesin.
+  assert(/Rencana mulai: 15 Sep 2026/.test(pesan),
+    'tanggal dicetak enak dibaca, bukan 2026-09-15')
+  assert(!/2026-09-15/.test(pesan), 'ISO mentah tidak bocor ke pesan')
 }
+// Lead lama yang target_mulai-nya masih teks bebas tetap tercetak apa adanya.
+assert(/Rencana mulai: setelah lebaran/.test(
+  pesanWaLead({ nama: 'X', target_mulai: 'setelah lebaran' })),
+  'teks lama tetap terbawa ke pesan')
 // Kolom kosong tidak menyisakan baris hampa.
 {
   const pesan = pesanWaLead({ nama: 'Budi' })

@@ -20,7 +20,8 @@ import {
 } from 'lucide-react'
 import { leadsApi, type InfoFormLead } from '@/lib/leadsApi'
 import {
-  periksaForm, siapkanKiriman, pesanWaLead, JENIS_PROYEK, type IsiFormLead,
+  periksaForm, siapkanKiriman, pesanWaLead, JENIS_PROYEK,
+  tanggalHariIni, pilihanCepatMulai, type IsiFormLead,
 } from '@/lib/leads'
 import { waKe } from '@/lib/waLink'
 import { downscaleImage } from '@/lib/imageUtil'
@@ -225,7 +226,37 @@ export default function LeadFormPage() {
             bantu: 'Mis. atap bocor, dinding retak, atau masih tanah kosong.',
           })}
           {kolom('anggaran', 'Perkiraan anggaran', { bantu: 'Opsional. Boleh rentang, mis. "150–200 juta".' })}
-          {kolom('target_mulai', 'Rencana mulai', { bantu: 'Mis. "bulan depan" atau "setelah lebaran".' })}
+
+          {/* Rencana mulai: kalender bawaan HP, ditambah pilihan cepat.
+              Kalender saja masih menuntut orang menggulir bulan demi bulan
+              untuk jawaban yang sebenarnya kasar ("sekitar tiga bulan lagi") —
+              tombol di bawahnya menutup jarak itu dalam satu ketukan. */}
+          <div className="space-y-1.5">
+            <label htmlFor="target_mulai" className="text-xs font-bold text-navy">Rencana mulai</label>
+            <input
+              id="target_mulai" type="date" aria-label="Rencana mulai"
+              value={String(isi.target_mulai ?? '')}
+              min={tanggalHariIni()}
+              onChange={e => ubah('target_mulai', e.target.value)}
+              className="w-full h-11 rounded-xl border border-border px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gold"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {pilihanCepatMulai().map(p => (
+                <button key={p.label} type="button"
+                  onClick={() => ubah('target_mulai', isi.target_mulai === p.nilai ? '' : p.nilai)}
+                  className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
+                    isi.target_mulai === p.nilai
+                      ? 'bg-navy text-white border-navy'
+                      : 'bg-white text-muted-foreground border-border hover:border-navy'}`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Opsional, dan boleh perkiraan — masih bisa berubah nanti.
+            </p>
+          </div>
+
           {kolom('catatan', 'Catatan tambahan', { baris: 2 })}
         </div>
 
