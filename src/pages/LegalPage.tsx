@@ -2,21 +2,23 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ShieldCheck, FileText, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 
 export default function LegalPage() {
   const { type } = useParams()
   const navigate = useNavigate()
+  const beranda = useRutaMasuk()
   const { user } = useAuthStore()
 
   const isPrivacy = type === 'privacy'
 
   // FIX UTAMA: navigate(-1) kembali ke halaman sebelumnya apapun itu
-  // Fallback: jika tidak ada history, ke /home (login) atau / (belum login)
+  // Fallback: jika tidak ada history, ke beranda (login) atau / (belum login)
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1)
     } else {
-      navigate(user ? '/home' : '/')
+      navigate(user ? beranda : '/')
     }
   }
 

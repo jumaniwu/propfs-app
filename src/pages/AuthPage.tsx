@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { rutaSetelahMasukSaatIni } from '@/hooks/useRutaMasuk'
 
 type Tab = 'login' | 'register' | 'forgot-password'
 
@@ -86,12 +87,10 @@ export default function AuthPage() {
     try {
       await signIn(loginEmail, loginPass)
       const params = new URLSearchParams(location.search)
-      const plan = params.get('plan')
-      if (plan && plan !== 'free') {
-        navigate(`/home?create_invoice=${plan}`)
-      } else {
-        navigate('/home')
-      }
+      // Beranda dihitung SETELAH signIn supaya langganan yang baru dimuat ikut
+      // terbaca — kalau dibaca sebelumnya, pelanggan Kontraktor AI akan
+      // dianggap belum berlangganan dan dilempar ke halaman paket.
+      navigate(rutaSetelahMasukSaatIni(params.get('plan')))
     } catch (err: any) {
       console.error("Login Error:", err)
     }
@@ -187,11 +186,7 @@ export default function AuthPage() {
         // No email confirmation required — auto login
         try {
           await signIn(regEmail, regPass)
-          if (selectedPlan && selectedPlan !== 'free') {
-            navigate(`/home?create_invoice=${selectedPlan}&months=${selectedMonths}`)
-          } else {
-            navigate('/home')
-          }
+          navigate(rutaSetelahMasukSaatIni(selectedPlan, selectedMonths))
         } catch {
           // Auto-login failed but account was created — show success
           setRegSuccess(true)

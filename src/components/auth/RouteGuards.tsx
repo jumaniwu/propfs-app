@@ -2,6 +2,8 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { sesiTim } from '@/lib/teamApi'
+import { rutaTagihan, RUTA_LANGGANAN } from '@/lib/berandaMasuk'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 import type { AppFeature } from '@/lib/supabase'
 
 /** Beranda sesi tim: karyawan selalu mendarat di modul Kontraktor AI. */
@@ -74,12 +76,15 @@ export function PrivateRoute({ children }: Props) {
   return <>{children}</>
 }
 
-/** Redirect to /home if already logged in (used for Login/Register pages) */
+/** Sudah login: langsung ke berandanya, bukan ke dashboard akun lama. */
 export function AuthRoute({ children }: Props) {
   const { user, isLoading } = useAuthStore()
+  const beranda = useRutaMasuk()
   const urlParams = new URLSearchParams(window.location.search)
   const planParam = urlParams.get('plan')
-  const redirectTo = planParam && planParam !== 'free' ? `/home?create_invoice=${planParam}` : '/home'
+  // Paket yang dipilih sebelum login tetap ditagihkan lebih dulu; `/home` kini
+  // hanya pintu penerbit tagihan, bukan halaman yang menampilkan apa pun.
+  const redirectTo = planParam && planParam !== 'free' ? rutaTagihan(planParam) : beranda
 
   // Do not return null on isLoading here, because it will UNMOUNT AuthPage and destroy its local state
   // AuthPage itself already handles its loading state via the useAuthStore's isLoading flag.
@@ -96,13 +101,14 @@ export function OpenRoute({ children }: Props) {
 /** Redirect non-superadmin away from admin routes */
 export function AdminRoute({ children }: Props) {
   const { user, profile, isLoading } = useAuthStore()
+  const beranda = useRutaMasuk()
   if (isLoading) return <Spinner />
-  if (!user || profile?.role !== 'superadmin') return <Navigate to="/home" replace />
+  if (!user || profile?.role !== 'superadmin') return <Navigate to={beranda} replace />
   return <>{children}</>
 }
 
 /** Block access to feature-gated routes for users without the feature.
- *  Superadmin always passes through. Free users are redirected to /home. */
+ *  Superadmin always passes through. Free users are redirected to /pricing. */
 export function FeatureRoute({ children, feature }: FeatureProps) {
   const { user, isLoading, isFeatureEnabled } = useAuthStore()
   if (isLoading) return <Spinner />
@@ -115,7 +121,12 @@ export function FeatureRoute({ children, feature }: FeatureProps) {
   if (sesiTim() && FITUR_KONTRAKTOR.includes(feature)) return <>{children}</>
 
   if (!isFeatureEnabled(feature)) {
-    return <Navigate to="/home" replace state={{ upgradeNeeded: feature }} />
+    // JANGAN kirim ke beranda: sejak beranda pemakai Kontraktor AI adalah
+    // `/kontraktor` — rute yang dijaga penjaga ini juga — mengirimnya ke sana
+    // berarti ditolak lagi, lalu dialihkan lagi, tanpa henti. Halaman paket
+    // selalu boleh dibuka siapa pun yang login, jadi lingkarannya berhenti di
+    // situ, dan memang di situlah kuncinya bisa dibuka.
+    return <Navigate to={RUTA_LANGGANAN} replace state={{ upgradeNeeded: feature }} />
   }
   return <>{children}</>
 }

@@ -7,10 +7,12 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import Header from '@/components/layout/Header'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 
 export default function PaymentPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const beranda = useRutaMasuk()
   const { user, bankDetails, paymentSettings } = useAuthStore()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
@@ -107,7 +109,7 @@ export default function PaymentPage() {
           })
 
           toast({ title: 'Pembayaran Berhasil! 🎉', description: `Invoice lunas dan paket telah diaktifkan.` })
-          navigate('/home')
+          navigate(beranda)
         },
         () => {
           toast({ title: 'Pembayaran Gagal', variant: 'destructive' })
@@ -115,7 +117,7 @@ export default function PaymentPage() {
         },
         () => {
           toast({ title: 'Menunggu Pembayaran', description: 'Status invoice: PENDING. Kami akan memperbarui otomatis setelah pembayaran dikonfirmasi.' })
-          navigate('/home')
+          navigate(beranda)
         }
       )
     } catch (e: any) {
@@ -139,7 +141,7 @@ export default function PaymentPage() {
         <Header />
         <div className="max-w-3xl mx-auto p-10 text-center">
           <h2 className="text-2xl font-bold">Invoice Tidak Ditemukan</h2>
-          <Button className="mt-4" onClick={() => navigate('/home')}>Kembali ke Dashboard</Button>
+          <Button className="mt-4" onClick={() => navigate(beranda)}>Kembali ke Beranda</Button>
         </div>
       </div>
     )
@@ -153,7 +155,7 @@ export default function PaymentPage() {
       
       <main className="max-w-4xl mx-auto px-4 py-10 mt-10">
         <div className="mb-8">
-          <Button variant="ghost" className="gap-2" onClick={() => navigate('/home')}>
+          <Button variant="ghost" className="gap-2" onClick={() => navigate(beranda)}>
             <ChevronLeft className="w-4 h-4" /> Kembali
           </Button>
         </div>
