@@ -8,8 +8,12 @@ import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 
 import { AppFeature } from '@/lib/supabase'
+import type { TabKerja } from '@/lib/posisiKerja'
 
-export type WorkspaceTab = 'overview' | 'rab' | 'material' | 'realisasi' | 'kurva_s' | 'akuntan' | 'spk' | 'lapangan' | 'laporan' | 'settings'
+// Daftar menunya kini tinggal di lib/posisiKerja.ts, karena alamat halaman
+// harus bisa menyebut menu mana yang sedang dibuka — dan dua daftar terpisah
+// pasti akan berbeda suatu hari tanpa ada yang menyadarinya.
+export type WorkspaceTab = TabKerja
 
 interface SidebarItem {
   key: WorkspaceTab

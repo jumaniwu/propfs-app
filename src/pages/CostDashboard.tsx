@@ -34,6 +34,7 @@ import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
 import { konteksWatermark } from '@/lib/identitasSaya'
 import { useBuatProyek } from '@/hooks/useBuatProyek'
+import { bacaPosisi, tulisPosisi, samaPosisi } from '@/lib/posisiKerja'
 
 /** Judul yang tampil di header workspace, mengikuti menu yang sedang dibuka. */
 const JUDUL_TAB: Record<WorkspaceTab, string> = {
@@ -56,21 +57,67 @@ export default function CostDashboard() {
     updateActivePlanComponents, clearProject, loadProject,
     deleteProject, clearActivePlan, loadProjects
   } = useCostStore()
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('rab')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
 
-  // ── Deep-link dari Home Kontraktor AI: /cost-control?tab=…&sub=…&project=… ──
+  // ── Posisi kerja disimpan di ALAMAT, bukan hanya di state ────────────────
+  //
+  // Sebelumnya query `?tab=…&sub=…&project=…` dibaca sekali lalu SENGAJA
+  // dihapus, dan berpindah menu tidak pernah menyentuh alamat. Akibatnya satu:
+  // memuat ulang halaman selalu melempar pemakainya kembali ke daftar proyek —
+  // proyek yang sedang dibuka hilang, menu yang sedang dibuka hilang.
+  //
+  // Alamat adalah satu-satunya tempat yang bertahan melewati muat ulang, dan
+  // sekaligus membuat tautannya bisa dikirim ke rekan kerja apa adanya.
   const [searchParams, setSearchParams] = useSearchParams()
-  const [deepSub] = useState(() => searchParams.get('sub') ?? undefined)
+  const posisiAwal = useState(() => bacaPosisi(searchParams))[0]
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(posisiAwal.tab ?? 'rab')
+  const [subAkuntan, setSubAkuntan] = useState<string | undefined>(posisiAwal.sub)
+
+  // Buka kembali proyek yang disebut alamat.
+  //
+  // TIDAK bisa dilakukan sekali saat halaman dibuka: `loadProject` mencari di
+  // daftar proyek yang saat itu MASIH KOSONG. Daftarnya baru terisi setelah
+  // sesi pulih dan penyimpanan lokal dibaca — dan bila proyeknya dibuat di
+  // perangkat lain, setelah tarikan dari server selesai pula. Memanggilnya
+  // terlalu dini berarti ia diam saja, dan pemakainya tetap mendarat di daftar
+  // proyek — persis keluhan yang mau diperbaiki.
+  //
+  // Jadi ditunggu sampai proyeknya muncul, lalu berhenti menunggu. Berhenti
+  // itu penting: tanpa penanda `sudahPulih`, menekan "Daftar Proyek" akan
+  // langsung dibatalkan oleh pemulihan berikutnya.
+  const [sudahPulih, setSudahPulih] = useState(!posisiAwal.proyek)
   useEffect(() => {
-    const tab = searchParams.get('tab') as WorkspaceTab | null
-    const proj = searchParams.get('project')
-    if (!tab && !proj && !deepSub) return
-    if (proj && proj !== projectInfo?.id) loadProject(proj)
-    if (tab) setActiveTab(tab)
-    setSearchParams(new URLSearchParams(), { replace: true }) // bersihkan query
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (sudahPulih) return
+    if (projectInfo?.id === posisiAwal.proyek) { setSudahPulih(true); return }
+    if (savedProjects.some(p => p.info.id === posisiAwal.proyek)) {
+      loadProject(posisiAwal.proyek!)
+      setSudahPulih(true)
+    }
+  }, [savedProjects, projectInfo?.id, sudahPulih]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Proyeknya mungkin memang sudah tidak ada — dihapus, atau tautannya dikirim
+  // orang lain yang proyeknya bukan milik pemakai ini. Menunggu selamanya akan
+  // membuat alamatnya tidak pernah diperbarui, jadi penantiannya dibatasi.
+  useEffect(() => {
+    if (sudahPulih) return
+    const jam = setTimeout(() => setSudahPulih(true), 10000)
+    return () => clearTimeout(jam)
+  }, [sudahPulih])
+
+  // Catat posisi ke alamat setiap kali berpindah. `replace` disengaja: tombol
+  // kembali peramban harus membawa pemakainya keluar dari workspace, bukan
+  // menyusuri ulang setiap ketukan menu yang pernah ia lakukan.
+  //
+  // Ditahan sampai pemulihan selesai. Kalau tidak, alamat akan ditulis ulang
+  // tanpa `project=` selagi proyeknya masih dicari — menghapus satu-satunya
+  // keterangan yang sedang dipakai untuk mencarinya.
+  useEffect(() => {
+    if (!sudahPulih) return
+    const posisi = { proyek: projectInfo?.id, tab: activeTab, sub: subAkuntan }
+    if (samaPosisi(searchParams, posisi)) return
+    setSearchParams(tulisPosisi(posisi), { replace: true })
+  }, [projectInfo?.id, activeTab, subAkuntan, sudahPulih]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { user } = useAuthStore()
   const { isSubscriptionEnabled } = useSubscription()
@@ -595,7 +642,8 @@ export default function CostDashboard() {
       {projectInfo && activePlan && (
         <div className="flex relative">
           {/* Sidebar */}
-          <WorkspaceSidebar activeTab={activeTab} onTabChange={setActiveTab}
+          <WorkspaceSidebar activeTab={activeTab}
+            onTabChange={t => { setActiveTab(t); if (t !== 'akuntan') setSubAkuntan(undefined) }}
             mobileOpen={drawerOpen} onMobileOpenChange={setDrawerOpen} />
 
           {/* Main Content */}
@@ -755,7 +803,9 @@ export default function CostDashboard() {
                 {activeTab === 'material' && <TabMaterialSchedule />}
                 {activeTab === 'realisasi' && <TabRealisasiBiaya />}
                 {activeTab === 'kurva_s' && <TabKurvaS />}
-                {activeTab === 'akuntan' && <TabAkuntan initialSub={deepSub} />}
+                {activeTab === 'akuntan' && (
+                  <TabAkuntan initialSub={subAkuntan} onSubChange={setSubAkuntan} />
+                )}
                 {activeTab === 'spk' && <TabSPK />}
                 {activeTab === 'lapangan' && <TabLaporanLapangan />}
 
