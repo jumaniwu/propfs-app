@@ -24,6 +24,7 @@ export type Modul =
   | 'procurement'  // Vendor, katalog harga, purchase order
   | 'studi'        // Feasibility Study — fitur tambahan, bukan pekerjaan lapangan
   | 'leads'        // Cari Leads — calon konsumen & tindak lanjutnya
+  | 'marcom'       // Materi promosi media sosial dari foto proyek
   | 'tim'          // Tim, pengguna, pengaturan
 
 export type Aksi = 'baca' | 'tulis' | 'approve'
@@ -55,6 +56,7 @@ export const MODUL_LABEL: Record<Modul, string> = {
   procurement: 'Procurement (Vendor & PO)',
   studi: 'Feasibility Study',
   leads: 'Cari Leads',
+  marcom: 'Marcom (Promosi Sosmed)',
   tim: 'Tim & Pengaturan',
 }
 
@@ -66,13 +68,13 @@ type Izin = '-' | 'r' | 'rw' | 'rwa'
 // menyetujui PO buatannya sendiri; keuangan hanya melihat untuk keperluan
 // pembayaran; pengawas melihat agar tahu barang sudah dipesan atau belum.
 const MATRIKS: Record<TeamRole, Record<Modul, Izin>> = {
-  pemilik:   { rab: 'rwa', realisasi: 'rwa', akuntan: 'rwa', spk: 'rwa', lapangan: 'rwa', material: 'rwa', procurement: 'rwa', studi: 'rwa',   leads: 'rwa', tim: 'rwa' },
-  manajemen: { rab: 'rw',  realisasi: 'rw',  akuntan: 'rw',  spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: 'r',   leads: 'rwa', tim: 'r' },
-  keuangan:  { rab: 'r',   realisasi: 'rw',  akuntan: 'rw',  spk: 'r',   lapangan: '-',   material: 'r',   procurement: 'r',   studi: 'r',   leads: 'r',   tim: '-' },
-  pm:        { rab: 'rw',  realisasi: 'rw',  akuntan: 'r',   spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: '-',   leads: 'rw',  tim: '-' },
-  pengawas:  { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'rw',  material: 'rw',  procurement: 'r',   studi: '-',   leads: '-',   tim: '-' },
-  logistik:  { rab: 'r',   realisasi: '-',   akuntan: '-',   spk: '-',   lapangan: 'r',   material: 'rw',  procurement: 'rw',  studi: '-',   leads: '-',   tim: '-' },
-  viewer:    { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'r',   material: 'r',   procurement: '-',   studi: '-',   leads: '-',   tim: '-' },
+  pemilik:   { rab: 'rwa', realisasi: 'rwa', akuntan: 'rwa', spk: 'rwa', lapangan: 'rwa', material: 'rwa', procurement: 'rwa', studi: 'rwa',   leads: 'rwa', marcom: 'rwa', tim: 'rwa' },
+  manajemen: { rab: 'rw',  realisasi: 'rw',  akuntan: 'rw',  spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: 'r',   leads: 'rwa', marcom: 'rwa', tim: 'r' },
+  keuangan:  { rab: 'r',   realisasi: 'rw',  akuntan: 'rw',  spk: 'r',   lapangan: '-',   material: 'r',   procurement: 'r',   studi: 'r',   leads: 'r', marcom: '-',   tim: '-' },
+  pm:        { rab: 'rw',  realisasi: 'rw',  akuntan: 'r',   spk: 'rw',  lapangan: 'rw',  material: 'rwa', procurement: 'rwa', studi: '-',   leads: 'rw', marcom: 'rw',  tim: '-' },
+  pengawas:  { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'rw',  material: 'rw',  procurement: 'r',   studi: '-',   leads: '-', marcom: 'rw',   tim: '-' },
+  logistik:  { rab: 'r',   realisasi: '-',   akuntan: '-',   spk: '-',   lapangan: 'r',   material: 'rw',  procurement: 'rw',  studi: '-',   leads: '-', marcom: '-',   tim: '-' },
+  viewer:    { rab: 'r',   realisasi: 'r',   akuntan: '-',   spk: 'r',   lapangan: 'r',   material: 'r',   procurement: '-',   studi: '-',   leads: '-', marcom: '-',   tim: '-' },
 }
 
 /** Apakah `role` boleh melakukan `aksi` pada `modul`. */
@@ -114,5 +116,6 @@ export const MENU_KE_MODUL: Record<string, Modul> = {
   procurement: 'procurement',
   feasibility: 'studi',
   leads: 'leads',
+  marcom: 'marcom',
   tim: 'tim', settings: 'tim',
 }
