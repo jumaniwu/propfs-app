@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Save, Image as ImageIcon, Layout, List, Plus, Trash2, Upload, Loader2, Palette, RefreshCw, HelpCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -6,6 +6,9 @@ import { useAuthStore, DEFAULT_LANDING_CONTENT } from '@/store/authStore'
 import type { LandingPageContent } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
+import {
+  bandingkanSeksi, pakaiBawaanSeksi, pakaiBawaanSemua, ringkasBeda,
+} from '@/lib/kontenLanding'
 
 // Helper outside component to avoid stale closure issues
 function ensureFaq(base: LandingPageContent): LandingPageContent {
@@ -35,6 +38,15 @@ export default function AdminLandingCMS() {
   useEffect(() => {
     setCmsData(ensureFaq(landingContent))
   }, [landingContent])
+
+  // Bagian mana yang isinya sudah tertinggal dari bawaan di kode.
+  const beda = useMemo(
+    () => bandingkanSeksi(
+      cmsData as unknown as Record<string, unknown>,
+      DEFAULT_LANDING_CONTENT as unknown as Record<string, unknown>,
+    ),
+    [cmsData],
+  )
 
   async function handleSave() {
      if (isSaving) return
@@ -169,8 +181,59 @@ export default function AdminLandingCMS() {
         </div>
       </div>
 
+      {/* ── Selaraskan dengan bawaan terbaru ──────────────────────────────
+          Konten yang tersimpan di CMS SELALU menang atas bawaan di kode —
+          memang harus begitu, kalau tidak setiap rilis akan menghapus tulisan
+          yang sudah disusun di sini. Akibatnya, ketika kode membawa naskah baru
+          (modul baru dirilis), halaman depan tidak ikut berubah: naskah baru
+          hanya berkelebat sekejap saat halaman dibuka, lalu tergantikan yang
+          tersimpan. Panel ini yang menutup jarak itu — PER BAGIAN, bukan
+          sekaligus, supaya alamat kontak yang sudah benar tidak ikut terhapus
+          hanya karena naskah modulnya diperbarui. */}
+      {beda.some(b => b.berbeda) && (
+        <div className="max-w-5xl bg-amber-50 border border-amber-200 rounded-[32px] p-6 sm:p-8 space-y-4">
+          <div className="flex items-start gap-3">
+            <RefreshCw className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <h3 className="font-bold text-navy">Ada naskah bawaan yang lebih baru</h3>
+              <p className="text-xs text-amber-900/80 leading-relaxed mt-1">
+                {ringkasBeda(beda)} Halaman depan menampilkan yang tersimpan di sini,
+                bukan yang ada di kode — jadi modul baru tidak akan muncul sampai Anda
+                mengambilnya. Ambil per bagian agar yang sudah Anda susun sendiri tidak ikut terhapus.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-2">
+            {beda.filter(b => b.berbeda).map(b => (
+              <div key={b.kunci} className="bg-white border border-amber-200 rounded-2xl p-3 flex items-start gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-navy">{b.label}</p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">{b.isi}</p>
+                </div>
+                <Button variant="outline" size="sm"
+                  className="shrink-0 h-8 text-[11px] font-bold"
+                  onClick={() => setCmsData(v => pakaiBawaanSeksi(v as unknown as Record<string, unknown>, DEFAULT_LANDING_CONTENT as unknown as Record<string, unknown>, b.kunci) as unknown as LandingPageContent)}>
+                  Pakai bawaan
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" className="h-10 text-xs font-bold"
+              onClick={() => setCmsData(v => pakaiBawaanSemua(v as unknown as Record<string, unknown>, DEFAULT_LANDING_CONTENT as unknown as Record<string, unknown>) as unknown as LandingPageContent)}>
+              Ambil semua bagian
+            </Button>
+            <p className="text-[11px] text-amber-900/70">
+              Perubahan baru berlaku setelah <b>Simpan Perubahan</b> ditekan.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-10 max-w-5xl">
-        
+
         {/* Identitas Website - Full Width on Mobile */}
         <section className="bg-white border border-slate-100 rounded-[32px] sm:rounded-[40px] p-6 sm:p-10 shadow-sm space-y-8">
           <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
