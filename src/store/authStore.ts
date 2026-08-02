@@ -21,6 +21,7 @@ import {
 } from '../lib/produk'
 import { normalisasiPaket } from '../lib/planCatalog'
 import { bacaPetaMode, type ModeFitur } from '../lib/fiturTambahan'
+import { hitungKuota, bolehBuat, type HasilKuota } from '../lib/kuotaProyek'
 
 
 // ── Plan feature definitions (mirrored from DB) ────────────
@@ -106,6 +107,8 @@ interface AuthStore {
   getCurrentPlan: () => PlanId
   getPlanLimits: (plan: PlanId) => typeof PLAN_LIMITS[PlanId]
   canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost') => boolean
+  /** Batas proyek akun ini beserta ASALNYA, untuk ditampilkan apa adanya. */
+  getKuota: (jenis: 'fs' | 'cost') => HasilKuota
   isFeatureEnabled: (feature: AppFeature) => boolean
   /** Paket yang berlaku untuk satu produk (langganan terpisah per produk). */
   getPlanFor: (produk: Produk) => PlanId
@@ -164,31 +167,35 @@ export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
     branding: {
       logoUrl: '',
       siteName: 'PropFS',
-      tagline: 'Feasibility Study & Cost Control System'
+      tagline: 'Kontraktor AI & Feasibility Study'
     },
     hero: {
-      title: 'Analisa Kelayakan Proyek Properti Lebih Cepat',
-      subtitle: 'Platform terintegrasi untuk menghitung cashflow, IRR, NPV hingga kontrol budget pembangunan dan Kurva S dalam satu dashboard.',
-      hashtags: ['#DeveloperProperti', '#AnalisaKelayakan', '#CostControl'],
+      title: 'Kendalikan Proyek Konstruksi dari HP Anda',
+      subtitle: 'Satu aplikasi untuk RAB, realisasi biaya, pengadaan, laporan lapangan, tim, sampai calon konsumen. Foto nota dibaca AI dan langsung tercatat ke semua modul yang tersentuh.',
+      hashtags: ['#KontraktorAI', '#KontrolBiayaProyek', '#RenovasiTerkendali'],
       imageUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2026&auto=format&fit=crop'
     },
     suitableFor: {
       label: 'SOLUSI TERBAIK UNTUK :',
-      tags: ['Developer Perumahan', 'Kontraktor', 'Investor Properti', 'Management Project']
+      tags: ['Kontraktor Renovasi', 'Developer Perumahan', 'Manajemen Proyek', 'Investor Properti']
     },
     features: [
-      { id: '1', title: 'Feasibility Study', desc: 'Analisa kelayakan finansial mendetail (IRR, NPV, ROI).', iconName: 'Calculator' },
-      { id: '2', title: 'Cost Control', desc: 'Pelacakan budget RAB vs Realisasi proyek.', iconName: 'BarChart' },
-      { id: '3', title: 'Kurva S Otomatis', desc: 'Visualisasi progres fisik dan finansial proyek.', iconName: 'TrendingUp' },
-      { id: '4', title: 'Laporan PDF', desc: 'Ekspor laporan profesional siap cetak.', iconName: 'FileText' },
+      { id: '1', title: 'Chat AI Lintas Modul', desc: 'Kirim foto nota — AI membacanya lalu menunjukkan modul mana saja yang akan terisi sebelum Anda menyetujui.', iconName: 'Sparkles' },
+      { id: '2', title: 'RAB & Realisasi Biaya', desc: 'Bandingkan anggaran dengan pengeluaran nyata, per proyek maupun gabungan.', iconName: 'BarChart' },
+      { id: '3', title: 'Procurement & Vendor', desc: 'Katalog harga vendor, purchase order bertanda tangan, sampai surat jalan barang datang.', iconName: 'ShoppingCart' },
+      { id: '4', title: 'Laporan Lapangan', desc: 'Tukang mengisi lewat tautan tanpa login. Laporan harian, pemakaian bahan, dan permintaan material.', iconName: 'HardHat' },
+      { id: '5', title: 'Akuntan & Inventori', desc: 'Laba rugi, neraca, hutang vendor, dan stok gudang yang terisi sendiri dari nota.', iconName: 'Scale' },
+      { id: '6', title: 'SPK Digital', desc: 'Surat perintah kerja dan perjanjian renovasi, ditandatangani lewat tautan WhatsApp.', iconName: 'FileSignature' },
+      { id: '7', title: 'Chat Tim & KPI', desc: 'Percakapan tim per workspace, bercampur kabar sistem — jadi ada dasar menilai siapa mengerjakan apa.', iconName: 'Users' },
+      { id: '8', title: 'Cari Leads', desc: 'Satu tautan form konsultasi untuk calon konsumen, langsung tersambung ke WhatsApp official Anda.', iconName: 'UserPlus' },
     ],
     auxiliaryProducts: [
-      { id: 'a1', title: 'AI Profit Solver', desc: 'Optimasi harga jual otomatis berbasis AI.', iconName: 'Sparkles' },
-      { id: 'a2', title: 'Manajemen User', desc: 'Akses hirarki untuk tim internal.', iconName: 'Users' }
+      { id: 'a1', title: 'Feasibility Study', desc: 'Cashflow, IRR, NPV, dan laporan kelayakan siap bank. Bisa diambil sendiri atau ditambahkan ke Kontraktor AI.', iconName: 'Calculator' },
+      { id: 'a2', title: 'AI Architect', desc: 'Susun layout kavling lalu render jadi visual 3D lewat prompt.', iconName: 'Compass' },
     ],
     marketingHighlight: {
-      title: 'Digitalkan Analisa Properti Anda Secara Profesional',
-      desc: 'Tinggalkan spreadsheet yang rumit dan mulailah menggunakan sistem yang terstandarisasi untuk meminimalkan risiko investasi.',
+      title: 'Satu Masukan, Semua Modul Terisi',
+      desc: 'Sehelai nota berarti biaya bertambah, stok bertambah, PO menerima barang, dan hutang vendor berjalan. Dulu diketik empat kali di empat tempat — dan yang terlewat membuat angkanya tidak pernah cocok. Sekarang cukup sekali kirim.',
       imageUrl: 'https://images.unsplash.com/photo-1554232456-8727aae0cfa4?q=80&w=2070&auto=format&fit=crop'
     },
     footer: {
@@ -670,39 +677,48 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   getLimitsFor: (produk: Produk) => get().getPlanLimits(get().getPlanFor(produk)),
 
+  // ── Kuota proyek ──────────────────────────────────────────
+  // Satu tempat yang menjawab "berapa proyek yang boleh dimiliki akun ini",
+  // dipakai bersama oleh gerbang pembuatan proyek dan tampilan sisa kuota.
+  // Urutannya (superadmin > sistem > kesepakatan khusus > paket) ada di
+  // lib/kuotaProyek.ts supaya bisa diuji tanpa store maupun jaringan.
+  getKuota: (jenis: 'fs' | 'cost'): HasilKuota => {
+    const { profile, isSubscriptionEnabled } = get()
+    const produk = produkDariJenisProyek(jenis)
+    const limits = get().getLimitsFor(produk) as {
+      maxFsProjects?: number; maxCostProjects?: number; maxProjects: number
+    }
+
+    return hitungKuota({
+      superadmin: profile?.role === 'superadmin',
+      langgananAktif: isSubscriptionEnabled,
+      manual: jenis === 'cost' ? profile?.kuota_kontraktor : profile?.kuota_fs,
+      paket: jenis === 'cost'
+        ? (limits.maxCostProjects ?? 0)
+        : (limits.maxFsProjects ?? limits.maxProjects),
+      slotTambahan: jenis === 'cost'
+        ? ((profile as unknown as { addon_cost_slots?: number })?.addon_cost_slots ?? 0)
+        : ((profile as unknown as { addon_fs_slots?: number })?.addon_fs_slots ?? 0),
+    })
+  },
+
   // ── canCreateProject ──────────────────────────────────────
   canCreateProject: (activeProjectCount: number, addonType?: 'fs' | 'cost'): boolean => {
-    const { profile, isSubscriptionEnabled } = get()
+    const { profile } = get()
+    const jenis: 'fs' | 'cost' = addonType === 'cost' ? 'cost' : 'fs'
+    const kuota = get().getKuota(jenis)
 
-    // Kuota dihitung dari langganan produk yang bersangkutan.
-    const produk = produkDariJenisProyek(addonType === 'cost' ? 'cost' : 'fs')
-    const plan = get().getPlanFor(produk)
-    const limits = get().getPlanLimits(plan)
+    // Paket gratis menghitung SELURUH proyek yang pernah dibuat, bukan yang
+    // sedang aktif — kalau tidak, jatahnya bisa dipakai berulang kali dengan
+    // menghapus proyek lama. Batas yang datang dari kesepakatan khusus tidak
+    // ikut aturan ini: yang disepakati adalah berapa proyek yang boleh
+    // DIMILIKI, bukan berapa kali boleh membuat.
+    const limits = get().getPlanLimits(get().getPlanFor(produkDariJenisProyek(jenis)))
+    const terpakai = jenis === 'fs' && kuota.sumber === 'paket' && limits.projectSlotPermanent
+      ? (profile?.total_projects_created ?? 0)
+      : activeProjectCount
 
-    // Bonus slots from add-on purchases
-    const addonFsSlots = (profile as any)?.addon_fs_slots ?? 0
-    const addonCostSlots = (profile as any)?.addon_cost_slots ?? 0
-
-    if (addonType === 'cost') {
-      // Use catalog-driven cost_control limit
-      const maxCost = (limits as any).maxCostProjects ?? 0
-      const effectiveMax = maxCost + addonCostSlots
-      if (!isSubscriptionEnabled) return true
-      return activeProjectCount < effectiveMax
-    }
-
-    // Default: FS (or no type specified)
-    const maxFs = (limits as any).maxFsProjects ?? limits.maxProjects
-    const effectiveMax = maxFs + addonFsSlots
-
-    // ALWAYS enforce free plan permanent slot limit (total_projects_created)
-    if (limits.projectSlotPermanent) {
-      return (profile?.total_projects_created ?? 0) < effectiveMax
-    }
-
-    // For paid plans: only enforce active project count limit when subscription is enabled
-    if (!isSubscriptionEnabled) return true
-    return activeProjectCount < effectiveMax
+    return bolehBuat(terpakai, kuota)
   },
 
   // ── isFeatureEnabled ──────────────────────────────────────

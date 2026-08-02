@@ -127,6 +127,13 @@ export interface Profile {
   role:                   'user' | 'admin' | 'superadmin'
   total_projects_created: number
   custom_features?:       Record<AppFeature, boolean>
+  /**
+   * Kesepakatan khusus jumlah proyek, di luar paket standar.
+   * null = ikut paket · -1 = tak terbatas · 0 = benar-benar nol.
+   * Hanya superadmin yang boleh mengubahnya (dijaga pemicu di basis data).
+   */
+  kuota_fs?:              number | null
+  kuota_kontraktor?:      number | null
   trial_started_at?:      string | null
   trial_expires_at?:      string | null
   trial_status?:          TrialStatus

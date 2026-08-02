@@ -32,7 +32,16 @@ export interface KatalogPaket {
   recommended?: boolean
 }
 
-/** Nilai awal — admin menimpanya lewat halaman Paket & Harga. */
+/**
+ * Nilai awal — admin menimpanya lewat halaman Paket & Harga.
+ *
+ * Susunannya mengikuti kenyataan produknya sekarang: KONTRAKTOR AI adalah
+ * langganan utama, dan Feasibility Study berdiri sebagai langganan sendiri
+ * yang bisa diambil terpisah ATAU ditambahkan di atas Kontraktor AI. Itu
+ * sebabnya paket yang disarankan adalah 'kontraktor', bukan bundle: menyorot
+ * bundle membuat calon pelanggan yang cuma butuh pelaksanaan lapangan merasa
+ * harus membayar analisa kelayakan yang tidak akan ia buka.
+ */
 export const KATALOG_DEFAULT: KatalogPaket[] = [
   {
     id: 'free', name: 'Free Trial', product: null,
@@ -41,44 +50,49 @@ export const KATALOG_DEFAULT: KatalogPaket[] = [
     features: {
       upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false,
       export_excel: false, export_pdf: false, multi_user: 1, akuntan: false, spk: false,
-      lapangan: false, material_lapangan: false, api_access: false, whitelabel: false,
-      priority_support: false, onboarding: false,
-    },
-  },
-  {
-    id: 'fs', name: 'Feasibility Study', product: 'feasibility',
-    deskripsi: 'Analisa kelayakan proyek properti, AI Architect, dan laporan investasi.',
-    priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0, isVisible: true,
-    features: {
-      upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false,
-      export_excel: true, export_pdf: true, multi_user: 1, akuntan: false, spk: false,
-      lapangan: false, material_lapangan: false, api_access: false, whitelabel: false,
-      priority_support: false, onboarding: false,
+      lapangan: false, material_lapangan: false, procurement: false, chat_tim: false,
+      leads: false, notifikasi: false, arsitek: false,
+      api_access: false, whitelabel: false, priority_support: false, onboarding: false,
     },
   },
   {
     id: 'kontraktor', name: 'Kontraktor AI', product: 'kontraktor',
-    deskripsi: 'RAB, realisasi biaya, akuntan, SPK digital, dan laporan lapangan.',
-    priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0, isVisible: true,
+    deskripsi: 'Kelola proyek dari RAB sampai serah terima: biaya, pengadaan, lapangan, tim, dan calon konsumen — dalam satu aplikasi.',
+    priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0,
+    isVisible: true, recommended: true,
     features: {
       upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true,
       // Kuota pengguna tim yang ditegakkan backend ada di
       // app_settings.max_team_users; angka di sini agar katalog cocok dengannya.
       export_excel: true, export_pdf: true, multi_user: 5, akuntan: true, spk: true,
-      lapangan: true, material_lapangan: true, api_access: false, whitelabel: false,
-      priority_support: false, onboarding: false,
+      lapangan: true, material_lapangan: true, procurement: true, chat_tim: true,
+      leads: true, notifikasi: true, arsitek: true,
+      api_access: false, whitelabel: false, priority_support: false, onboarding: false,
     },
   },
   {
-    id: 'bundle', name: 'Feasibility Study + Kontraktor AI', product: 'bundle',
-    deskripsi: 'Paket lengkap: analisa kelayakan sampai pelaksanaan proyek di lapangan.',
+    id: 'fs', name: 'Feasibility Study', product: 'feasibility',
+    deskripsi: 'Analisa kelayakan proyek properti: cashflow, IRR, NPV, sensitivitas, dan laporan siap bank. Bisa diambil sendiri atau ditambahkan ke Kontraktor AI.',
+    priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0, isVisible: true,
+    features: {
+      upload_rab: false, material_schedule: false, kurva_s: false, ai_chat: false,
+      export_excel: true, export_pdf: true, multi_user: 1, akuntan: false, spk: false,
+      lapangan: false, material_lapangan: false, procurement: false, chat_tim: false,
+      leads: false, notifikasi: false, arsitek: true,
+      api_access: false, whitelabel: false, priority_support: false, onboarding: false,
+    },
+  },
+  {
+    id: 'bundle', name: 'Kontraktor AI + Feasibility Study', product: 'bundle',
+    deskripsi: 'Keduanya sekaligus: dari menghitung kelayakan sebelum membeli lahan sampai mengendalikan biaya di lapangan.',
     priceIdr: 0, promoPriceIdr: null, fsProjects: 0, costProjects: 0,
-    isVisible: true, recommended: true,
+    isVisible: true,
     features: {
       upload_rab: true, material_schedule: true, kurva_s: true, ai_chat: true,
       export_excel: true, export_pdf: true, multi_user: 5, akuntan: true, spk: true,
-      lapangan: true, material_lapangan: true, api_access: false, whitelabel: true,
-      priority_support: true, onboarding: false,
+      lapangan: true, material_lapangan: true, procurement: true, chat_tim: true,
+      leads: true, notifikasi: true, arsitek: true,
+      api_access: false, whitelabel: true, priority_support: true, onboarding: false,
     },
   },
 ]
@@ -90,11 +104,16 @@ export const FITUR_KATALOG: Array<{
   { key: 'upload_rab', label: 'Upload & Parsing RAB Excel (AI)', inputType: 'toggle' },
   { key: 'material_schedule', label: 'Material Schedule Otomatis', inputType: 'toggle' },
   { key: 'kurva_s', label: 'Kurva S Progres Proyek', inputType: 'toggle' },
-  { key: 'ai_chat', label: 'AI Chat Realisasi Biaya', inputType: 'toggle' },
-  { key: 'akuntan', label: 'Modul Akuntan & Konsolidasi', inputType: 'toggle' },
+  { key: 'ai_chat', label: 'Chat AI Lintas Modul (nota, pemasukan, bayar vendor)', inputType: 'toggle' },
+  { key: 'akuntan', label: 'Modul Akuntan, Inventori & Konsolidasi', inputType: 'toggle' },
   { key: 'spk', label: 'SPK Digital & Tanda Tangan', inputType: 'toggle' },
   { key: 'lapangan', label: 'Laporan Lapangan & Kalender', inputType: 'toggle' },
   { key: 'material_lapangan', label: 'Penggunaan & Request Material', inputType: 'toggle' },
+  { key: 'procurement', label: 'Procurement: Vendor, Katalog Harga & PO', inputType: 'toggle' },
+  { key: 'chat_tim', label: 'Chat Tim + Penilaian Keaktifan (KPI)', inputType: 'toggle' },
+  { key: 'leads', label: 'Cari Leads: Form Konsultasi & Sambung WhatsApp', inputType: 'toggle' },
+  { key: 'notifikasi', label: 'Notifikasi Kabar Lapangan', inputType: 'toggle' },
+  { key: 'arsitek', label: 'AI Architect: Layout & Render 3D', inputType: 'toggle' },
   { key: 'export_excel', label: 'Ekspor Laporan Excel', inputType: 'toggle' },
   { key: 'export_pdf', label: 'Ekspor PDF Branded', inputType: 'toggle' },
   { key: 'multi_user', label: 'Multi-user / Tim', inputType: 'number', suffix: 'user' },
@@ -224,8 +243,11 @@ export async function muatKatalog(ms = 8000): Promise<KatalogPaket[]> {
   }
 }
 
-/** Urutan tampil: Free Trial, FS, Kontraktor AI, Bundle, lalu sisanya. */
-const URUTAN = ['free', 'fs', 'kontraktor', 'bundle']
+/**
+ * Urutan tampil. Kontraktor AI didahulukan atas Feasibility Study: itulah
+ * langganan utama sekarang, dan yang paling atas adalah yang paling dilihat.
+ */
+const URUTAN = ['free', 'kontraktor', 'fs', 'bundle']
 export function urutkanKatalog(list: KatalogPaket[]): KatalogPaket[] {
   return [...list].sort((a, b) => {
     const ia = URUTAN.indexOf(a.id), ib = URUTAN.indexOf(b.id)

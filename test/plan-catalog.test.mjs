@@ -1,7 +1,7 @@
 // Test katalog langganan: 3 katalog (FS, Kontraktor AI, Bundle) + Free Trial,
 // harga & jumlah proyek diatur admin di backend.
 import {
-  KATALOG_DEFAULT, normalisasiPaket, bacaKatalog, katalogTampil, urutkanKatalog,
+  KATALOG_DEFAULT, FITUR_KATALOG, normalisasiPaket, bacaKatalog, katalogTampil, urutkanKatalog,
   kuotaProyek, hargaEfektif, totalHarga,
 } from '../src/lib/planCatalog.ts'
 import { produkTercakup, langgananUntuk, planProduk } from '../src/lib/produk.ts'
@@ -11,11 +11,47 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
 
 // ── Katalog bawaan ─────────────────────────────────────────────────────────
 assert(KATALOG_DEFAULT.length === 4, 'Free Trial + 3 katalog berbayar')
-assert(KATALOG_DEFAULT.map(p => p.id).join(',') === 'free,fs,kontraktor,bundle', 'id katalog')
+// Kontraktor AI didahulukan: itulah langganan utama sekarang, dan yang paling
+// atas adalah yang paling dilihat calon pelanggan.
+assert(KATALOG_DEFAULT.map(p => p.id).join(',') === 'free,kontraktor,fs,bundle', 'id katalog')
+const disarankan = KATALOG_DEFAULT.filter(p => p.recommended)
+assert(disarankan.length === 1 && disarankan[0].id === 'kontraktor',
+  'yang disarankan Kontraktor AI, bukan bundle — calon yang hanya butuh pelaksanaan lapangan tidak dipaksa membayar analisa kelayakan')
 assert(KATALOG_DEFAULT.find(p => p.id === 'fs').product === 'feasibility', 'katalog fs → produk feasibility')
 assert(KATALOG_DEFAULT.find(p => p.id === 'kontraktor').product === 'kontraktor', 'katalog kontraktor → produk kontraktor')
 assert(KATALOG_DEFAULT.find(p => p.id === 'bundle').product === 'bundle', 'katalog bundle → cakupan bundle')
 assert(KATALOG_DEFAULT.find(p => p.id === 'free').product === null, 'Free Trial tanpa cakupan produk')
+// Modul yang sudah dirilis harus ada di katalog — kalau tidak, admin tidak
+// bisa menjualnya dan pelanggan tidak tahu ia dapat apa.
+{
+  const kunciFitur = FITUR_KATALOG.map(f => f.key)
+  for (const k of ['procurement', 'chat_tim', 'leads', 'notifikasi', 'arsitek']) {
+    assert(kunciFitur.includes(k), `fitur "${k}" ada di katalog`)
+  }
+  const kontraktor = KATALOG_DEFAULT.find(p => p.id === 'kontraktor')
+  for (const k of ['procurement', 'chat_tim', 'leads', 'notifikasi', 'ai_chat', 'akuntan']) {
+    assert(kontraktor.features[k] === true, `Kontraktor AI menyertakan ${k}`)
+  }
+
+  // FS berdiri sendiri: tidak ikut membawa modul lapangan.
+  const fs = KATALOG_DEFAULT.find(p => p.id === 'fs')
+  for (const k of ['procurement', 'chat_tim', 'leads', 'spk', 'lapangan', 'akuntan']) {
+    assert(fs.features[k] === false, `Feasibility Study TIDAK membawa ${k}`)
+  }
+  assert(fs.features.arsitek === true, 'AI Architect ikut di FS maupun Kontraktor AI')
+  assert(/ditambahkan ke Kontraktor AI/i.test(fs.deskripsi),
+    'deskripsi FS menyebut bisa jadi tambahan, bukan hanya berdiri sendiri')
+
+  // Tiap fitur di daftar harus punya nilai di SETIAP katalog berbayar —
+  // fitur yang tidak disebut akan tampil sebagai "tidak tersedia" tanpa ada
+  // yang sengaja memutuskannya.
+  for (const p of KATALOG_DEFAULT) {
+    for (const k of kunciFitur) {
+      assert(p.features[k] !== undefined, `katalog "${p.id}" menyebut fitur "${k}"`)
+    }
+  }
+}
+
 // Harga & kuota sengaja 0 — diisi admin di backend
 assert(KATALOG_DEFAULT.filter(p => p.id !== 'free').every(p => p.priceIdr === 0),
   'harga katalog berbayar dibiarkan 0 untuk diisi admin')
@@ -74,7 +110,7 @@ const acak = [
   { id: 'fs', name: 'S', product: 'feasibility', features: {}, isVisible: true },
 ].map(normalisasiPaket)
 
-assert(urutkanKatalog(acak).map(p => p.id).join(',') === 'free,fs,kontraktor,bundle', 'urutan tampil benar')
+assert(urutkanKatalog(acak).map(p => p.id).join(',') === 'free,kontraktor,fs,bundle', 'urutan tampil benar')
 assert(katalogTampil(acak).map(p => p.id).join(',') === 'free,fs,bundle', 'katalog disembunyikan tidak tampil')
 
 // ── Kuota & harga ──────────────────────────────────────────────────────────

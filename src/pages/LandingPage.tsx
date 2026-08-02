@@ -12,6 +12,12 @@ import {
   Sparkles,
   Users,
   Building2,
+  ShoppingCart,
+  HardHat,
+  Scale,
+  FileSignature,
+  UserPlus,
+  Compass,
   Mail,
   Phone,
   MapPin,
@@ -29,6 +35,8 @@ import {
 } from '@/lib/planCatalog'
 import { produkTercakup } from '@/lib/produk'
 
+// Nama ikon yang boleh dipakai admin di CMS. Ditambah seiring modul baru
+// dirilis — nama yang tidak dikenali jatuh ke ikon bawaan, tidak meledak.
 const ICON_MAP: Record<string, any> = {
   Calculator,
   BarChart,
@@ -36,24 +44,14 @@ const ICON_MAP: Record<string, any> = {
   FileText,
   Sparkles,
   Users,
-  Building2
+  Building2,
+  ShoppingCart,
+  HardHat,
+  Scale,
+  FileSignature,
+  UserPlus,
+  Compass,
 }
-
-const MASTER_FEATURES = [
-  { key: 'fs_projects', label: 'Feasibility Study', suffix: 'proyek' },
-  { key: 'cost_control', label: 'Cost Control & RAB' },
-  { key: 'upload_rab', label: 'Upload & Parsing RAB Excel (AI)' },
-  { key: 'material_schedule', label: 'Material Schedule Otomatis' },
-  { key: 'kurva_s', label: 'Kurva S Progres Proyek' },
-  { key: 'ai_chat', label: 'AI Chat Realisasi Biaya' },
-  { key: 'export_excel', label: 'Ekspor Laporan Excel' },
-  { key: 'export_pdf', label: 'Ekspor PDF Branded' },
-  { key: 'multi_user', label: 'Multi-user / Tim', suffix: 'user' },
-  { key: 'api_access', label: 'Akses API (Integrasi ERP)' },
-  { key: 'whitelabel', label: 'White-label Reports' },
-  { key: 'priority_support', label: 'Prioritas Support (WA/24jam)' },
-  { key: 'onboarding', label: 'Onboarding & Training Tim' },
-]
 
 export default function LandingPage() {
   const navigate = useNavigate()
