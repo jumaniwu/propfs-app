@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
 import { supabase } from '../lib/supabase'
-import { mergeNewest } from '../lib/cloudSync'
+import { gabungProyek, sisipkanProyek } from '../lib/sinkronProyek'
 import { dataOwnerId } from '../lib/teamApi'
 import { tandaiMenyimpan, tandaiTersimpan, tandaiGagal } from '../lib/syncStatus'
 
@@ -42,6 +42,11 @@ interface CostStore {
 
   // Actions
   loadProjects: () => void
+  /**
+   * Satukan dengan salinan server. `paksaDorong` mengulang unggahan SELURUH
+   * proyek — dipakai tombol "Sinkronkan sekarang".
+   */
+  sinkronCloud: (paksaDorong?: boolean) => Promise<{ ok: boolean; lokal: number; cloud: number; gagal?: number }>
   saveToStorage: () => void
 
   initProject: (info: ProjectInfo) => void
@@ -94,19 +99,26 @@ function progressPlan(plan: BudgetPlan | null): number {
 
 // ── SECURITY: Use user-scoped storage key to prevent data leaking between users ──
 // Each user gets their own isolated localStorage key.
-function getUserStorageKey(): string {
+//
+// null berarti PEMILIKNYA BELUM DIKENALI. Dulu keadaan itu dijawab dengan kunci
+// ":anonymous", dan itulah salah satu sebab proyek "hilang": tulisan pertama
+// setelah halaman dibuka mendarat di laci yang salah, lalu tidak pernah dibaca
+// lagi begitu sesinya siap. Sekarang penyimpanan ditunda sampai pemiliknya
+// jelas — menunda lebih baik daripada menyimpan ke tempat yang salah.
+function getUserStorageKey(): string | null {
   try {
     // Saat membuka workspace perusahaan lain sebagai anggota tim, kunci mengikuti
     // pemilik workspace agar data antar-perusahaan tidak tercampur di perangkat ini.
     const owner = dataOwnerId()
     if (owner) return `propfs-cost-projects:${owner}`
   } catch { /* ignore */ }
-  return 'propfs-cost-projects:anonymous'
+  return null
 }
 
 function loadLocalData(): SavedCostProject[] {
   try {
     const key = getUserStorageKey()
+    if (!key) return []
     return JSON.parse(localStorage.getItem(key) ?? '[]')
   } catch { return [] }
 }
@@ -114,6 +126,7 @@ function loadLocalData(): SavedCostProject[] {
 function saveLocalData(projects: SavedCostProject[]) {
   try {
     const key = getUserStorageKey()
+    if (!key) return
     localStorage.setItem(key, JSON.stringify(projects))
   } catch { /* ignore */ }
 }
@@ -125,10 +138,29 @@ function cloudUserId(): string | null {
   return dataOwnerId()
 }
 
-async function upsertCloudProject(p: SavedCostProject): Promise<void> {
+/**
+ * Tunggu sampai pemilik data dikenali.
+ *
+ * `initialize()` di authStore berjalan asinkron; pada pemuatan pertama halaman
+ * bisa saja sudah meminta daftar proyek sebelum sesinya selesai dibaca.
+ * Menunggu sebentar jauh lebih baik daripada menyerah diam-diam — itu yang
+ * dulu membuat laptop tidak pernah membaca cloud sama sekali.
+ */
+async function tungguPemilik(maksMs = 6000): Promise<string | null> {
+  const mulai = Date.now()
+  for (;;) {
+    const id = cloudUserId()
+    if (id) return id
+    if (Date.now() - mulai >= maksMs) return null
+    await new Promise(r => setTimeout(r, 200))
+  }
+}
+
+/** true bila proyeknya benar-benar sampai di server. */
+async function upsertCloudProject(p: SavedCostProject): Promise<boolean> {
   const user_id = cloudUserId()
   // Belum login: data tetap aman di localStorage, bukan kegagalan.
-  if (!user_id) { tandaiTersimpan(); return }
+  if (!user_id) { tandaiTersimpan(); return false }
   tandaiMenyimpan()
   try {
     const { error } = await supabase.from('cost_projects').upsert(
@@ -137,10 +169,12 @@ async function upsertCloudProject(p: SavedCostProject): Promise<void> {
     )
     if (error) throw error
     tandaiTersimpan()
+    return true
   } catch (e) {
     const pesan = e instanceof Error ? e.message : String(e)
     console.warn('[cost] gagal sinkron proyek ke cloud:', pesan)
     tandaiGagal(pesan)
+    return false
   }
 }
 
@@ -167,29 +201,63 @@ export const useCostStore = create<CostStore>((set, get) => ({
 
   loadProjects: () => {
     // tampilkan data lokal dulu (cepat/offline), lalu gabungkan dengan cloud
+    set({ savedProjects: loadLocalData() })
+    void get().sinkronCloud()
+  },
+
+  /**
+   * Ambil salinan cloud, satukan dengan yang ada di perangkat ini, lalu dorong
+   * balik yang belum sampai.
+   *
+   * Dulu bagian ini MENYERAH DIAM-DIAM bila sesinya belum siap
+   * (`if (!user_id) return`) dan tidak pernah dicoba lagi. Di laptop yang baru
+   * dibuka, itu berarti cloud tidak pernah dibaca sama sekali — dan pemakainya
+   * hanya melihat daftar kosong tanpa tahu sebabnya. Sekarang sesinya ditunggu
+   * sebentar, dan hasilnya dilaporkan lewat penanda sinkron.
+   */
+  sinkronCloud: async (paksaDorong = false) => {
+    const user_id = await tungguPemilik()
+    if (!user_id) {
+      tandaiGagal('Sesi belum siap — proyek baru tersimpan di perangkat ini saja.')
+      return { ok: false, lokal: loadLocalData().length, cloud: 0 }
+    }
+
+    // Dibaca ULANG di sini, bukan dipakai dari memori: antara halaman dibuka
+    // dan jawaban cloud tiba, pemakainya bisa saja sudah menyimpan sesuatu.
     const local = loadLocalData()
-    set({ savedProjects: local })
-    void (async () => {
-      const user_id = cloudUserId()
-      if (!user_id) return
-      try {
-        const { data, error } = await supabase
-          .from('cost_projects').select('data').eq('user_id', user_id)
-        if (error) throw error
-        const cloud = (data ?? [])
-          .map(r => r.data as SavedCostProject)
-          .filter(p => p?.info?.id)
-        const { merged, toPush } = mergeNewest(
-          local, cloud, p => p.info.id, p => p.updatedAt ?? '1970-01-01',
-        )
-        set({ savedProjects: merged })
-        saveLocalData(merged)
-        // dorong proyek yang hanya ada / lebih baru di perangkat ini
-        for (const p of toPush) void upsertCloudProject(p)
-      } catch (e) {
-        console.warn('[cost] sinkron cloud gagal (tabel cost_projects belum ada?):', e)
+    try {
+      const { data, error } = await supabase
+        .from('cost_projects').select('data').eq('user_id', user_id)
+      if (error) throw error
+      const cloud = (data ?? [])
+        .map(r => r.data as SavedCostProject)
+        .filter(p => p?.info?.id)
+
+      const { gabungan, perluDorong } = gabungProyek(
+        local as never, cloud as never,
+      ) as unknown as { gabungan: SavedCostProject[]; perluDorong: SavedCostProject[] }
+
+      set({ savedProjects: gabungan })
+      saveLocalData(gabungan)
+
+      // paksaDorong dipakai tombol "Sinkronkan sekarang": kalau ada yang dulu
+      // gagal naik tanpa ketahuan, mengulang seluruhnya jauh lebih murah
+      // daripada kehilangan satu proyek.
+      const dorong = paksaDorong ? gabungan : perluDorong
+      let gagal = 0
+      for (const p of dorong) {
+        const berhasil = await upsertCloudProject(p)
+        if (!berhasil) gagal++
       }
-    })()
+      if (gagal === 0) tandaiTersimpan()
+
+      return { ok: gagal === 0, lokal: gabungan.length, cloud: cloud.length, gagal }
+    } catch (e) {
+      const pesan = e instanceof Error ? e.message : String(e)
+      console.warn('[cost] sinkron cloud gagal:', pesan)
+      tandaiGagal(pesan)
+      return { ok: false, lokal: local.length, cloud: 0 }
+    }
   },
 
   saveToStorage: () => {
@@ -205,8 +273,14 @@ export const useCostStore = create<CostStore>((set, get) => ({
       updatedAt: now
     }
 
-    const nextProjects = savedProjects.filter(p => p.info.id !== projectInfo.id)
-    nextProjects.unshift(updatedProject)
+    // Disisipkan ke daftar yang dibaca ULANG dari penyimpanan, BUKAN ke
+    // salinan yang menempel di memori sejak halaman dibuka. Proyek yang datang
+    // dari cloud beberapa ratus milidetik setelah halaman terbuka dulu terhapus
+    // di sini — daftar lama ditulis ulang utuh, dan proyek yang belum sempat
+    // masuk ke memori ikut lenyap dari perangkat ini.
+    const terbaru = loadLocalData()
+    const dasar = terbaru.length >= savedProjects.length ? terbaru : savedProjects
+    const nextProjects = sisipkanProyek(dasar as never, updatedProject as never) as unknown as SavedCostProject[]
 
     set({ savedProjects: nextProjects })
     saveLocalData(nextProjects)
