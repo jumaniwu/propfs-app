@@ -26,6 +26,7 @@ import { can, MENU_KE_MODUL, ROLES } from '@/lib/teamRoles'
 import { saringTambahan } from '@/lib/fiturTambahan'
 import { useBuatProyek } from '@/hooks/useBuatProyek'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
+import StatusSinkron from '@/components/cost/StatusSinkron'
 
 const HIDE_KEY = 'propfs-kontraktor-hide-amount'
 
@@ -344,6 +345,11 @@ export default function KontraktorHomePage() {
             <span className="text-[10px] text-muted-foreground text-center px-2">Mulai kelola RAB, biaya & lapangan</span>
           </button>
         </div>
+
+        {/* Apakah proyek di perangkat ini juga ada di server. Diletakkan tepat
+            di bawah kartu proyek supaya pertanyaannya terjawab di tempat
+            pertanyaannya muncul. */}
+        <StatusSinkron />
 
         {/* ── Banner info ─────────────────────────────────────────────── */}
         {!bannerTutup && banner.length > 0 && (
