@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CheckCircle2, XCircle, ArrowLeft, Clock, Calendar, CalendarDays,
   Shield, Calculator, BarChart3, Layers, Loader2,
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import Header from '@/components/layout/Header'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { toast } from '@/hooks/use-toast'
 import { usePPNRate } from '@/hooks/usePPNRate'
 import {
   bacaKatalog, katalogTampil, muatKatalog, FITUR_KATALOG, hargaEfektif, totalHarga,
@@ -35,6 +36,13 @@ const IKON: Record<string, React.ElementType> = {
 
 const rp = (n: number) => `Rp ${n.toLocaleString('id-ID')}`
 
+/** Nama fitur yang bisa dibaca orang, untuk pesan "fitur terkunci". */
+const NAMA_FITUR: Record<string, string> = {
+  cost_control: 'Kontraktor AI', cost_rab: 'RAB', cost_realisasi: 'Realisasi Biaya',
+  cost_material: 'Material Lapangan', scurve: 'Kurva S', fs_module: 'Feasibility Study',
+  ai_solver: 'AI Solver', pdf_export: 'Ekspor PDF',
+}
+
 /** Baris kuota proyek yang ditampilkan di kartu harga. */
 function barisProyek(paket: KatalogPaket): Array<{ label: string; ada: boolean }> {
   const produk = produkTercakup(paket.product)
@@ -52,6 +60,7 @@ function barisProyek(paket: KatalogPaket): Array<{ label: string; ada: boolean }
 
 export default function PricingPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const { getPlanFor } = useAuthStore()
   const { ppnPct, loading: ppnLoading } = usePPNRate()
@@ -66,6 +75,18 @@ export default function PricingPage() {
   // Paket aktif pelanggan per produk — dipakai menandai "Paket Aktif"
   const planFs = getPlanFor('feasibility')
   const planKontraktor = getPlanFor('kontraktor')
+
+  // Datang ke sini karena sebuah fitur terkunci: katakan fitur MANA, jangan
+  // biarkan pemakainya menebak mengapa ia tiba-tiba berada di halaman harga.
+  useEffect(() => {
+    const fitur = (location.state as { upgradeNeeded?: string } | null)?.upgradeNeeded
+    if (!fitur) return
+    toast({
+      title: 'Fitur terkunci 🔒',
+      description: `${NAMA_FITUR[fitur] ?? fitur} tidak termasuk dalam paket Anda saat ini. Pilih paket di bawah untuk membukanya.`,
+      variant: 'destructive',
+    })
+  }, [])
 
   useEffect(() => {
     // muatKatalog() memakai REST langsung + batas waktu, dan selalu jatuh ke

@@ -6,6 +6,7 @@ import {
   ChevronDown, User, Bell
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 
 const NAV_LINKS = [
   { id: 'dashboard', path: '/admin',          label: 'Dashboard',      icon: LayoutDashboard, bottomNav: true },
@@ -25,6 +26,7 @@ export default function AdminLayout() {
   const [profileOpen, setProfileOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
+  const beranda = useRutaMasuk()
   const { signOut, profile } = useAuthStore()
   const profileRef = useRef<HTMLDivElement>(null)
 
@@ -87,7 +89,7 @@ export default function AdminLayout() {
 
         <div className="mx-4 border-t border-white/10" />
         <div className="px-3 py-4 space-y-1">
-          <Link to="/home" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition-colors text-sm">
+          <Link to={beranda} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/60 hover:bg-white/10 hover:text-white transition-colors text-sm">
             <Home className="h-5 w-5 shrink-0" /> Kembali ke App
           </Link>
           <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-sm">
@@ -156,7 +158,7 @@ export default function AdminLayout() {
 
         <div className="mx-4 border-t border-white/10" />
         <div className="px-3 py-4 space-y-1">
-          <Link to="/home" className="flex items-center gap-3 px-4 py-3 rounded-xl text-white/60 hover:bg-white/10 hover:text-white text-sm transition-colors">
+          <Link to={beranda} className="flex items-center gap-3 px-4 py-3 rounded-xl text-white/60 hover:bg-white/10 hover:text-white text-sm transition-colors">
             <Home className="h-5 w-5" /> Kembali ke App
           </Link>
           <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 text-sm transition-colors">
@@ -235,7 +237,7 @@ export default function AdminLayout() {
                       <Settings size={15} className="text-muted-foreground" />
                       Sistem & Fitur
                     </Link>
-                    <Link to="/home" className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-slate-50 transition-colors">
+                    <Link to={beranda} className="flex items-center gap-3 px-4 py-2.5 text-sm text-foreground hover:bg-slate-50 transition-colors">
                       <Home size={15} className="text-muted-foreground" />
                       Kembali ke App
                     </Link>

@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import Header from '@/components/layout/Header'
 import PlanBadge from '@/components/subscription/PlanBadge'
 import SubscriptionCard from '@/components/subscription/SubscriptionCard'
+import AIUsageWidget from '@/components/usage/AIUsageWidget'
 import ProdukLanggananCard from '@/components/subscription/ProdukLanggananCard'
 import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
@@ -175,6 +176,9 @@ export default function ProfilePage() {
 
         {/* Subscription + Invoice */}
         <SubscriptionCard variant="full" />
+        {/* Pemakaian AI ikut pindah ke sini dari dashboard akun yang pensiun —
+            tempatnya memang di sebelah langganan, bukan di halaman pembuka. */}
+        <AIUsageWidget planId="pro" />
 
         {/* Affiliate Program */}
         <div className="bg-card border border-border rounded-2xl p-6 space-y-4">

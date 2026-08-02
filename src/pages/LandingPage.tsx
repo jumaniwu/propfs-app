@@ -34,6 +34,7 @@ import {
   bacaKatalog, katalogTampil, muatKatalog, FITUR_KATALOG, hargaEfektif, type KatalogPaket,
 } from '@/lib/planCatalog'
 import { produkTercakup } from '@/lib/produk'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 
 // Nama ikon yang boleh dipakai admin di CMS. Ditambah seiring modul baru
 // dirilis — nama yang tidak dikenali jatuh ke ikon bawaan, tidak meledak.
@@ -55,6 +56,9 @@ const ICON_MAP: Record<string, any> = {
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  // Tombol "Buka Portal" mengantar ke beranda pemakainya (Home Kontraktor AI
+  // bagi pelanggan Kontraktor AI), bukan ke dashboard akun lama.
+  const beranda = useRutaMasuk()
   const [scrolled, setScrolled] = useState(false)
   const { landingContent, user } = useAuthStore()
   const { branding, hero, suitableFor, features, auxiliaryProducts, marketingHighlight, footer } = landingContent
@@ -148,7 +152,7 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-4">
             {user ? (
-              <Button variant="gold" onClick={() => navigate('/home')} className="shadow-xl shadow-gold/20 font-bold px-8">
+              <Button variant="gold" onClick={() => navigate(beranda)} className="shadow-xl shadow-gold/20 font-bold px-8">
                 Buka Portal Anda
               </Button>
             ) : (
@@ -193,7 +197,7 @@ export default function LandingPage() {
                 </p>
                 <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
                   {user ? (
-                    <Button variant="gold" size="lg" className="w-full sm:w-auto h-16 px-10 text-lg font-bold gap-3 shadow-2xl shadow-gold/30 hover:scale-105 transition-transform" onClick={() => navigate('/home')}>
+                    <Button variant="gold" size="lg" className="w-full sm:w-auto h-16 px-10 text-lg font-bold gap-3 shadow-2xl shadow-gold/30 hover:scale-105 transition-transform" onClick={() => navigate(beranda)}>
                       Buka Portal <ArrowRight className="h-5 w-5" />
                     </Button>
                   ) : (

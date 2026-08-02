@@ -9,6 +9,7 @@ import { supabase } from './lib/supabase'
 import { Button } from './components/ui/button'
 import BottomNav from './components/layout/BottomNav'
 import { jalurTautan, type JenisTautan } from './lib/tautanPendek'
+import { useRutaMasuk } from './hooks/useRutaMasuk'
 
 // Code-split routes
 const Dashboard   = lazy(() => import('./pages/Dashboard'))
@@ -28,7 +29,9 @@ const AdminInvoices   = lazy(() => import('./pages/admin/AdminInvoices'))
 const AdminPlans      = lazy(() => import('./pages/admin/AdminPlans'))
 const AdminStaff      = lazy(() => import('./pages/admin/AdminEmployeeManager'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
-const HomePage    = lazy(() => import('./pages/HomePage'))
+// `/home` bukan lagi dashboard akun — ia hanya menerbitkan tagihan yang
+// tertunda lalu meneruskan pemakainya ke berandanya (lib/berandaMasuk.ts).
+const PintuMasuk  = lazy(() => import('./pages/PintuMasuk'))
 const CostDashboard = lazy(() => import('./pages/CostDashboard'))
 const KontraktorHomePage = lazy(() => import('./pages/KontraktorHomePage'))
 const KonsolidasiPage = lazy(() => import('./pages/KonsolidasiPage'))
@@ -150,7 +153,7 @@ export default function App() {
           {ruteToken('lead', <LeadFormPage />)}
 
           {/* ── Protected Routes ── */}
-          <Route path="/home"       element={<PrivateRoute><HomePage /></PrivateRoute>} />
+          <Route path="/home"       element={<PrivateRoute><PintuMasuk /></PrivateRoute>} />
           <Route path="/dashboard"  element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/input/:id?" element={<PrivateRoute><InputPage /></PrivateRoute>} />
           <Route path="/result/:id" element={<PrivateRoute><ResultPage /></PrivateRoute>} />
@@ -187,7 +190,7 @@ export default function App() {
           </Route>
 
           {/* ── Fallback ── */}
-          <Route path="*" element={<Navigate to="/home" replace />} />
+          <Route path="*" element={<KeBeranda />} />
         </Routes>
       </Suspense>
       <BottomNav />
@@ -195,6 +198,19 @@ export default function App() {
       <PasswordRecoveryModal />
     </BrowserRouter>
   )
+}
+
+/**
+ * Alamat tak dikenal: antarkan ke beranda pemakainya, bukan ke satu alamat
+ * tetap. Yang belum login memang tidak punya beranda — ia dikembalikan ke
+ * landing page, bukan dilempar ke halaman yang akan menolaknya.
+ */
+function KeBeranda() {
+  const user = useAuthStore(s => s.user)
+  const isLoading = useAuthStore(s => s.isLoading)
+  const beranda = useRutaMasuk()
+  if (isLoading) return null
+  return <Navigate to={user ? beranda : '/'} replace />
 }
 
 function PasswordRecoveryModal() {
@@ -214,7 +230,8 @@ function PasswordRecoveryModal() {
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
       toast({ title: 'Password berhasil diubah!' })
-      // Reload page to clear hash and reset state
+      // Muat ulang untuk membersihkan hash & menyetel ulang keadaan. Ke `/home`
+      // supaya pintu masuk yang memutuskan berandanya — bukan alamat tetap.
       window.location.href = '/home'
     } catch (e: any) {
       toast({ title: 'Gagal mengubah password', description: e.message, variant: 'destructive' })

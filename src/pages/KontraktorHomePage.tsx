@@ -27,6 +27,7 @@ import { saringTambahan } from '@/lib/fiturTambahan'
 import { useBuatProyek } from '@/hooks/useBuatProyek'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import StatusSinkron from '@/components/cost/StatusSinkron'
+import PanelAkun from '@/components/home/PanelAkun'
 
 const HIDE_KEY = 'propfs-kontraktor-hide-amount'
 
@@ -350,6 +351,11 @@ export default function KontraktorHomePage() {
             di bawah kartu proyek supaya pertanyaannya terjawab di tempat
             pertanyaannya muncul. */}
         <StatusSinkron />
+
+        {/* Tagihan yang belum dibayar & sambutan pemakai baru — dulu hanya ada
+            di dashboard akun `/home`, yang kini tidak lagi menjadi tujuan siapa
+            pun. Tanpa dipindahkan ke sini, langganan bisa mati tanpa peringatan. */}
+        <PanelAkun />
 
         {/* ── Banner info ─────────────────────────────────────────────── */}
         {!bannerTutup && banner.length > 0 && (

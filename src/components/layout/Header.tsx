@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { useFSStore } from '@/store/fsStore'
 import { useAuthStore } from '@/store/authStore'
 import PlanBadge from '@/components/subscription/PlanBadge'
+import { useRutaMasuk } from '@/hooks/useRutaMasuk'
 import TrialBanner from '@/components/trial/TrialBanner'
 
 interface HeaderProps {
@@ -22,7 +23,10 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const isPortalHome = location.pathname === '/home'
+  // Tombol Portal mengantar ke beranda pemakainya. Disembunyikan saat ia
+  // sudah berada di sana — tombol yang tidak ke mana-mana hanya membingungkan.
+  const beranda = useRutaMasuk()
+  const isPortalHome = location.pathname === beranda || location.pathname === '/home'
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -55,7 +59,7 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
         {/* Left: Logo + Breadcrumbs */}
         <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => navigate('/home')}
+            onClick={() => navigate(beranda)}
             className="flex items-center gap-2 shrink-0 hover:opacity-80 transition-opacity"
           >
             {landingContent.branding.logoUrl ? (
@@ -101,7 +105,7 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
         <div className="flex items-center gap-2">
           {actions}
           {!isPortalHome && (
-            <Button variant="ghost" size="sm" onClick={() => navigate('/home')} className="flex gap-1.5 px-2 sm:px-3">
+            <Button variant="ghost" size="sm" onClick={() => navigate(beranda)} className="flex gap-1.5 px-2 sm:px-3">
               <Home className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">Portal</span>
             </Button>
