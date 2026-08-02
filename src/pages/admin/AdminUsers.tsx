@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus, Key, UserX, UserCheck, Trash2 } from 'lucide-react'
+import { Users, ShieldAlert, CheckCircle2, Calendar, CreditCard, RefreshCw, Plus, Key, UserX, UserCheck, Trash2, Layers } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { supabase, type AppFeature } from '@/lib/supabase'
+import { hitungKuota, bacaBatasManual, labelBatas } from '@/lib/kuotaProyek'
 import { toast } from '@/hooks/use-toast'
 
 const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
@@ -25,6 +26,11 @@ export default function AdminUsers() {
   const [subStart, setSubStart] = useState('')
   const [subEnd, setSubEnd] = useState('')
   const [localFeatures, setLocalFeatures] = useState<Record<string, boolean>>({})
+  // Disimpan sebagai TEKS, bukan angka: kosong berarti "ikut paket" dan itu
+  // harus bisa dibedakan dari nol. Input bertipe number yang dikosongkan
+  // menghasilkan '' — persis yang dibutuhkan.
+  const [kuotaFs, setKuotaFs] = useState('')
+  const [kuotaKontraktor, setKuotaKontraktor] = useState('')
   const [isUpdatingSub, setIsUpdatingSub] = useState(false)
   const [isSendingReset, setIsSendingReset] = useState(false)
   const [isSuspending, setIsSuspending] = useState<string | null>(null)
@@ -80,19 +86,32 @@ export default function AdminUsers() {
     }
     
     setLocalFeatures(u.custom_features || {})
+    setKuotaFs(u.kuota_fs === null || u.kuota_fs === undefined ? '' : String(u.kuota_fs))
+    setKuotaKontraktor(u.kuota_kontraktor === null || u.kuota_kontraktor === undefined ? '' : String(u.kuota_kontraktor))
   }
 
   async function handleSaveAll() {
     if (!selectedUser) return
     setIsUpdatingSub(true)
     try {
-      // 1. Save Features
+      // 1. Save Features + kuota manual
       const { error: featuresError } = await supabase
         .from('profiles')
-        .update({ custom_features: localFeatures })
+        .update({
+          custom_features: localFeatures,
+          kuota_fs: bacaBatasManual(kuotaFs),
+          kuota_kontraktor: bacaBatasManual(kuotaKontraktor),
+        })
         .eq('id', selectedUser.id)
-        
-      if (featuresError) throw featuresError
+
+      if (featuresError) {
+        // Kolomnya belum ada berarti migrasinya belum dijalankan — sebutkan
+        // berkasnya, jangan biarkan pesan Postgres mentah yang membingungkan.
+        if (/kuota_fs|kuota_kontraktor/.test(featuresError.message)) {
+          throw new Error('Jalankan migration_kuota_manual.sql di Supabase SQL Editor lebih dulu.')
+        }
+        throw featuresError
+      }
 
       // 2. Save Subscription
       const activeSub = (selectedUser.subscriptions || []).find((s: any) => s.status === 'active')
@@ -399,6 +418,49 @@ export default function AdminUsers() {
                  </div>
               </div>
 
+              {/* SECTION: Kuota proyek per pelanggan
+                  Pelanggan yang menawar di luar paket standar dulu hanya bisa
+                  dilayani dengan membuat paket baru yang tidak dipakai siapa
+                  pun lagi. Kesepakatannya sekarang disimpan pada pelanggannya,
+                  bukan pada katalog. */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Layers className="h-5 w-5 text-gold" />
+                  <h4 className="font-bold text-navy text-lg">Kuota Proyek (di luar paket)</h4>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-3">
+                  Kosongkan untuk mengikuti jatah paket. Isi <b>-1</b> untuk tak terbatas,
+                  atau angka tepat sesuai kesepakatan. <b>0</b> berarti benar-benar dikunci —
+                  berbeda dari kosong.
+                </p>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {([
+                    ['kontraktor', 'Kontraktor AI', kuotaKontraktor, setKuotaKontraktor],
+                    ['fs', 'Feasibility Study', kuotaFs, setKuotaFs],
+                  ] as const).map(([kunci, label, nilai, set]) => {
+                    const hasil = hitungKuota({ manual: bacaBatasManual(nilai), paket: 0, langgananAktif: true })
+                    const ikutPaket = bacaBatasManual(nilai) === null
+                    return (
+                      <div key={kunci} className="space-y-1.5">
+                        <Label className="text-xs uppercase font-bold text-slate-500">{label}</Label>
+                        <Input type="number" className="h-12 bg-white" placeholder="Ikut paket"
+                          value={nilai} onChange={e => set(e.target.value)} />
+                        <p className="text-[11px] text-muted-foreground">
+                          {ikutPaket ? 'Mengikuti jatah paket langganan.' : labelBatas(hasil.batas)}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {selectedUser.role === 'superadmin' && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+                    Akun ini <b>superadmin</b> — kuotanya selalu tak terbatas apa pun yang
+                    diisi di sini. Angkanya tetap tersimpan, tetapi tidak dipakai.
+                  </p>
+                )}
+              </div>
 
                {/* SECTION: Keamanan Akun */}
                <div className="space-y-4">

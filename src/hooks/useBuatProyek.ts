@@ -43,13 +43,17 @@ export function useBuatProyek(): GerbangBuatProyek {
 
   const bisaTambah = canCreateProject(savedProjects.length, 'cost')
 
-  const maksProyek = useMemo(() => {
-    const plan = useAuthStore.getState().getCurrentPlan()
-    const limits = useAuthStore.getState().getPlanLimits(plan)
-    const slotTambahan =
-      (useAuthStore.getState().profile as unknown as { addon_cost_slots?: number })?.addon_cost_slots ?? 0
-    return ((limits as unknown as { maxCostProjects?: number }).maxCostProjects ?? 0) + slotTambahan
-  }, [planCatalog, user]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Diambil dari getKuota, bukan dihitung ulang di sini: superadmin dan
+  // kesepakatan khusus per pelanggan ikut terbawa, dan angkanya tidak akan
+  // pernah berbeda dari yang dipakai canCreateProject.
+  const kuota = useMemo(
+    () => useAuthStore.getState().getKuota('cost'),
+    [planCatalog, user], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  // Layar lama mengharapkan angka. Tak terbatas dijawab dengan jumlah proyek
+  // yang ada + 1 supaya kalimat "x dari y" tetap masuk akal dan tidak pernah
+  // terbaca sebagai "sudah penuh".
+  const maksProyek = kuota.batas ?? savedProjects.length + 1
 
   const mulai = useCallback(() => {
     if (bisaTambah) { setTerbuka(true); return }
