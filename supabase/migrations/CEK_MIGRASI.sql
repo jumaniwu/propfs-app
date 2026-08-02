@@ -13,6 +13,10 @@
 -- Cara pakai: tempel seluruh isi berkas ini ke Supabase SQL Editor, jalankan.
 -- Hasilnya satu tabel. Yang perlu diperhatikan hanya baris berstatus BELUM.
 --
+-- Seluruh berkas ini SATU perintah, disengaja: SQL Editor hanya menampilkan
+-- hasil perintah TERAKHIR, jadi kalau dipecah dua, tabel yang penting justru
+-- tertelan oleh perintah di bawahnya.
+--
 -- Hanya MEMBACA. Tidak mengubah apa pun. Aman dijalankan kapan saja.
 -- ============================================================
 
@@ -140,7 +144,24 @@ with penanda(urut, migrasi, keterangan, ada) as (values
 
   (29, 'migration_kuota_manual.sql', 'kolom profiles.kuota_kontraktor',
      exists (select 1 from information_schema.columns
-              where table_schema = 'public' and table_name = 'profiles' and column_name = 'kuota_kontraktor'))
+              where table_schema = 'public' and table_name = 'profiles' and column_name = 'kuota_kontraktor')),
+
+  -- ── Bukan migrasi, melainkan akibatnya ──────────────────────────────────
+  -- PO tanpa nama proyek itu yatim: surat jalannya ada, barangnya datang,
+  -- tetapi tidak ada yang tahu barang itu milik proyek mana. Bila baris ini
+  -- BELUM, jalankan ulang bagian pemulihan di migration_do_proyek.sql —
+  -- aman diulang.
+  --
+  -- `query_to_xml` dipakai karena kueri terhadap tabel yang belum ada gagal
+  -- saat DIURAI, bukan saat dijalankan; `to_regclass(...) is null or ...`
+  -- tetap meledak. Dengan query_to_xml, kuerinya baru diurai saat dijalankan.
+  (30, '(data) PO tanpa nama proyek', 'tidak ada PO yang kehilangan nama proyek',
+     coalesce((
+       select (xpath('/row/c/text()', query_to_xml(
+         $q$ select count(*) as c from public.purchase_orders
+              where coalesce(trim(project_name), '') = '' $q$, false, true, '')))[1]::text::int
+       where to_regclass('public.purchase_orders') is not null
+     ), 0) = 0)
 )
 
 select
@@ -150,36 +171,15 @@ select
 from penanda
 order by ada, urut;
 
--- ── Pemeriksaan data: PO yang kehilangan nama proyek ───────────────────────
--- Bukan soal migrasi, melainkan akibat yang diperbaiki migration_do_proyek.sql.
--- PO tanpa nama proyek itu yatim: surat jalannya ada, barangnya datang, tetapi
--- tidak ada yang tahu barang itu milik proyek mana. Bila angkanya di atas nol,
--- jalankan ulang bagian pemulihan di migration_do_proyek.sql — aman diulang.
---
--- `query_to_xml` dipakai supaya kueri ini tetap bisa diurai walau tabelnya
--- belum ada sama sekali.
-select coalesce((
-  select (xpath('/row/c/text()', query_to_xml(
-    $q$ select count(*) as c from public.purchase_orders
-         where coalesce(trim(project_name), '') = '' $q$, false, true, '')))[1]::text::int
-  where to_regclass('public.purchase_orders') is not null
-), 0) as po_tanpa_nama_proyek;
-
--- ── Ringkasan sekali lihat ──────────────────────────────────────────────────
--- Jalankan blok di bawah ini terpisah bila hanya ingin tahu jumlahnya.
---
---   Kalau hasilnya "semua sudah dijalankan", tidak ada yang perlu dikerjakan.
-
 -- ============================================================
 -- CATATAN tentang dua baris yang bisa menyesatkan:
 --
 -- • migration_do_proyek.sql tidak menciptakan objek baru apa pun — ia
---   MEMPERBAIKI DATA (mengisi ulang project_name pada PO yang telanjur
---   kosong) dan menulis ulang sebuah fungsi. Karena itu penandanya bukan
---   "objek ada", melainkan "tidak ada lagi PO tanpa nama proyek". Bila
---   belakangan ada PO baru yang dibuat tanpa proyek aktif, baris ini bisa
---   kembali berstatus BELUM — dan itu memang benar: jalankan ulang bagian
---   pemulihannya, aman diulang.
+--   MEMPERBAIKI DATA dan menulis ulang sebuah fungsi. Penandanya karena itu
+--   isi badan fungsinya, dan akibat datanya diperiksa terpisah pada baris
+--   "(data) PO tanpa nama proyek". Baris data itu bisa kembali BELUM kapan
+--   saja bila ada PO baru dibuat tanpa proyek aktif — dan itu memang benar,
+--   bukan tanda migrasinya hilang.
 --
 -- • migration_stok_lapangan.sql hanya memastikan fungsinya ADA. Bila baris
 --   stok_gudang sudah ✅, versi yang berlaku adalah yang terbaru dan baris
