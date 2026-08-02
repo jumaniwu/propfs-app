@@ -4,6 +4,7 @@ import {
   nomorTampil, barisKontak, namaTampil, periksaProfil,
   susunCaption, bersihkanHashtag, bungkusBaris, judulGambar, namaBerkas,
   durasiVideo, fotoPadaWaktu, DURASI_PER_FOTO, CTA_BAWAAN,
+  durasiPakai, tampilDurasi, MAKS_DETIK_VIDEO,
 } from '../src/lib/marcom.ts'
 
 let ok = 0
@@ -242,5 +243,30 @@ assert(durasiVideo(3, 1000) === 3000, 'lama per foto bisa diatur')
 }
 assert(fotoPadaWaktu(0, 0).indeks === 0, 'tanpa foto tidak meledak')
 assert(fotoPadaWaktu(-5, 3).indeks === 0, 'waktu negatif tidak menghasilkan indeks negatif')
+
+// ── Video yang diunggah pemakainya ───────────────────────────────────────
+assert(durasiPakai(20).detik === 20 && durasiPakai(20).dipotong === false,
+  'video pendek dipakai utuh')
+assert(durasiPakai(300).detik === MAKS_DETIK_VIDEO, 'video panjang dipotong ke batas')
+assert(durasiPakai(300).dipotong === true, 'pemotongannya dilaporkan, tidak diam-diam')
+// Video hasil rekaman aplikasi lain sering datang TANPA durasi di header dan
+// dilaporkan peramban sebagai Infinity. Menolaknya berarti menolak video yang
+// sebenarnya baik-baik saja.
+assert(durasiPakai(Infinity).detik === MAKS_DETIK_VIDEO, 'durasi Infinity tidak menggagalkan apa pun')
+assert(durasiPakai(Infinity).dipotong === false,
+  'durasi yang tak terbaca bukan "dipotong" — tidak ada yang tahu berapa panjangnya')
+assert(durasiPakai(NaN).detik === MAKS_DETIK_VIDEO, 'NaN diperlakukan sama')
+assert(durasiPakai(0).detik === MAKS_DETIK_VIDEO, 'durasi nol dianggap tak terbaca')
+assert(durasiPakai(-5).detik === MAKS_DETIK_VIDEO, 'durasi negatif dianggap tak terbaca')
+assert(durasiPakai(null).detik === MAKS_DETIK_VIDEO, 'null aman')
+assert(durasiPakai(200, 30).detik === 30, 'batasnya bisa diatur')
+assert(durasiPakai(10, 0).detik === 10, 'batas nol tidak menghasilkan video nol detik')
+
+assert(tampilDurasi(65) === '1:05', 'menit & detik dipisah benar')
+assert(tampilDurasi(4) === '0:04', 'detik satuan diberi nol di depan')
+assert(tampilDurasi(0) === '0:00', 'nol tetap terbaca')
+assert(tampilDurasi(3600) === '60:00', 'satu jam ditulis apa adanya, bukan 0:00')
+assert(tampilDurasi(NaN) === '0:00', 'NaN tidak bocor ke layar')
+assert(tampilDurasi(-9) === '0:00', 'negatif tidak menghasilkan durasi negatif')
 
 console.log(`marcom: ${ok} assert lulus`)

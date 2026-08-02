@@ -20,7 +20,7 @@
 
 import {
   FORMAT_MARCOM, tataLetak, barisKontak, namaTampil, bungkusBaris, judulGambar,
-  garisProyek, fotoPadaWaktu, durasiVideo, DURASI_PER_FOTO,
+  garisProyek, fotoPadaWaktu, durasiVideo, durasiPakai, DURASI_PER_FOTO, MAKS_DETIK_VIDEO,
   type FormatMarcom, type ProfilMarcom, type TemplateMarcom,
 } from './marcom.ts'
 
@@ -63,12 +63,18 @@ export function muatGambar(src: string): Promise<HTMLImageElement> {
  * bangunan jadi gepeng. Lebih baik sebagian foto terpotong.
  */
 function gambarPenuh(
-  ctx: CanvasRenderingContext2D, img: HTMLImageElement, lebar: number, tinggi: number,
+  ctx: CanvasRenderingContext2D,
+  sumber: CanvasImageSource,
+  lebarAsli: number,
+  tinggiAsli: number,
+  lebar: number,
+  tinggi: number,
 ) {
-  const skala = Math.max(lebar / img.width, tinggi / img.height)
-  const w = img.width * skala
-  const h = img.height * skala
-  ctx.drawImage(img, (lebar - w) / 2, (tinggi - h) / 2, w, h)
+  if (!lebarAsli || !tinggiAsli) return
+  const skala = Math.max(lebar / lebarAsli, tinggi / tinggiAsli)
+  const w = lebarAsli * skala
+  const h = tinggiAsli * skala
+  ctx.drawImage(sumber, (lebar - w) / 2, (tinggi - h) / 2, w, h)
 }
 
 // ── Menggambar satu bingkai ─────────────────────────────────────────────────
@@ -282,7 +288,7 @@ export async function komposisiGambar(o: OpsiKomposisi): Promise<string> {
   ctx.fillRect(0, 0, lebar, tinggi)
 
   const foto = await muatGambar(o.fotoDataUrl)
-  gambarPenuh(ctx, foto, lebar, tinggi)
+  gambarPenuh(ctx, foto, foto.width, foto.height, lebar, tinggi)
 
   const logoSrc = String(o.profil?.logo ?? '').trim()
   const logo = logoSrc ? await muatGambar(logoSrc).catch(() => null) : null
@@ -425,7 +431,7 @@ export async function buatVideo(o: OpsiVideo): Promise<HasilVideo> {
       ctx.scale(zoom, zoom)
       ctx.translate(-lebar / 2, -tinggi / 2)
       ctx.globalAlpha = pudar
-      gambarPenuh(ctx, gambar[indeks], lebar, tinggi)
+      gambarPenuh(ctx, gambar[indeks], gambar[indeks].width, gambar[indeks].height, lebar, tinggi)
       ctx.restore()
       ctx.globalAlpha = 1
 
@@ -491,6 +497,215 @@ export async function buatVideo(o: OpsiVideo): Promise<HasilVideo> {
     return { blob, ext: dukungan.ext, mp4: dukungan.mp4, durasiMs: total }
   } finally {
     kanvas.remove()
+  }
+}
+
+// ── Video yang diunggah pemakainya ─────────────────────────────────────────
+
+/**
+ * Muat sebuah video sampai ukuran & durasinya diketahui.
+ *
+ * Durasi tidak selalu ada di metadata. Video yang DIREKAM aplikasi lain —
+ * termasuk yang dibuat MediaRecorder sendiri — sering datang tanpa durasi di
+ * header, dan peramban melaporkannya `Infinity`. Kalau dibiarkan, tombolnya
+ * akan berbunyi "Olah Video (1:30)" untuk video 4 detik, dan bilah
+ * kemajuannya berjalan ke angka yang salah.
+ *
+ * Caranya memaksa peramban menghitung sendiri: lompat ke waktu yang mustahil,
+ * tunggu ia menyerah dan mengisi `duration`, lalu kembali ke awal.
+ */
+export function muatVideo(src: string): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video')
+    v.preload = 'auto'
+    v.crossOrigin = 'anonymous'
+    // Wajib di iOS: tanpa ini video akan direbut pemutar layar penuh dan
+    // bingkainya tidak pernah sampai ke kanvas.
+    v.playsInline = true
+    v.setAttribute('playsinline', '')
+    v.muted = true
+
+    let selesai = false
+    const jadi = () => {
+      if (selesai) return
+      selesai = true
+      v.ontimeupdate = null
+      try { v.currentTime = 0 } catch { /* biarkan di tempatnya */ }
+      resolve(v)
+    }
+
+    v.onloadedmetadata = () => {
+      if (Number.isFinite(v.duration) && v.duration > 0) { jadi(); return }
+      v.ontimeupdate = () => {
+        if (Number.isFinite(v.duration) && v.duration > 0) jadi()
+      }
+      try { v.currentTime = 1e101 } catch { jadi() }
+      // Kalau akalnya tidak berhasil pun jangan menggantung: lanjut dengan
+      // durasi yang tak diketahui, dan pemakaian nanti dibatasi `durasiPakai`.
+      setTimeout(jadi, 3000)
+    }
+    v.onerror = () => reject(new Error('Video tidak bisa dibaca. Coba format MP4.'))
+    v.src = src
+  })
+}
+
+/** Satu bingkai video beserta bingkai promosinya — untuk pratinjau. */
+export async function pratinjauVideo(
+  videoUrl: string,
+  format: FormatMarcom,
+  isi: IsiBingkai & { template?: TemplateMarcom },
+  detik = 0,
+): Promise<string> {
+  const { lebar, tinggi } = FORMAT_MARCOM[format]
+  const v = await muatVideo(videoUrl)
+
+  await new Promise<void>(resolve => {
+    let selesai = false
+    const jadi = () => { if (!selesai) { selesai = true; resolve() } }
+    v.onseeked = jadi
+    // Sebagian video tidak pernah memicu `seeked` (durasi tak terbaca, berkas
+    // rusak sebagian). Jangan menggantung — pakai bingkai apa pun yang ada.
+    setTimeout(jadi, 3000)
+    try { v.currentTime = Math.max(0, Math.min(detik, (v.duration || 1) - 0.1)) } catch { jadi() }
+  })
+
+  const kanvas = document.createElement('canvas')
+  kanvas.width = lebar
+  kanvas.height = tinggi
+  const ctx = kanvas.getContext('2d')
+  if (!ctx) throw new Error('Kanvas tidak tersedia di peramban ini.')
+
+  ctx.fillStyle = '#0D1B2A'
+  ctx.fillRect(0, 0, lebar, tinggi)
+  gambarPenuh(ctx, v, v.videoWidth, v.videoHeight, lebar, tinggi)
+
+  const logoSrc = String(isi.profil?.logo ?? '').trim()
+  const logo = logoSrc ? await muatGambar(logoSrc).catch(() => null) : null
+  gambarBingkai(ctx, format, { ...isi, logo })
+
+  v.src = ''
+  return kanvas.toDataURL('image/png')
+}
+
+export interface OpsiOlahVideo extends IsiBingkai {
+  videoUrl: string
+  format: FormatMarcom
+  template?: TemplateMarcom
+  maksDetik?: number
+  onProgress?: (pct: number) => void
+}
+
+/**
+ * Tempelkan logo, keterangan proyek, dan nomor kontak ke video yang sudah ada.
+ *
+ * Suaranya DIPERTAHANKAN, lewat jalur yang sedikit berputar: audio video
+ * dialirkan melalui Web Audio ke sebuah MediaStream, dan sengaja TIDAK
+ * disambungkan ke pengeras suara. Menyetel `video.muted = true` akan lebih
+ * sederhana tetapi membuat suara yang terekam ikut senyap; membiarkannya
+ * berbunyi berarti pemakainya mendengar videonya diputar keras-keras selama
+ * proses. Jalur ini senyap di telinga, utuh di berkas.
+ */
+export async function olahVideo(o: OpsiOlahVideo): Promise<HasilVideo> {
+  const dukungan = dukunganVideo()
+  if (!dukungan.bisa) throw new Error(dukungan.catatan)
+
+  const { lebar, tinggi } = FORMAT_MARCOM[o.format]
+  const v = await muatVideo(o.videoUrl)
+  const pakai = durasiPakai(v.duration, o.maksDetik ?? MAKS_DETIK_VIDEO)
+
+  const kanvas = document.createElement('canvas')
+  kanvas.width = lebar
+  kanvas.height = tinggi
+  kanvas.style.cssText = 'position:fixed;left:-99999px;top:0;pointer-events:none;opacity:0.01'
+  document.body.appendChild(kanvas)
+
+  const ctx = kanvas.getContext('2d')
+  if (!ctx) { kanvas.remove(); throw new Error('Kanvas tidak tersedia di peramban ini.') }
+
+  let audioCtx: AudioContext | null = null
+  try {
+    const logoSrc = String(o.profil?.logo ?? '').trim()
+    const logo = logoSrc ? await muatGambar(logoSrc).catch(() => null) : null
+    const isi = { ...o, logo }
+
+    const bingkai = () => {
+      ctx.fillStyle = '#0D1B2A'
+      ctx.fillRect(0, 0, lebar, tinggi)
+      gambarPenuh(ctx, v, v.videoWidth, v.videoHeight, lebar, tinggi)
+      gambarBingkai(ctx, o.format, isi)
+    }
+
+    v.currentTime = 0
+    bingkai()
+
+    const aliran = kanvas.captureStream(30)
+
+    // Suara asli video, bila ada. Kegagalan di sini tidak membatalkan apa pun —
+    // video tanpa suara masih jauh lebih berguna daripada tidak ada video.
+    try {
+      const AC = (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext
+      if (AC) {
+        audioCtx = new AC()
+        const sumber = audioCtx.createMediaElementSource(v)
+        const tujuan = audioCtx.createMediaStreamDestination()
+        sumber.connect(tujuan) // sengaja TIDAK ke audioCtx.destination
+        for (const t of tujuan.stream.getAudioTracks()) aliran.addTrack(t)
+      }
+    } catch {
+      // lanjut tanpa suara
+    }
+
+    const perekam = new MediaRecorder(aliran, { mimeType: dukungan.mime, videoBitsPerSecond: 6_000_000 })
+    const potongan: BlobPart[] = []
+    perekam.ondataavailable = e => { if (e.data.size) potongan.push(e.data) }
+    let galat = ''
+    perekam.onerror = () => { galat = 'Perekaman dihentikan peramban.' }
+
+    const selesai = new Promise<Blob>(resolve => {
+      perekam.onstop = () => resolve(new Blob(potongan, { type: dukungan.mime }))
+    })
+
+    perekam.start(1000)
+    await v.play()
+
+    await new Promise<void>(resolve => {
+      let henti = false
+      const sudah = () => { if (!henti) { henti = true; clearInterval(jaga); resolve() } }
+
+      const langkah = () => {
+        if (henti) return
+        if (v.ended || v.currentTime >= pakai.detik) { sudah(); return }
+        bingkai()
+        o.onProgress?.(Math.min(99, Math.round((v.currentTime / pakai.detik) * 100)))
+        requestAnimationFrame(langkah)
+      }
+
+      // Penjaga waktu yang sama seperti pada slideshow: requestAnimationFrame
+      // berhenti bila halaman disembunyikan, dan tanpa ini perekamannya
+      // menggantung selamanya. Diberi kelonggaran 2 detik atas durasi video.
+      const mulai = performance.now()
+      const jaga = setInterval(() => {
+        if (v.ended || v.currentTime >= pakai.detik) sudah()
+        else if (performance.now() - mulai >= (pakai.detik + 2) * 1000) sudah()
+      }, 250)
+
+      requestAnimationFrame(langkah)
+    })
+
+    v.pause()
+    perekam.stop()
+    const blob = await selesai
+    o.onProgress?.(100)
+
+    if (!blob.size) {
+      throw new Error(galat || 'Video gagal direkam di peramban ini (berkasnya kosong). '
+        + 'Coba buka lewat Chrome versi terbaru.')
+    }
+    return { blob, ext: dukungan.ext, mp4: dukungan.mp4, durasiMs: Math.round(pakai.detik * 1000) }
+  } finally {
+    kanvas.remove()
+    v.pause()
+    try { await audioCtx?.close() } catch { /* sudah tertutup */ }
   }
 }
 

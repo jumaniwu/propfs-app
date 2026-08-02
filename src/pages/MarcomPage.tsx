@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Image as ImageIcon, Sparkles, Loader2, Download, Copy, Check, Trash2,
-  Video, Wand2, AlertTriangle, Settings, Share2, RefreshCw,
+  Video, Wand2, AlertTriangle, Settings, Share2, RefreshCw, Film, X,
 } from 'lucide-react'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import { useToast } from '@/hooks/use-toast'
@@ -25,13 +25,15 @@ import {
   FORMAT_MARCOM, URUTAN_FORMAT, TEMPLATE_MARCOM, URUTAN_TEMPLATE,
   susunCaption, periksaProfil, namaBerkas,
   durasiVideo, DURASI_PER_FOTO, CTA_BAWAAN, bersihkanHashtag,
+  durasiPakai, tampilDurasi, MAKS_DETIK_VIDEO,
   type FormatMarcom, type TemplateMarcom,
 } from '@/lib/marcom'
 import {
   buatCaption, captionNaskah, rapikanFoto, GAYA_CAPTION, type GayaCaption,
 } from '@/lib/marcomAi'
 import {
-  komposisiGambar, buatVideo, dukunganVideo, unduh, keFile, bagikan,
+  komposisiGambar, buatVideo, olahVideo, pratinjauVideo, muatVideo,
+  dukunganVideo, unduh, keFile, bagikan,
 } from '@/lib/marcomRender'
 import { subSah } from '@/lib/posisiKerja'
 
@@ -79,6 +81,11 @@ export default function MarcomPage() {
   const [cta, setCta] = useState(CTA_BAWAAN)
   const [sumberCaption, setSumberCaption] = useState<'ai' | 'naskah' | null>(null)
   const [menulis, setMenulis] = useState(false)
+
+  // Video yang diunggah pemakainya. Sumber video bisa DUA: berkas video dari
+  // galeri, atau rangkaian foto. Yang pertama menang bila ada.
+  const [videoAsli, setVideoAsli] = useState<{ url: string; nama: string; detik: number } | null>(null)
+  const videoRef = useRef<HTMLInputElement>(null)
 
   const [pratinjau, setPratinjau] = useState('')
   const [menyusun, setMenyusun] = useState(false)
@@ -136,6 +143,29 @@ export default function MarcomPage() {
     }
   }
 
+  async function pilihVideo(files: FileList | null) {
+    const f = files?.[0]
+    if (videoRef.current) videoRef.current.value = ''
+    if (!f) return
+    if (!f.type.startsWith('video/')) {
+      toast({ title: 'Berkas itu bukan video', variant: 'destructive' })
+      return
+    }
+    const url = URL.createObjectURL(f)
+    try {
+      const v = await muatVideo(url)
+      setVideoAsli(vi => { if (vi) URL.revokeObjectURL(vi.url); return { url, nama: f.name, detik: v.duration } })
+      setSub('video')
+    } catch (e) {
+      URL.revokeObjectURL(url)
+      toast({ title: 'Video tidak bisa dibaca', description: (e as Error).message, variant: 'destructive' })
+    }
+  }
+
+  function buangVideo() {
+    setVideoAsli(v => { if (v) URL.revokeObjectURL(v.url); return null })
+  }
+
   function kembalikanAsli(id: string) {
     setFoto(f => f.map(x => x.id === id ? { ...x, dipakai: x.asli, rapi: false } : x))
   }
@@ -169,24 +199,30 @@ export default function MarcomPage() {
 
   // ── Komposisi ─────────────────────────────────────────────────────────────
   const susun = useCallback(async () => {
+    const isi = {
+      template, profil, judul: namaProyek,
+      keterangan: lokasi || GAYA_CAPTION[gaya].label, lingkup, tagline,
+    }
+    // Pratinjau diambil dari video bila video yang sedang dipakai — supaya
+    // yang dilihat pemakainya benar-benar hasil akhirnya, bukan foto lain.
+    if (sub === 'video' && videoAsli) {
+      setMenyusun(true)
+      try {
+        setPratinjau(await pratinjauVideo(videoAsli.url, format, isi, Math.min(1, videoAsli.detik / 2)))
+      } catch (e) {
+        toast({ title: 'Gagal membaca video', description: (e as Error).message, variant: 'destructive' })
+      } finally { setMenyusun(false) }
+      return
+    }
     if (!foto.length) { setPratinjau(''); return }
     setMenyusun(true)
     try {
-      const url = await komposisiGambar({
-        fotoDataUrl: foto[0].dipakai,
-        format,
-        template,
-        profil,
-        judul: namaProyek,
-        keterangan: lokasi || GAYA_CAPTION[gaya].label,
-        lingkup,
-        tagline,
-      })
+      const url = await komposisiGambar({ ...isi, fotoDataUrl: foto[0].dipakai, format })
       setPratinjau(url)
     } catch (e) {
       toast({ title: 'Gagal menyusun gambar', description: (e as Error).message, variant: 'destructive' })
     } finally { setMenyusun(false) }
-  }, [foto, format, template, profil, namaProyek, lokasi, gaya, lingkup, tagline]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [foto, format, template, profil, namaProyek, lokasi, gaya, lingkup, tagline, sub, videoAsli]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void susun() }, [susun])
 
@@ -206,17 +242,14 @@ export default function MarcomPage() {
     setMerekam(true)
     setMajuVideo(0)
     try {
-      const hasil = await buatVideo({
-        fotoDataUrls: foto.map(f => f.dipakai),
-        format,
-        template,
-        profil,
-        judul: namaProyek,
-        keterangan: lokasi || GAYA_CAPTION[gaya].label,
-        lingkup,
-        tagline,
+      const isi = {
+        format, template, profil, judul: namaProyek,
+        keterangan: lokasi || GAYA_CAPTION[gaya].label, lingkup, tagline,
         onProgress: setMajuVideo,
-      })
+      }
+      const hasil = videoAsli
+        ? await olahVideo({ ...isi, videoUrl: videoAsli.url })
+        : await buatVideo({ ...isi, fotoDataUrls: foto.map(f => f.dipakai) })
       unduh(hasil.blob, namaBerkas(namaProyek || 'promosi', format, hasil.ext))
       toast({
         title: `Video ${hasil.ext.toUpperCase()} tersimpan`,
@@ -280,18 +313,56 @@ export default function MarcomPage() {
         {/* ── 1. Foto ── */}
         <section className="rounded-2xl bg-white border border-border p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-bold text-navy">1. Foto proyek</h2>
+            <h2 className="text-sm font-bold text-navy">
+              1. {sub === 'video' ? 'Video atau foto' : 'Foto proyek'}
+            </h2>
             <span className="text-[11px] text-muted-foreground">{foto.length}/10</span>
           </div>
 
           <input ref={berkasRef} type="file" accept="image/*" multiple className="hidden"
             onChange={e => void tambahFoto(e.target.files)} />
-          <button onClick={() => berkasRef.current?.click()}
-            className="w-full h-12 rounded-xl border-2 border-dashed border-border text-xs font-bold text-muted-foreground hover:border-gold hover:text-navy transition flex items-center justify-center gap-2">
-            <ImageIcon className="w-4 h-4" /> Pilih foto dari galeri
-          </button>
+          {/* Dipisah dari pemilih foto, bukan digabung jadi satu `accept`:
+              galeri Android/iOS menampilkan SATU jenis berkas per pemilih, jadi
+              satu tombol "foto & video" tetap akan membuka album foto saja —
+              persis keluhan yang muncul. */}
+          <input ref={videoRef} type="file" accept="video/*" className="hidden"
+            onChange={e => void pilihVideo(e.target.files)} />
 
-          {foto.length > 0 && (
+          {sub === 'video' && (
+            videoAsli ? (
+              <div data-marcom="video-terpilih"
+                className="flex items-center gap-3 rounded-xl border border-gold bg-gold-lt p-3">
+                <Film className="w-5 h-5 text-navy shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-navy truncate">{videoAsli.nama}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {tampilDurasi(durasiPakai(videoAsli.detik).detik)}
+                    {durasiPakai(videoAsli.detik).dipotong
+                      && ` — dipotong dari ${tampilDurasi(videoAsli.detik)} (batas ${MAKS_DETIK_VIDEO} dtk)`}
+                  </p>
+                </div>
+                <button onClick={buangVideo} aria-label="Buang video"
+                  className="w-8 h-8 rounded-lg bg-white/70 text-navy flex items-center justify-center shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button data-marcom="pilih-video" onClick={() => videoRef.current?.click()}
+                className="w-full h-12 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2">
+                <Film className="w-4 h-4" /> Pilih video dari galeri
+              </button>
+            )
+          )}
+
+          {!videoAsli && (
+            <button onClick={() => berkasRef.current?.click()}
+              className="w-full h-12 rounded-xl border-2 border-dashed border-border text-xs font-bold text-muted-foreground hover:border-gold hover:text-navy transition flex items-center justify-center gap-2">
+              <ImageIcon className="w-4 h-4" />
+              {sub === 'video' ? 'Atau rangkai dari beberapa foto' : 'Pilih foto dari galeri'}
+            </button>
+          )}
+
+          {foto.length > 0 && !videoAsli && (
             <div className="grid grid-cols-3 gap-2">
               {foto.map((f, i) => (
                 <div key={f.id} className="relative rounded-xl overflow-hidden border border-border aspect-square">
@@ -325,7 +396,7 @@ export default function MarcomPage() {
               ))}
             </div>
           )}
-          {foto.length > 0 && (
+          {foto.length > 0 && !videoAsli && (
             <p className="text-[10px] text-muted-foreground leading-relaxed">
               AI hanya memperbaiki pencahayaan &amp; warna. Bangunannya tidak diubah — foto proyek
               yang &quot;dipercantik&quot; sampai berbeda dari kenyataan akan ditagih pemiliknya nanti.
@@ -385,7 +456,9 @@ export default function MarcomPage() {
                 className="max-h-[420px] w-auto max-w-full object-contain" />
             ) : (
               <p className="py-10 px-4 text-center text-xs text-muted-foreground italic">
-                Pilih foto dulu untuk melihat hasilnya.
+                {sub === 'video'
+                  ? 'Pilih video atau foto dulu untuk melihat hasilnya.'
+                  : 'Pilih foto dulu untuk melihat hasilnya.'}
               </p>
             )}
           </div>
@@ -416,8 +489,15 @@ export default function MarcomPage() {
               ) : (
                 <>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {foto.length === 0
-                      ? 'Pilih minimal 1 foto di langkah 1. Setiap foto tampil 2,5 detik.'
+                    {videoAsli
+                      ? <>
+                          Video Anda diberi logo, keterangan proyek, dan nomor kontak — suaranya
+                          tetap ikut. Prosesnya berjalan sewaktu-nyata
+                          (<b>{tampilDurasi(durasiPakai(videoAsli.detik).detik)}</b>); biarkan
+                          halaman ini terbuka dan jangan pindah aplikasi sampai selesai.
+                        </>
+                      : foto.length === 0
+                      ? 'Pilih video dari galeri di langkah 1 — atau beberapa foto untuk dirangkai jadi slideshow.'
                       : <>
                           {foto.length} foto → video <b>{detikVideo} detik</b>. Perekaman berjalan
                           sewaktu-nyata, jadi memakan waktu yang sama — biarkan halaman ini terbuka
@@ -432,13 +512,15 @@ export default function MarcomPage() {
                 </>
               )}
 
-              <button onClick={() => void rekamVideo()} disabled={merekam || !dukungan.bisa || !foto.length}
+              <button onClick={() => void rekamVideo()}
+                disabled={merekam || !dukungan.bisa || (!foto.length && !videoAsli)}
                 className="w-full h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 {merekam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
                 {merekam
-                  ? `Merekam… ${majuVideo}%`
+                  ? `Memproses… ${majuVideo}%`
                   : !dukungan.bisa ? 'Video tidak didukung peramban ini'
-                  : !foto.length ? 'Pilih foto dulu'
+                  : videoAsli ? `Olah Video (${tampilDurasi(durasiPakai(videoAsli.detik).detik)})`
+                  : !foto.length ? 'Pilih video atau foto dulu'
                   : `Buat Video (${detikVideo} dtk)`}
               </button>
             </div>

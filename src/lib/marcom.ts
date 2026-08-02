@@ -441,6 +441,38 @@ export function namaBerkas(
 /** Lama satu foto tampil dalam video slideshow, dalam milidetik. */
 export const DURASI_PER_FOTO = 2500
 
+/**
+ * Batas panjang video yang diolah, dalam detik.
+ *
+ * Bukan batas teknis, melainkan batas akal sehat: perekamannya berjalan
+ * sewaktu-nyata, jadi video 10 menit berarti pemakainya menatap layar selama
+ * 10 menit. Ditambah lagi Story dan Reels sendiri memotong di kisaran satu
+ * setengah menit. Yang lebih panjang dipotong, dan pemotongannya DIKATAKAN —
+ * bukan diam-diam menghasilkan video yang terputus di tengah kalimat.
+ */
+export const MAKS_DETIK_VIDEO = 90
+
+export interface PakaiDurasi {
+  detik: number
+  dipotong: boolean
+}
+
+/** Berapa detik video sumber yang benar-benar dipakai. */
+export function durasiPakai(durasiAsli: unknown, maks = MAKS_DETIK_VIDEO): PakaiDurasi {
+  const d = Number(durasiAsli)
+  const batas = Math.max(1, Number(maks) || MAKS_DETIK_VIDEO)
+  // Video yang durasinya tak terbaca (mis. rekaman layar tanpa metadata)
+  // tetap diolah sampai batas — lebih baik daripada menolaknya mentah-mentah.
+  if (!Number.isFinite(d) || d <= 0) return { detik: batas, dipotong: false }
+  return d > batas ? { detik: batas, dipotong: true } : { detik: d, dipotong: false }
+}
+
+/** "1:05" dari 65 detik. */
+export function tampilDurasi(detik: unknown): string {
+  const d = Math.max(0, Math.round(Number(detik) || 0))
+  return `${Math.floor(d / 60)}:${String(d % 60).padStart(2, '0')}`
+}
+
 /** Lama seluruh video dari sejumlah foto. */
 export function durasiVideo(jumlahFoto: number, perFoto = DURASI_PER_FOTO): number {
   const n = Math.max(0, Math.floor(Number(jumlahFoto) || 0))
