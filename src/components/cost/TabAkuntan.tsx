@@ -48,8 +48,15 @@ const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname', 'hut
 /** Nilai dropdown lingkup untuk "semua proyek". */
 const KONSOLIDASI = '__konsolidasi__'
 
-/** `initialSub` dipakai deep-link dari Home Kontraktor AI (?tab=akuntan&sub=…). */
-export default function TabAkuntan({ initialSub }: { initialSub?: string } = {}) {
+/**
+ * `initialSub` dipakai deep-link dari Home Kontraktor AI (?tab=akuntan&sub=…).
+ * `onSubChange` mengembalikan sub-tab yang sedang dibuka ke halaman induk,
+ * yang mencatatnya di alamat — supaya muat ulang tidak melompat kembali ke
+ * Laba Rugi setiap kali.
+ */
+export default function TabAkuntan(
+  { initialSub, onSubChange }: { initialSub?: string; onSubChange?: (s: string) => void } = {},
+) {
   const { toast } = useToast()
   const { realisasiEntries, projectInfo } = useCostStore()
   const {
@@ -297,7 +304,7 @@ export default function TabAkuntan({ initialSub }: { initialSub?: string } = {})
           ['opname', 'Opname', <ClipboardList key="i" className="w-3.5 h-3.5" />],
           ['hutang', 'Hutang Vendor (PO)', <Wallet key="i" className="w-3.5 h-3.5" />],
         ] as Array<[SubTab, string, JSX.Element]>).map(([key, label, icon]) => (
-          <button key={key} onClick={() => setSub(key)}
+          <button key={key} onClick={() => { setSub(key); onSubChange?.(key) }}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${
               sub === key ? 'bg-navy text-white shadow' : 'bg-muted text-muted-foreground hover:bg-muted/70'}`}>
             {icon} {label}

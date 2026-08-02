@@ -28,22 +28,32 @@ import { teamApi, roleSaatIni, dataOwnerId, type Workspace } from '@/lib/teamApi
 import { can } from '@/lib/teamRoles'
 import { sisaQty, milikWorkspace } from '@/lib/procurement'
 import { konteksWatermark } from '@/lib/identitasSaya'
+import { subSah } from '@/lib/posisiKerja'
 
 type Sub = 'pakai' | 'request' | 'kurang'
+const SUB_SAH: readonly Sub[] = ['pakai', 'request', 'kurang']
 
 const num = (n: number) => n.toLocaleString('id-ID', { maximumFractionDigits: 2 })
 
 export default function MaterialLapanganPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const { materialSchedule, projectInfo, loadProjects } = useCostStore()
   const { profile } = useAuthStore()
 
-  const [sub, setSub] = useState<Sub>(() => {
-    const s = params.get('sub')
-    return s === 'request' || s === 'kurang' ? s : 'pakai'
-  })
+  const [sub, setSub] = useState<Sub>(() => subSah(params.get('sub'), SUB_SAH, 'pakai'))
+
+  // Sub-menu ikut dicatat di alamat. Tanpa ini, memuat ulang halaman selalu
+  // melompat kembali ke sub-menu pertama — dan pekerjaan yang sedang dilihat
+  // harus dicari ulang.
+  useEffect(() => {
+    if (params.get('sub') === sub) return
+    const q = new URLSearchParams(params)
+    q.set('sub', sub)
+    setParams(q, { replace: true })
+  }, [sub]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [usageSemua, setUsage] = useState<MaterialUsage[]>([])
   const [requestsSemua, setRequests] = useState<MaterialRequest[]>([])
 

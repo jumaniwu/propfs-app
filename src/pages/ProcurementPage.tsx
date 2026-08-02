@@ -15,6 +15,8 @@ import {
   ReceiptIcon, Truck,
 } from 'lucide-react'
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
+import { useSearchParams } from 'react-router-dom'
+import { subSah } from '@/lib/posisiKerja'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import SignaturePad from '@/components/cost/SignaturePad'
@@ -44,6 +46,7 @@ import {
 } from '@/lib/procurement'
 
 type Sub = 'vendor' | 'katalog' | 'po' | 'terima'
+const SUB_SAH: readonly Sub[] = ['vendor', 'katalog', 'po', 'terima']
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -57,10 +60,19 @@ export default function ProcurementPage() {
   // jadi harga acuan sudah ada bahkan sebelum satu vendor pun mendaftar.
   const semuaRealisasi = useCostStore(s => s.getAllRealisasi)
 
-  const [sub, setSub] = useState<Sub>(() => {
-    const s = new URLSearchParams(window.location.search).get('sub')
-    return s === 'katalog' || s === 'po' || s === 'terima' ? s : 'vendor'
-  })
+  const [params, setParams] = useSearchParams()
+  const [sub, setSub] = useState<Sub>(() => subSah(params.get('sub'), SUB_SAH, 'vendor'))
+
+  // Sub-menu ikut dicatat di alamat. Tanpa ini, memuat ulang halaman selalu
+  // melompat kembali ke sub-menu pertama — dan pekerjaan yang sedang dilihat
+  // harus dicari ulang.
+  useEffect(() => {
+    if (params.get('sub') === sub) return
+    const q = new URLSearchParams(params)
+    q.set('sub', sub)
+    setParams(q, { replace: true })
+  }, [sub]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [items, setItems] = useState<VendorItem[]>([])
