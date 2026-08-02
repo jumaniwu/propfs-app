@@ -373,55 +373,75 @@ export default function MarcomPage() {
         {/* ── 3. Pratinjau ── */}
         <section className="rounded-2xl bg-white border border-border p-4 space-y-3">
           <h2 className="text-sm font-bold text-navy">3. Hasil</h2>
-          {!foto.length ? (
-            <p className="py-10 text-center text-xs text-muted-foreground italic">
-              Pilih foto dulu untuk melihat hasilnya.
-            </p>
-          ) : (
-            <>
-              <div className="relative rounded-xl overflow-hidden bg-navy/5 flex items-center justify-center min-h-[180px]">
-                {menyusun && (
-                  <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-                    <Loader2 className="w-6 h-6 animate-spin text-navy" />
-                  </div>
-                )}
-                {pratinjau && (
-                  <img data-marcom="pratinjau" src={pratinjau} alt="Pratinjau materi promosi"
-                    className="max-h-[420px] w-auto max-w-full object-contain" />
-                )}
-              </div>
 
-              {sub === 'gambar' ? (
-                <div className="flex gap-2">
-                  <button onClick={unduhGambar} disabled={!pratinjau}
-                    className="flex-1 h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-                    <Download className="w-4 h-4" /> Unduh Gambar
-                  </button>
-                  <button onClick={() => void bagikanGambar()} disabled={!pratinjau}
-                    title="Bagikan ke aplikasi lain"
-                    className="w-12 h-11 rounded-xl bg-gold text-navy flex items-center justify-center disabled:opacity-50">
-                    <Share2 className="w-4 h-4" />
-                  </button>
-                </div>
+          <div className="relative rounded-xl overflow-hidden bg-navy/5 flex items-center justify-center min-h-[180px]">
+            {menyusun && (
+              <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
+                <Loader2 className="w-6 h-6 animate-spin text-navy" />
+              </div>
+            )}
+            {pratinjau ? (
+              <img data-marcom="pratinjau" src={pratinjau} alt="Pratinjau materi promosi"
+                className="max-h-[420px] w-auto max-w-full object-contain" />
+            ) : (
+              <p className="py-10 px-4 text-center text-xs text-muted-foreground italic">
+                Pilih foto dulu untuk melihat hasilnya.
+              </p>
+            )}
+          </div>
+
+          {sub === 'gambar' ? (
+            <div className="flex gap-2">
+              <button onClick={unduhGambar} disabled={!pratinjau}
+                className="flex-1 h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                <Download className="w-4 h-4" /> Unduh Gambar
+              </button>
+              <button onClick={() => void bagikanGambar()} disabled={!pratinjau}
+                title="Bagikan ke aplikasi lain"
+                className="w-12 h-11 rounded-xl bg-gold text-navy flex items-center justify-center disabled:opacity-50">
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            /* Panel video SELALU tampil di tab ini, juga sebelum ada foto.
+               Sebelumnya seluruhnya tersembunyi di balik "pilih foto dulu",
+               sehingga menekan tab Video memperlihatkan halaman kosong tanpa
+               satu pun keterangan — persis seperti fiturnya rusak. */
+            <div data-marcom="panel-video" className="space-y-2">
+              {!dukungan.bisa ? (
+                <p data-marcom="video-tak-didukung"
+                  className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-lg p-2.5 leading-relaxed">
+                  <b>Video tidak bisa dibuat di peramban ini.</b><br />{dukungan.catatan}
+                </p>
               ) : (
-                <div className="space-y-2">
+                <>
                   <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    {foto.length} foto → video <b>{detikVideo} detik</b>. Perekaman berjalan sewaktu-nyata,
-                    jadi memakan waktu yang sama — jangan tutup halaman ini.
+                    {foto.length === 0
+                      ? 'Pilih minimal 1 foto di langkah 1. Setiap foto tampil 2,5 detik.'
+                      : <>
+                          {foto.length} foto → video <b>{detikVideo} detik</b>. Perekaman berjalan
+                          sewaktu-nyata, jadi memakan waktu yang sama — biarkan halaman ini terbuka
+                          dan jangan pindah aplikasi sampai selesai.
+                        </>}
                   </p>
                   {!dukungan.mp4 && (
                     <p data-marcom="catatan-video" className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-relaxed">
                       {dukungan.catatan}
                     </p>
                   )}
-                  <button onClick={() => void rekamVideo()} disabled={merekam || !dukungan.bisa || !foto.length}
-                    className="w-full h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-                    {merekam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
-                    {merekam ? `Merekam… ${majuVideo}%` : `Buat Video (${detikVideo} dtk)`}
-                  </button>
-                </div>
+                </>
               )}
-            </>
+
+              <button onClick={() => void rekamVideo()} disabled={merekam || !dukungan.bisa || !foto.length}
+                className="w-full h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                {merekam ? <Loader2 className="w-4 h-4 animate-spin" /> : <Video className="w-4 h-4" />}
+                {merekam
+                  ? `Merekam… ${majuVideo}%`
+                  : !dukungan.bisa ? 'Video tidak didukung peramban ini'
+                  : !foto.length ? 'Pilih foto dulu'
+                  : `Buat Video (${detikVideo} dtk)`}
+              </button>
+            </div>
           )}
         </section>
 
