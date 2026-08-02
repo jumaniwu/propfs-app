@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus,} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus, Megaphone,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -104,6 +104,13 @@ export const MENU_ITEMS: MenuItem[] = [
   { key: 'leads', label: 'Cari Leads', icon: UserPlus, kategori: 'tim', path: '/kontraktor/leads',
     tone: TONE.emerald, tag: 'BARU',
     alias: 'calon konsumen prospek form konsultasi renovasi pemasaran marketing wa whatsapp' },
+
+  // Marcom berdiri di kategori Tim bersama Cari Leads: keduanya pekerjaan
+  // memasarkan, bukan menghitung. Leads menampung yang sudah tertarik; Marcom
+  // yang membuat mereka tertarik lebih dulu.
+  { key: 'marcom', label: 'Marcom', icon: Megaphone, kategori: 'tim', path: '/kontraktor/marcom',
+    tone: TONE.violet, tag: 'BARU',
+    alias: 'promosi konten sosmed instagram tiktok foto video caption logo kontak iklan marketing' },
 
   // ── Tim ───────────────────────────────────────────────────────────────────
   // Satu halaman memuat daftar pengguna, pembuatan akun, dan matriks role.

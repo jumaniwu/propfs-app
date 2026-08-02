@@ -10,7 +10,7 @@ const cari = (q) => cariMenu(MENU_ITEMS, q).map(i => i.label)
 const item = (key) => MENU_ITEMS.find(i => i.key === key)
 
 // ── Bentuk katalog ─────────────────────────────────────────────────────────
-assert(MENU_ITEMS.length === 17, `17 ikon (kini ${MENU_ITEMS.length})`)
+assert(MENU_ITEMS.length === 18, `18 ikon (kini ${MENU_ITEMS.length})`)
 
 // tidak ada key ganda
 const keys = MENU_ITEMS.map(i => i.key)

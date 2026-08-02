@@ -10,9 +10,16 @@ const semuaRole = ROLES.map(r => r.key)
 const semuaModul = Object.keys(MODUL_LABEL)
 
 assert(semuaRole.length === 7, '7 jabatan terdaftar')
-assert(semuaModul.length === 10, '10 modul terdaftar')
+assert(semuaModul.length === 11, '11 modul terdaftar')
 assert(semuaModul.includes('procurement'), 'modul procurement terdaftar')
 assert(semuaModul.includes('studi'), 'modul studi (Feasibility Study) terdaftar')
+assert(semuaModul.includes('marcom'), 'modul marcom (promosi sosmed) terdaftar')
+// Marcom memegang wajah perusahaan di depan umum: yang boleh menerbitkan
+// dibatasi, tetapi pengawas lapangan ikut karena dialah yang memotret.
+assert(can('pengawas', 'marcom', 'tulis') === true, 'pengawas lapangan boleh membuat materi promosi')
+assert(can('keuangan', 'marcom', 'baca') === false, 'keuangan tidak berurusan dengan promosi')
+assert(can('viewer', 'marcom', 'baca') === false, 'klien/pemantau tidak membuat materi promosi')
+assert(can('pemilik', 'marcom', 'approve') === true, 'pemilik memegang persetujuan akhir')
 
 // ── Feasibility Study ──────────────────────────────────────────────────────
 // Studi kelayakan adalah pekerjaan kantor, bukan pekerjaan lapangan: yang
