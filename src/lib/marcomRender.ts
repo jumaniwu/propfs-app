@@ -315,7 +315,23 @@ export interface DukunganVideo {
  */
 export function dukunganVideo(): DukunganVideo {
   if (typeof MediaRecorder === 'undefined') {
-    return { bisa: false, mime: '', ext: '', mp4: false, catatan: 'Peramban ini tidak bisa merekam video.' }
+    return {
+      bisa: false, mime: '', ext: '', mp4: false,
+      catatan: 'Peramban ini tidak bisa merekam video. Buka propfs.id lewat Chrome '
+        + '(bukan peramban di dalam aplikasi WhatsApp/Instagram), lalu coba lagi.',
+    }
+  }
+  // Diperiksa TERPISAH dari MediaRecorder: beberapa peramban — Safari iOS lama,
+  // dan peramban yang tertanam di dalam aplikasi WhatsApp/Instagram — punya
+  // MediaRecorder tetapi tidak punya captureStream. Tanpa pemeriksaan ini,
+  // tombolnya menyala lalu meledak di tengah jalan.
+  if (typeof HTMLCanvasElement === 'undefined'
+    || typeof HTMLCanvasElement.prototype.captureStream !== 'function') {
+    return {
+      bisa: false, mime: '', ext: '', mp4: false,
+      catatan: 'Peramban ini tidak bisa merekam isi kanvas. Buka propfs.id lewat Chrome '
+        + '(bukan peramban di dalam aplikasi WhatsApp/Instagram), lalu coba lagi.',
+    }
   }
   const mp4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4']
   const webm = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
@@ -371,39 +387,37 @@ export async function buatVideo(o: OpsiVideo): Promise<HasilVideo> {
   const kanvas = document.createElement('canvas')
   kanvas.width = lebar
   kanvas.height = tinggi
+
+  // Kanvas DITEMPEL ke halaman, walau tak terlihat. Kanvas yang tidak pernah
+  // ikut digambar ke layar tidak dijamin menghasilkan bingkai pada sebagian
+  // peramban — dan akibatnya berkas video yang kosong, bukan pesan kesalahan.
+  kanvas.style.cssText = 'position:fixed;left:-99999px;top:0;pointer-events:none;opacity:0.01'
+  document.body.appendChild(kanvas)
+
   const ctx = kanvas.getContext('2d')
-  if (!ctx) throw new Error('Kanvas tidak tersedia di peramban ini.')
+  if (!ctx) { kanvas.remove(); throw new Error('Kanvas tidak tersedia di peramban ini.') }
 
-  const gambar = await Promise.all(foto.map(f => muatGambar(f)))
-  const logoSrc = String(o.profil?.logo ?? '').trim()
-  const logo = logoSrc ? await muatGambar(logoSrc).catch(() => null) : null
+  try {
+    const gambar = await Promise.all(foto.map(f => muatGambar(f)))
+    const logoSrc = String(o.profil?.logo ?? '').trim()
+    const logo = logoSrc ? await muatGambar(logoSrc).catch(() => null) : null
 
-  const perFoto = o.perFoto ?? DURASI_PER_FOTO
-  const total = durasiVideo(gambar.length, perFoto)
+    const perFoto = o.perFoto ?? DURASI_PER_FOTO
+    const total = durasiVideo(gambar.length, perFoto)
 
-  const aliran = kanvas.captureStream(30)
-  const perekam = new MediaRecorder(aliran, { mimeType: dukungan.mime, videoBitsPerSecond: 6_000_000 })
-  const potongan: BlobPart[] = []
-  perekam.ondataavailable = e => { if (e.data.size) potongan.push(e.data) }
+    const isi = {
+      template: o.template, profil: o.profil, judul: o.judul,
+      keterangan: o.keterangan, lingkup: o.lingkup, tagline: o.tagline, logo,
+    }
 
-  const selesai = new Promise<Blob>(resolve => {
-    perekam.onstop = () => resolve(new Blob(potongan, { type: dukungan.mime }))
-  })
-
-  perekam.start()
-  const mulai = performance.now()
-
-  await new Promise<void>(resolve => {
-    const tick = () => {
-      const t = performance.now() - mulai
-      if (t >= total) { resolve(); return }
-
+    /** Gambar satu bingkai pada milidetik ke-`t`. */
+    const bingkai = (t: number) => {
       const { indeks, pudar } = fotoPadaWaktu(t, gambar.length, perFoto)
       ctx.fillStyle = '#0D1B2A'
       ctx.fillRect(0, 0, lebar, tinggi)
 
-      // Sedikit zoom pelan (efek Ken Burns) supaya video dari foto diam tidak
-      // terasa seperti presentasi yang macet.
+      // Zoom pelan (efek Ken Burns) supaya video dari foto diam tidak terasa
+      // seperti presentasi yang macet.
       const maju = (t - indeks * perFoto) / perFoto
       const zoom = 1 + maju * 0.06
       ctx.save()
@@ -415,20 +429,69 @@ export async function buatVideo(o: OpsiVideo): Promise<HasilVideo> {
       ctx.restore()
       ctx.globalAlpha = 1
 
-      gambarBingkai(ctx, o.format, {
-        template: o.template, profil: o.profil, judul: o.judul,
-        keterangan: o.keterangan, lingkup: o.lingkup, tagline: o.tagline, logo,
-      })
-      o.onProgress?.(Math.min(99, Math.round((t / total) * 100)))
-      requestAnimationFrame(tick)
+      gambarBingkai(ctx, o.format, isi)
     }
-    requestAnimationFrame(tick)
-  })
 
-  perekam.stop()
-  const blob = await selesai
-  o.onProgress?.(100)
-  return { blob, ext: dukungan.ext, mp4: dukungan.mp4, durasiMs: total }
+    // Bingkai pertama digambar SEBELUM perekaman dimulai. Merekam kanvas yang
+    // masih kosong menghasilkan berkas tanpa isi pada sebagian peramban.
+    bingkai(0)
+
+    const aliran = kanvas.captureStream(30)
+    const perekam = new MediaRecorder(aliran, { mimeType: dukungan.mime, videoBitsPerSecond: 6_000_000 })
+    const potongan: BlobPart[] = []
+    perekam.ondataavailable = e => { if (e.data.size) potongan.push(e.data) }
+
+    let galat = ''
+    perekam.onerror = () => { galat = 'Perekaman dihentikan peramban.' }
+
+    const selesai = new Promise<Blob>(resolve => {
+      perekam.onstop = () => resolve(new Blob(potongan, { type: dukungan.mime }))
+    })
+
+    // Potongan diminta tiap detik, bukan sekali di akhir: satu blob raksasa
+    // lebih mudah gagal di perangkat dengan memori terbatas.
+    perekam.start(1000)
+    const mulai = performance.now()
+
+    await new Promise<void>(resolve => {
+      let henti = false
+      const sudah = () => { if (!henti) { henti = true; clearInterval(jaga); resolve() } }
+
+      const langkah = () => {
+        if (henti) return
+        const t = performance.now() - mulai
+        if (t >= total) { sudah(); return }
+        bingkai(t)
+        o.onProgress?.(Math.min(99, Math.round((t / total) * 100)))
+        requestAnimationFrame(langkah)
+      }
+
+      // Penjaga waktu. `requestAnimationFrame` BERHENTI ketika halaman
+      // disembunyikan — layar HP terkunci, pemakainya pindah aplikasi sebentar
+      // — dan tanpa penjaga ini perekamannya menggantung selamanya di angka
+      // berapa pun ia berhenti. Pemeriksa ini tetap berjalan (meski melambat)
+      // dan memastikan perekaman selalu punya ujung.
+      const jaga = setInterval(() => {
+        if (performance.now() - mulai >= total + 500) sudah()
+      }, 250)
+
+      requestAnimationFrame(langkah)
+    })
+
+    perekam.stop()
+    const blob = await selesai
+    o.onProgress?.(100)
+
+    // Berkas kosong adalah kegagalan, bukan keberhasilan. Tanpa pemeriksaan ini
+    // pemakainya mengunduh berkas 0 byte dan baru tahu saat mengunggahnya.
+    if (!blob.size) {
+      throw new Error(galat || 'Video gagal direkam di peramban ini (berkasnya kosong). '
+        + 'Coba buka lewat Chrome versi terbaru.')
+    }
+    return { blob, ext: dukungan.ext, mp4: dukungan.mp4, durasiMs: total }
+  } finally {
+    kanvas.remove()
+  }
 }
 
 // ── Unduh & bagikan ─────────────────────────────────────────────────────────
