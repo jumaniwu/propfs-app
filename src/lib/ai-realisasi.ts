@@ -1,6 +1,8 @@
 import { BudgetComponent } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
 import { parsePemasukan, parsePembayaran } from './rencanaCatat'
+import { jenisGalat, bisaDiulang, ringkasGalatAi } from './galatAi'
+import { useAuthStore } from '../store/authStore'
 import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 
@@ -342,7 +344,11 @@ async function callGemini(
   if (res.status === 503) throw new Error(`OVERLOAD:${model}`)
   if (!res.ok) {
     const err = await res.text()
-    throw new Error(`Gemini ${model} error: ${err.substring(0, 80)}`)
+    // 80 karakter memotong tepat sebelum kolom "status", sehingga sebab
+    // sesungguhnya (PERMISSION_DENIED, RESOURCE_EXHAUSTED) tidak pernah
+    // terbaca pengklasifikasi galat. Yang dipakai hanya ringkasannya, jadi
+    // memperlebarnya tidak membuat apa pun bocor ke layar.
+    throw new Error(`Gemini ${model} error: ${err.substring(0, 300)}`)
   }
 
   const data = await res.json()
@@ -470,6 +476,10 @@ export async function chatRealisasiWithGemini(
   const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash']
   const inputContext  = sysInstruction + (newMessage.text ?? '')
 
+  // Kegagalan yang tidak akan membaik — kunci ditolak, kuota habis — membatalkan
+  // seluruh sisa upaya. Mengulanginya empat kali dengan jeda hanya menghabiskan
+  // delapan detik untuk menunggu jawaban yang sudah pasti sama.
+  let berhenti = false
   for (const model of geminiModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
@@ -478,42 +488,50 @@ export async function chatRealisasiWithGemini(
         const parsedResult = extractEntriesFromText(raw)
         return { textResponse: parsedResult.clean, parsedResult }
       } catch (e: any) {
-        const isRL = e.message?.includes('RATE_LIMIT') || e.message?.includes('429')
-        const isOL = e.message?.includes('OVERLOAD') || e.message?.includes('503')
-        errors.push(`${model}[${attempt}]: ${isRL ? 'Rate Limit' : isOL ? 'Overload' : e.message}`)
-        if (attempt < 2) await sleep(isRL ? 7000 : 3000)
+        errors.push(`${model}[${attempt}]: ${e?.message ?? e}`)
+        const jenis = jenisGalat(e)
+        if (!bisaDiulang(jenis)) { berhenti = true; break }
+        if (attempt < 2) await sleep(jenis === 'sibuk' ? 3000 : 2000)
       }
     }
+    if (berhenti) break
     if (model !== geminiModels[geminiModels.length - 1]) await sleep(2000)
   }
 
+  // Penyedia cadangan hanya melayani teks; pesan bergambar tidak bisa dialihkan
+  // ke sana, jadi jangan buang waktu pemakainya untuk mencoba.
   if (!hasImages) {
     try {
       const raw = await callOpenRouter(sysInstruction, history, newMessage)
       trackUsage('openrouter', 'meta-llama/llama-4-scout:free', inputContext, raw)
       const parsedResult = extractEntriesFromText(raw)
       return { textResponse: '*(via OpenRouter)*\n\n' + parsedResult.clean, parsedResult }
-    } catch (e: any) { errors.push(`OpenRouter: ${e.message}`) }
+    } catch (e: any) { errors.push(`OpenRouter: ${e?.message ?? e}`) }
 
     try {
       const raw = await callGroq(sysInstruction, history, newMessage)
       trackUsage('groq', 'llama-3.1-8b-instant', inputContext, raw)
       const parsedResult = extractEntriesFromText(raw)
       return { textResponse: '*(via Groq)*\n\n' + parsedResult.clean, parsedResult }
-    } catch (e: any) { errors.push(`Groq: ${e.message}`) }
-
-    throw new Error(
-      'Semua layanan AI sedang penuh. Coba kirim ulang dalam 1-2 menit ya! 🙏\n\n' +
-      '*Tip: Tanpa foto, AI akan lebih cepat merespons.*\n\n' +
-      `<!-- Debug: ${errors.join(' | ')} -->`
-    )
+    } catch (e: any) { errors.push(`Groq: ${e?.message ?? e}`) }
   }
 
-  // Ada gambar tapi semua Gemini gagal
-  console.error('[AI Realisasi] All providers failed:', errors)
-  throw new Error(
-    'Layanan AI untuk membaca gambar sedang sangat sibuk saat ini.\n\n' +
-    'Silakan coba lagi dalam ±1 menit, atau ketik isi nota secara manual. 🙏\n\n' +
-    `<!-- Debug: ${errors.join(' | ')} -->`
-  )
+  // Satu tempat menyusun pesan kegagalan, supaya penyebab yang berbeda tidak
+  // lagi diberi kalimat yang sama. Rincian mentahnya HANYA ke console —
+  // sebelumnya ia ikut tercetak di gelembung chat lewat `<!-- Debug: … -->`
+  // yang dikira komentar HTML tak terlihat.
+  const ringkas = ringkasGalatAi(errors, { adaGambar: hasImages, superadmin: superadminSaatIni() })
+  console.error('[AI Realisasi] semua penyedia gagal:', ringkas.jenis, errors)
+  throw new Error(ringkas.pesan)
+}
+
+/**
+ * Apakah yang memakai sekarang superadmin.
+ *
+ * Hanya dia yang diberi satu baris rincian teknis: bagi pemakai biasa, kode
+ * galat bukan keterangan melainkan kebisingan — dan tidak ada yang bisa ia
+ * lakukan dengannya.
+ */
+function superadminSaatIni(): boolean {
+  try { return useAuthStore.getState().profile?.role === 'superadmin' } catch { return false }
 }
