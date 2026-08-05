@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock, Info, Sparkles } from 'lucide-react'
+import { Settings, ToggleRight, ToggleLeft, Percent, Save, RefreshCw, Building2, BarChart3, Clock, Info, Sparkles, Stethoscope, CheckCircle2, XCircle, MinusCircle, Loader2 } from 'lucide-react'
 import { supabase, type AppFeature } from '@/lib/supabase'
 import { useAuthStore, type BankDetails, DEFAULT_BANK_DETAILS } from '@/store/authStore'
 import {
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { invalidatePPNCache } from '@/hooks/usePPNRate'
+import { tesKunciAi, kesimpulanTes, type HasilTes } from '@/lib/tesAi'
 
 const AVAILABLE_FEATURES: { key: AppFeature; label: string; desc: string }[] = [
   { key: 'fs_module', label: 'Feasibility Study (FS)', desc: 'Modul utama analisa kelayakan proyek properti.' },
@@ -807,6 +808,96 @@ export default function AdminSettings() {
           })}
         </div>
       </div>
+
+      <PanelTesAi />
+    </div>
+  )
+}
+
+/**
+ * Memeriksa kunci AI, sekarang juga.
+ *
+ * Tanpa ini, satu-satunya cara mengetahui apakah kunci sudah pulih adalah
+ * membuka Chat AI, mengetik pesan, melampirkan foto, lalu menunggu — mahal
+ * untuk pertanyaan yang jawabannya "sudah" atau "belum", dan perubahan izin di
+ * sisi Google sering baru berlaku beberapa saat setelah penagihan dibereskan,
+ * sehingga pertanyaannya perlu diulang beberapa kali.
+ */
+function PanelTesAi() {
+  const [jalan, setJalan] = useState(false)
+  const [hasil, setHasil] = useState<HasilTes[] | null>(null)
+  const [waktu, setWaktu] = useState<string>('')
+
+  async function jalankan() {
+    setJalan(true)
+    try {
+      const h = await tesKunciAi()
+      setHasil(h)
+      setWaktu(new Date().toLocaleTimeString('id-ID'))
+    } finally { setJalan(false) }
+  }
+
+  const simpul = hasil ? kesimpulanTes(hasil) : null
+
+  return (
+    <div data-tes-ai className="bg-card border border-border rounded-2xl p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Stethoscope className="h-5 w-5 text-gold" />
+        <h2 className="font-serif text-xl font-bold">Tes Koneksi AI</h2>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Mengetuk tiap layanan AI dengan permintaan sekecil mungkin, lalu melaporkan
+        apa yang dijawab. Dipakai untuk memastikan kunci sudah pulih — misalnya setelah
+        penagihan di Google dibereskan, yang tidak selalu berlaku seketika.
+      </p>
+
+      <Button onClick={() => void jalankan()} disabled={jalan} variant="gold" className="font-bold gap-2">
+        {jalan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Stethoscope className="h-4 w-4" />}
+        {jalan ? 'Menguji…' : 'Tes Sekarang'}
+      </Button>
+
+      {hasil && (
+        <div className="space-y-3">
+          <div className={`rounded-xl border p-3 text-sm font-bold ${
+            simpul?.siap ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+            {simpul?.pesan}
+          </div>
+
+          <div className="space-y-2">
+            {hasil.map(h => (
+              <div key={h.penyedia} data-tes-penyedia={h.penyedia}
+                className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {!h.adaKunci ? <MinusCircle className="h-4 w-4 text-slate-400 shrink-0" />
+                    : h.ok ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    : <XCircle className="h-4 w-4 text-red-600 shrink-0" />}
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-navy">{h.penyedia}</p>
+                    <p className="text-xs text-muted-foreground truncate">{h.pesan}</p>
+                  </div>
+                </div>
+                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                  {h.adaKunci ? `${h.ms} ms` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {hasil.some(h => h.jenis === 'kunci' && h.adaKunci) && (
+            <div className="rounded-xl bg-slate-50 border border-border p-3 text-xs text-muted-foreground leading-relaxed">
+              <p className="font-bold text-navy mb-1">Kunci masih ditolak. Yang biasanya jadi sebab:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>API <b>Generative Language</b> belum diaktifkan di project kuncinya</li>
+                <li>Kunci dibatasi ke domain/IP tertentu, dan <b>propfs.id</b> belum termasuk</li>
+                <li>Penagihan baru dibereskan — perubahannya kadang perlu beberapa menit sampai beberapa jam</li>
+              </ul>
+            </div>
+          )}
+
+          <p className="text-[11px] text-muted-foreground">Diuji pukul {waktu}.</p>
+        </div>
+      )}
     </div>
   )
 }
