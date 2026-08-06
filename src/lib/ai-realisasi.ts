@@ -2,6 +2,7 @@ import { BudgetComponent } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
 import { parsePemasukan, parsePembayaran } from './rencanaCatat'
 import { jenisGalat, bisaDiulang, ringkasGalatAi } from './galatAi'
+import { diagnosaAi, ceritaDiagnosa, pesanPenyedia, type Diagnosa } from './diagnosaAi'
 import { useAuthStore } from '../store/authStore'
 import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
@@ -305,6 +306,22 @@ ${rabList.substring(0, 3000)}`
 }
 
 // ── Gemini Call ───────────────────────────────────────────────────────────────
+
+/**
+ * Galat yang masih membawa bahan diagnosisnya.
+ *
+ * Sebelumnya status dan badan respons dilebur menjadi satu string, lalu string
+ * itu dipangkas — sehingga kalimat Google yang menyebut perbaikannya ("Requests
+ * from referer … are blocked", "… has not been used in project …") ikut hilang
+ * sebelum ada yang sempat membacanya. Yang tersisa di layar cuma "403".
+ */
+class GalatGemini extends Error {
+  constructor(readonly status: number, readonly badan: string, readonly model: string) {
+    super(`${model}: HTTP ${status} ${pesanPenyedia(badan).substring(0, 200)}`)
+    this.name = 'GalatGemini'
+  }
+}
+
 async function callGemini(
   sysInstruction: string,
   history: ChatMessage[],
@@ -340,95 +357,37 @@ async function callGemini(
     }
   )
 
-  if (res.status === 429) throw new Error(`RATE_LIMIT:${model}`)
-  if (res.status === 503) throw new Error(`OVERLOAD:${model}`)
-  if (!res.ok) {
-    const err = await res.text()
-    // 80 karakter memotong tepat sebelum kolom "status", sehingga sebab
-    // sesungguhnya (PERMISSION_DENIED, RESOURCE_EXHAUSTED) tidak pernah
-    // terbaca pengklasifikasi galat. Yang dipakai hanya ringkasannya, jadi
-    // memperlebarnya tidak membuat apa pun bocor ke layar.
-    throw new Error(`Gemini ${model} error: ${err.substring(0, 300)}`)
-  }
+  // Badan respons TIDAK dipangkas di sini. Di dalamnya persis terletak kalimat
+  // yang menyebutkan perbaikannya; yang menyaring apa yang boleh sampai ke
+  // layar adalah pemanggilnya, bukan tempat galatnya lahir.
+  if (!res.ok) throw new GalatGemini(res.status, await res.text().catch(() => ''), model)
 
   const data = await res.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error(`Gemini ${model} empty response`)
+  if (!text) throw new GalatGemini(0, 'empty response', model)
   return text
 }
 
-// ── OpenRouter Call ───────────────────────────────────────────────────────────
-async function callOpenRouter(
-  sysInstruction: string,
-  history: ChatMessage[],
-  newMessage: ChatMessage
-): Promise<string> {
-  const key = (import.meta as any).env.VITE_OPENROUTER_API_KEY
-  if (!key) throw new Error('No OpenRouter key')
-
-  const messages: any[] = [{ role: 'system', content: sysInstruction }]
-  for (const h of history.filter(h => !(h.role === 'assistant' && h.id === 'system-start'))) {
-    const textContent = h.text?.trim() || (h.files?.length ? '(Mengirim lampiran)' : '(Pesan kosong)')
-    messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: textContent })
-  }
-  messages.push({ role: 'user', content: newMessage.text?.trim() || 'Catat transaksi ini.' })
-
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key.trim()}` },
-    body: JSON.stringify({ model: 'meta-llama/llama-4-scout:free', messages, temperature: 0.15, max_tokens: 3000 })
-  })
-
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}`)
-  const data = await res.json()
-  const text = data.choices?.[0]?.message?.content
-  if (!text) throw new Error('OpenRouter empty response')
-  return text
-}
-
-// ── Groq Call (multi-model, hemat token) ─────────────────────────────────────
-async function callGroq(
-  sysInstruction: string,
-  history: ChatMessage[],
-  newMessage: ChatMessage
-): Promise<string> {
-  const key = (import.meta as any).env.VITE_GROQ_API_KEY
-  if (!key) throw new Error('No Groq key')
-
-  const messages: any[] = [{ role: 'system', content: sysInstruction.substring(0, 2000) }]
-  for (const h of history.filter(h => !(h.role === 'assistant' && h.id === 'system-start')).slice(-4)) {
-    const textContent = h.text?.trim() || (h.files?.length ? '(Mengirim lampiran)' : '(Pesan kosong)')
-    messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: textContent.substring(0, 500) })
-  }
-  messages.push({ role: 'user', content: (newMessage.text?.trim() || 'Catat transaksi ini.').substring(0, 1000) })
-
-  const models = ['gemma2-9b-it', 'llama-3.1-8b-instant', 'llama3-8b-8192']
-  for (const model of models) {
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key.trim()}` },
-        body: JSON.stringify({ model, messages, temperature: 0.15, max_tokens: 1500 })
-      })
-      if (res.status === 429) { console.warn(`[Groq] ${model} rate limited`); continue }
-      if (!res.ok) throw new Error(`Groq ${model} HTTP ${res.status}`)
-      const data = await res.json()
-      const text = data.choices?.[0]?.message?.content
-      if (text) return text
-    } catch (e: any) {
-      if (!e.message?.includes('rate')) throw e
-    }
-  }
-  throw new Error('Semua model Groq kena rate limit')
-}
+// Penyedia cadangan (OpenRouter & Groq) sudah dihapus dari jalur ini.
+//
+// Keduanya bukan cadangan lagi, melainkan dua kegagalan tambahan yang pasti:
+// model gratis OpenRouter menjawab 404 karena setelan privasi akunnya menutup
+// akses, dan model Groq yang terdaftar di sini sudah dihentikan sehingga
+// menjawab 400. Mempertahankannya hanya menambah dua panggilan yang dijamin
+// gagal pada setiap pesan, memperlambat kabar buruknya sampai ke pemakai, dan
+// menutupi sebab yang sebenarnya di balik daftar galat yang panjang.
+//
+// Lagi pula keduanya melayani teks saja, sedangkan yang paling dipakai di sini
+// adalah membaca foto nota — yang memang hanya bisa lewat Gemini. Jadi
+// "cadangan" itu tidak pernah benar-benar menggantikan apa pun.
 
 // ── Token Usage Helper ────────────────────────────────────────────────────────
-function trackUsage(provider: 'gemini'|'groq'|'openrouter', model: string, inputText: string, outputText: string) {
+function trackUsage(model: string, inputText: string, outputText: string) {
   try {
     const { recordUsage } = useUsageStore.getState()
     recordUsage({
       feature: 'realisasi_chat',
-      provider,
+      provider: 'gemini',
       model,
       inputTokens:  estimateTokens(inputText),
       outputTokens: estimateTokens(outputText),
@@ -480,15 +439,20 @@ export async function chatRealisasiWithGemini(
   // seluruh sisa upaya. Mengulanginya empat kali dengan jeda hanya menghabiskan
   // delapan detik untuk menunggu jawaban yang sudah pasti sama.
   let berhenti = false
+  // Penolakan terakhir disimpan utuh — dialah satu-satunya yang masih membawa
+  // kalimat Google, dan kalimat itulah yang menyebutkan perbaikannya.
+  let terakhir: GalatGemini | null = null
+
   for (const model of geminiModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const raw = await callGemini(sysInstruction, history, newMessage, model)
-        trackUsage('gemini', model, inputContext, raw) // ← record usage
+        trackUsage(model, inputContext, raw) // ← record usage
         const parsedResult = extractEntriesFromText(raw)
         return { textResponse: parsedResult.clean, parsedResult }
       } catch (e: any) {
         errors.push(`${model}[${attempt}]: ${e?.message ?? e}`)
+        if (e instanceof GalatGemini) terakhir = e
         const jenis = jenisGalat(e)
         if (!bisaDiulang(jenis)) { berhenti = true; break }
         if (attempt < 2) await sleep(jenis === 'sibuk' ? 3000 : 2000)
@@ -498,30 +462,22 @@ export async function chatRealisasiWithGemini(
     if (model !== geminiModels[geminiModels.length - 1]) await sleep(2000)
   }
 
-  // Penyedia cadangan hanya melayani teks; pesan bergambar tidak bisa dialihkan
-  // ke sana, jadi jangan buang waktu pemakainya untuk mencoba.
-  if (!hasImages) {
-    try {
-      const raw = await callOpenRouter(sysInstruction, history, newMessage)
-      trackUsage('openrouter', 'meta-llama/llama-4-scout:free', inputContext, raw)
-      const parsedResult = extractEntriesFromText(raw)
-      return { textResponse: '*(via OpenRouter)*\n\n' + parsedResult.clean, parsedResult }
-    } catch (e: any) { errors.push(`OpenRouter: ${e?.message ?? e}`) }
-
-    try {
-      const raw = await callGroq(sysInstruction, history, newMessage)
-      trackUsage('groq', 'llama-3.1-8b-instant', inputContext, raw)
-      const parsedResult = extractEntriesFromText(raw)
-      return { textResponse: '*(via Groq)*\n\n' + parsedResult.clean, parsedResult }
-    } catch (e: any) { errors.push(`Groq: ${e?.message ?? e}`) }
-  }
-
   // Satu tempat menyusun pesan kegagalan, supaya penyebab yang berbeda tidak
   // lagi diberi kalimat yang sama. Rincian mentahnya HANYA ke console —
   // sebelumnya ia ikut tercetak di gelembung chat lewat `<!-- Debug: … -->`
   // yang dikira komentar HTML tak terlihat.
-  const ringkas = ringkasGalatAi(errors, { adaGambar: hasImages, superadmin: superadminSaatIni() })
-  console.error('[AI Realisasi] semua penyedia gagal:', ringkas.jenis, errors)
+  const superadmin = superadminSaatIni()
+  const ringkas = ringkasGalatAi(errors, { adaGambar: hasImages, superadmin })
+  const dg: Diagnosa | null = terakhir ? diagnosaAi(terakhir.status, terakhir.badan) : null
+
+  console.error('[AI Realisasi] Gemini gagal:', ringkas.jenis, dg?.sebab ?? '-', errors)
+
+  // Superadmin diberi diagnosis lengkap beserta kalimat asli Google. Dialah
+  // yang bisa membetulkannya, dan tanpa kalimat itu ia hanya bisa menebak
+  // di antara empat sebab yang semuanya berbunyi 403.
+  if (superadmin && dg && dg.sisiKami) {
+    throw new Error(`⚠️ ${ceritaDiagnosa(dg)}`)
+  }
   throw new Error(ringkas.pesan)
 }
 

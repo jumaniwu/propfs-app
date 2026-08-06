@@ -171,26 +171,13 @@ async function callAIMaterialChunk(provider: string, apiKey: string, chunk: stri
 export async function predictMaterialSchedule(
   components: BudgetComponent[]
 ): Promise<MaterialScheduleItem[]> {
-  const geminiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
-  const groqKey = (import.meta as any).env.VITE_GROQ_API_KEY;
-  const orKey = (import.meta as any).env.VITE_OPENROUTER_API_KEY;
-  
-  // Prioritas: Gemini (terbaik untuk reasoning AHSP) → OpenRouter → Groq
-  let provider = '';
-  let activeKey = '';
+  // Gemini saja — lihat catatan yang sama di ai-parser.ts. Untuk penjadwalan
+  // material yang bersandar pada penalaran AHSP, penyedia cadangan pun tak
+  // pernah setara; kini keduanya bahkan tidak menjawab sama sekali.
+  const provider = 'gemini';
+  const activeKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
-  if (geminiKey) {
-    provider = 'gemini';
-    activeKey = geminiKey;
-  } else if (orKey) {
-    provider = 'openrouter';
-    activeKey = orKey;
-  } else if (groqKey) {
-    provider = 'groq';
-    activeKey = groqKey;
-  }
-
-  if (!activeKey) throw new Error('API Key tidak ditemukan di .env.local');
+  if (!activeKey) throw new Error('Kunci Gemini belum dipasang. Isi VITE_GEMINI_API_KEY, lalu deploy ulang.');
 
   // Filter pekerjaan fisik (termasuk yang unitMaterialCost == 0 karena mungkin ada material quant)
   const validComponents = components.filter(c => 
@@ -198,8 +185,7 @@ export async function predictMaterialSchedule(
     c.plannedVolume > 0
   );
 
-  // Chunking: Gemini bisa handle lebih besar, Groq lebih kecil
-  const CHUNK_SIZE = provider === 'gemini' ? 50 : 30;
+  const CHUNK_SIZE = 50;
   const rabChunks: string[] = [];
   
   for (let i = 0; i < validComponents.length; i += CHUNK_SIZE) {
@@ -221,7 +207,7 @@ export async function predictMaterialSchedule(
     allMaterials.push(...items);
     
     if (i < rabChunks.length - 1) {
-      await new Promise(r => setTimeout(r, provider === 'groq' ? 2000 : 1500));
+      await new Promise(r => setTimeout(r, 1500));
     }
   }
 
