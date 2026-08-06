@@ -10,6 +10,7 @@
 // ============================================================
 
 import type { DoItem } from './penerimaan'
+import { MODEL_TEKS } from './modelAi.ts'
 
 export interface HasilBacaDo {
   nomor_do: string
@@ -166,7 +167,7 @@ export async function bacaNotaDo(
   ]
 
   let galat = ''
-  for (const model of ['gemini-2.5-flash', 'gemini-2.0-flash']) {
+  for (const model of MODEL_TEKS) {
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,

@@ -7,6 +7,7 @@
 
 import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
 import { catatGambar } from '../store/usageStore'
+import { MODEL_TEKS, MODEL_GAMBAR } from './modelAi'
 
 export interface CadQuestion {
   id: string
@@ -35,8 +36,8 @@ export interface CadRenderedView {
   dataUrl: string
 }
 
-const GEMINI_TEXT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash']
-const GEMINI_IMAGE_MODELS = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation']
+const GEMINI_TEXT_MODELS = MODEL_TEKS
+const GEMINI_IMAGE_MODELS = MODEL_GAMBAR
 
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
 
@@ -46,7 +47,7 @@ function getKey(): string {
   return key
 }
 
-async function callGemini(models: string[], parts: Part[], imageOut: boolean): Promise<{ text: string; image: string | null }> {
+async function callGemini(models: readonly string[], parts: Part[], imageOut: boolean): Promise<{ text: string; image: string | null }> {
   const key = getKey()
   const body = {
     contents: [{ parts }],

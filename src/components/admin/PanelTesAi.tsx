@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Stethoscope, CheckCircle2, XCircle, MinusCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { tesKunciAi, kesimpulanTes, sidikKunci, kunciTerpasang, type HasilTes } from '@/lib/tesAi'
+import { periksaKunci } from '@/lib/modelAi'
 
 /**
  * Memeriksa kunci AI, sekarang juga.
@@ -84,6 +85,11 @@ export default function PanelTesAi() {
             placeholder="AIzaSy…"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
           />
+          {kunciCoba.trim() && !periksaKunci(kunciCoba).layak && (
+            <p data-kunci-salah className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
+              {periksaKunci(kunciCoba).pesan}
+            </p>
+          )}
           <Button
             onClick={() => void jalankan(kunciCoba)}
             disabled={jalan || !kunciCoba.trim()}
@@ -134,6 +140,43 @@ export default function PanelTesAi() {
                   <b>Kata Google:</b> {dg.asli}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Jawaban atas "bisa tidak naik ke model yang lebih pintar", diambil
+              dari katalog Google saat itu juga — bukan dari ingatan siapa pun,
+              dan bukan dengan menebak nama lalu menunggu 404. */}
+          {hasil.ok && hasil.model.length > 0 && (
+            <div data-model-tersedia className="rounded-xl bg-slate-50 border border-border p-3 space-y-2">
+              <p className="text-sm font-bold text-navy">
+                {hasil.model.length} model tersedia untuk kunci ini
+              </p>
+              {hasil.modelDipakai && (
+                <p className="text-xs text-muted-foreground">
+                  Aplikasi akan memakai <b className="text-navy">{hasil.modelDipakai}</b> —
+                  yang terpintar di antara yang tersedia.
+                </p>
+              )}
+              {hasil.modelLebihBaik && (
+                <p className="text-xs bg-gold/10 border border-gold/30 rounded-lg p-2">
+                  Ada yang lebih baik daripada yang biasa dipakai:{' '}
+                  <b>{hasil.modelLebihBaik}</b>. Aplikasi otomatis memilihnya.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {hasil.model.slice(0, 24).map(m => (
+                  <span key={m.nama}
+                    className={`text-[10px] font-mono rounded-md px-1.5 py-0.5 border ${
+                      m.nama === hasil.modelDipakai ? 'bg-navy text-white border-navy'
+                        : m.gambar ? 'bg-gold/15 text-navy border-gold/40'
+                        : 'bg-background text-muted-foreground border-border'}`}>
+                    {m.nama}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Kotak emas = model gambar (jauh lebih mahal per panggilan).
+              </p>
             </div>
           )}
 

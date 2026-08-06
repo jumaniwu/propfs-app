@@ -7,6 +7,7 @@
 // ============================================================
 
 import type { SiteplanConcept } from '@/engine/siteplan/layout.ts'
+import { MODEL_TEKS } from './modelAi'
 
 export interface AIZone {
   /** jenis zona yang teridentifikasi, mis. "ruko", "apartemen", "commercial plaza" */
@@ -82,7 +83,7 @@ async function callGeminiVision(apiKey: string, parts: GeminiPart[]): Promise<st
     contents: [{ parts }],
     generationConfig: { temperature: 0.2 },
   }
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash']
+  const models = MODEL_TEKS
   let lastErr = ''
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
