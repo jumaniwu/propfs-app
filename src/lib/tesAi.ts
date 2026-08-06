@@ -1,5 +1,5 @@
 // ============================================================
-// PropFS — Menguji kunci layanan AI, sekarang juga
+// PropFS — Menguji kunci Gemini, sekarang juga
 //
 // Ketika kunci AI ditolak, satu-satunya cara mengetahui apakah ia sudah pulih
 // adalah membuka Chat AI, mengetik pesan, melampirkan foto, dan menunggu.
@@ -7,21 +7,20 @@
 // dan setelah membereskan penagihan di Google orang perlu menanyakannya
 // berkali-kali — perubahan izin di sisi Google tidak selalu berlaku seketika.
 //
-// Modul ini mengetuk tiap penyedia dengan permintaan sekecil mungkin dan
-// melaporkan APA yang dijawab: berhasil, ditolak izinnya, kehabisan kuota,
-// sedang padat, atau jaringannya yang putus. Bukan "gagal" saja.
+// Yang diuji hanya Gemini. Penyedia cadangan sudah dihapus dari aplikasi:
+// keduanya melayani teks saja, sedangkan yang paling dipakai di sini adalah
+// membaca foto nota — yang memang cuma bisa lewat Gemini. Menguji layanan yang
+// tidak lagi dipanggil hanya menjawab pertanyaan yang tidak sedang ditanyakan.
 //
-// Sengaja TIDAK memakai model yang mahal maupun mengirim gambar: yang sedang
+// Sengaja TIDAK memakai model mahal maupun mengirim gambar: yang sedang
 // ditanyakan adalah izin kuncinya, bukan kemampuan modelnya.
 // ============================================================
 
 import { batasWaktu } from './batasWaktu.ts'
 import { jenisGalat, type JenisGalat } from './galatAi.ts'
-
-export type Penyedia = 'Gemini' | 'OpenRouter' | 'Groq'
+import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
 
 export interface HasilTes {
-  penyedia: Penyedia
   /** Kuncinya terpasang di lingkungan aplikasi. */
   adaKunci: boolean
   ok: boolean
@@ -29,6 +28,11 @@ export interface HasilTes {
   jenis: JenisGalat | null
   /** Satu kalimat pendek, siap ditampilkan. */
   pesan: string
+  /**
+   * Sebab dan langkah perbaikannya. Inilah bedanya dengan sekadar "403":
+   * empat keadaan berbeda sama-sama berbunyi 403, dan perbaikannya berlainan.
+   */
+  diagnosa: Diagnosa | null
   /** Lama menunggu, milidetik. */
   ms: number
 }
@@ -44,99 +48,77 @@ const PESAN: Record<JenisGalat, string> = {
   lain: 'Ditolak dengan alasan yang tidak dikenali',
 }
 
-/** Ambil sebab ringkas dari badan respons, untuk ditempelkan ke pesan. */
-function sebab(teks: string): string {
-  const kode = /"code"\s*:\s*(\d{3})/.exec(teks)?.[1] ?? ''
-  const status = /"status"\s*:\s*"([A-Z_]+)"/.exec(teks)?.[1] ?? ''
-  return [kode, status].filter(Boolean).join(' ')
-}
-
-async function ketuk(
-  penyedia: Penyedia,
-  kunci: string | undefined,
-  jalankan: (k: string) => Promise<Response>,
-): Promise<HasilTes> {
-  const mulai = Date.now()
-  const k = (kunci ?? '').trim()
-  if (!k) {
-    return { penyedia, adaKunci: false, ok: false, jenis: null, pesan: 'Kunci belum dipasang', ms: 0 }
-  }
-
-  try {
-    const res = await batasWaktu(jalankan(k), 20000, null)
-    const ms = Date.now() - mulai
-    if (!res) return { penyedia, adaKunci: true, ok: false, jenis: 'jaringan', pesan: 'Tidak menjawab dalam 20 detik', ms }
-    if (res.ok) return { penyedia, adaKunci: true, ok: true, jenis: null, pesan: 'Berhasil', ms }
-
-    const teks = await res.text().catch(() => '')
-    const jenis = jenisGalat(`${res.status} ${teks}`)
-    const rinci = sebab(teks) || String(res.status)
-    return { penyedia, adaKunci: true, ok: false, jenis, pesan: `${PESAN[jenis]} (${rinci})`, ms }
-  } catch (e) {
-    const jenis = jenisGalat(e)
-    return { penyedia, adaKunci: true, ok: false, jenis, pesan: PESAN[jenis], ms: Date.now() - mulai }
-  }
-}
-
 /**
- * Ketuk semua penyedia AI yang kuncinya terpasang.
+ * Ketuk Gemini dengan permintaan sekecil mungkin.
  *
- * Dijalankan berbarengan: yang ditunggu pemakainya adalah penyedia terlambat,
- * bukan jumlah seluruhnya. Tidak pernah melempar — setiap penyedia melaporkan
- * keadaannya sendiri, dan satu yang mati tidak menyembunyikan yang lain.
+ * Tidak pernah melempar: yang ditanyakan adalah keadaan, dan "gagal" pun
+ * merupakan jawaban yang harus sampai utuh ke layar.
  */
-export async function tesKunciAi(): Promise<HasilTes[]> {
-  const tiruan = (globalThis as { __tesAiMock?: () => Promise<HasilTes[]> }).__tesAiMock
+export async function tesKunciAi(): Promise<HasilTes> {
+  const tiruan = (globalThis as { __tesAiMock?: () => Promise<HasilTes> }).__tesAiMock
   if (tiruan) return tiruan()
 
-  const e = env()
-  const badanKecil = { contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 1 } }
+  const kunci = (env().VITE_GEMINI_API_KEY ?? '').trim()
+  if (!kunci) {
+    return {
+      adaKunci: false, ok: false, jenis: null, ms: 0,
+      pesan: 'Kunci belum dipasang',
+      diagnosa: diagnosaAi(undefined, 'No Gemini key'),
+    }
+  }
 
-  return Promise.all([
-    ketuk('Gemini', e.VITE_GEMINI_API_KEY, k => fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${k}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(badanKecil) },
-    )),
-    ketuk('OpenRouter', e.VITE_OPENROUTER_API_KEY, k => fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
+  const mulai = Date.now()
+  try {
+    const res = await batasWaktu(fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${kunci}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${k}` },
-        body: JSON.stringify({ model: 'meta-llama/llama-4-scout:free', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'ping' }] }],
+          generationConfig: { maxOutputTokens: 1 },
+        }),
       },
-    )),
-    ketuk('Groq', e.VITE_GROQ_API_KEY, k => fetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${k}` },
-        body: JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 }),
-      },
-    )),
-  ])
+    ), 20000, null)
+    const ms = Date.now() - mulai
+
+    if (!res) {
+      return {
+        adaKunci: true, ok: false, jenis: 'jaringan', ms,
+        pesan: 'Tidak menjawab dalam 20 detik',
+        diagnosa: diagnosaAi(undefined, 'timeout'),
+      }
+    }
+    if (res.ok) {
+      return { adaKunci: true, ok: true, jenis: null, ms, pesan: 'Berhasil', diagnosa: null }
+    }
+
+    const badan = await res.text().catch(() => '')
+    const jenis = jenisGalat(`${res.status} ${badan}`)
+    return {
+      adaKunci: true, ok: false, jenis, ms,
+      pesan: `${PESAN[jenis]} (${res.status})`,
+      diagnosa: diagnosaAi(res.status, badan),
+    }
+  } catch (e) {
+    const jenis = jenisGalat(e)
+    return {
+      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai,
+      pesan: PESAN[jenis],
+      diagnosa: diagnosaAi(undefined, e instanceof Error ? e.message : e),
+    }
+  }
 }
 
 /**
- * Satu kalimat kesimpulan dari seluruh hasil.
+ * Satu kalimat kesimpulan.
  *
- * Yang menentukan bukan berapa banyak yang berhasil, melainkan apakah
- * pembacaan FOTO bisa jalan — dan itu hanya Gemini. OpenRouter dan Groq
- * melayani teks saja, jadi "dua dari tiga berhasil" bisa berarti fitur yang
- * paling dikeluhkan tetap mati.
+ * Gemini adalah satu-satunya penyedia yang dipakai aplikasi, jadi keadaannya
+ * langsung menentukan apakah Chat AI dan pembacaan foto nota bisa dipakai.
  */
-export function kesimpulanTes(hasil: HasilTes[]): { siap: boolean; pesan: string } {
-  const gemini = (hasil ?? []).find(h => h.penyedia === 'Gemini')
-  const adaTeks = (hasil ?? []).some(h => h.ok)
-
-  if (gemini?.ok) return { siap: true, pesan: 'Semua siap — baca nota dari foto sudah bisa dipakai.' }
-  if (adaTeks) {
-    return {
-      siap: false,
-      pesan: 'Chat teks bisa jalan, tetapi BACA FOTO belum: itu hanya lewat Gemini, dan Gemini masih menolak.',
-    }
-  }
-  if (!(hasil ?? []).some(h => h.adaKunci)) {
-    return { siap: false, pesan: 'Belum ada satu pun kunci AI yang terpasang di aplikasi.' }
-  }
-  return { siap: false, pesan: 'Belum ada penyedia AI yang bisa dipakai.' }
+export function kesimpulanTes(hasil: HasilTes | null): { siap: boolean; pesan: string } {
+  if (!hasil) return { siap: false, pesan: 'Belum diuji.' }
+  if (hasil.ok) return { siap: true, pesan: 'Gemini siap — Chat AI dan baca nota dari foto bisa dipakai.' }
+  if (!hasil.adaKunci) return { siap: false, pesan: 'Kunci Gemini belum terpasang di aplikasi.' }
+  return { siap: false, pesan: hasil.diagnosa?.apa ?? 'Gemini belum bisa dipakai.' }
 }

@@ -342,30 +342,17 @@ export async function parseRABwithGemini(
   extractedText: string,
   onProgress?: (done: number, total: number) => void
 ): Promise<BudgetComponent[]> {
-  const groqKey = (import.meta as any).env.VITE_GROQ_API_KEY;
-  const orKey = (import.meta as any).env.VITE_OPENROUTER_API_KEY;
-  const geminiKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
-  
-  let provider = '';
-  let activeKey = '';
-
-  // Priority: Gemini > OpenRouter > Groq
-  if (geminiKey) {
-    provider = 'gemini';
-    activeKey = geminiKey;
-  } else if (orKey) {
-    provider = 'openrouter';
-    activeKey = orKey;
-  } else if (groqKey) {
-    provider = 'groq';
-    activeKey = groqKey;
-  }
+  // Gemini saja. OpenRouter & Groq dulu terdaftar sebagai cadangan, tetapi
+  // hanya terpakai bila kunci Gemini kosong — dan keduanya kini menolak semua
+  // panggilan (model gratis OpenRouter tertutup kebijakan data, model Groq yang
+  // terdaftar sudah dihentikan). Menyimpannya cuma menukar pesan "kunci Gemini
+  // belum dipasang" yang jelas dengan kegagalan yang membingungkan.
+  const provider = 'gemini';
+  const activeKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
 
   if (!activeKey) {
-    throw new Error('API Key tidak ditemukan. Isi VITE_GROQ_API_KEY atau VITE_GEMINI_API_KEY di .env.local.');
+    throw new Error('Kunci Gemini belum dipasang. Isi VITE_GEMINI_API_KEY, lalu deploy ulang.');
   }
-
-  console.log(`[RAB Parser] Using: ${provider}`);
 
   if (!extractedText || extractedText.trim().length < 20) {
     throw new Error("File Excel kosong atau konten tidak bisa dibaca. Pastikan file berisi tabel RAB.");
