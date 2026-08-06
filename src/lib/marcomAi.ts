@@ -19,6 +19,7 @@
 import { batasWaktu } from './batasWaktu.ts'
 import type { ProfilMarcom } from './marcom.ts'
 import { bersihkanHashtag, namaTampil } from './marcom.ts'
+import { catatGambar } from '../store/usageStore'
 
 const kunci = (): string =>
   (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_GEMINI_API_KEY ?? ''
@@ -245,7 +246,11 @@ export async function rapikanFoto(dataUrl: string): Promise<HasilRapikan> {
       }>
       const b64 = bagian.find(p => p.inlineData?.data || p.inline_data?.data)
       const isi = b64?.inlineData?.data ?? b64?.inline_data?.data
-      if (isi) return { dataUrl: `data:image/png;base64,${isi}`, sumber: 'ai' }
+      if (isi) {
+        // Satu ketukan "Rapikan foto" = satu gambar berbayar.
+        catatGambar('marcom_foto', model, 1, ARAHAN_RAPIKAN)
+        return { dataUrl: `data:image/png;base64,${isi}`, sumber: 'ai' }
+      }
     } catch {
       // model berikutnya
     }

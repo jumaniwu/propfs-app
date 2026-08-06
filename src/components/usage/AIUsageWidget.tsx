@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { Zap, TrendingUp, Package, Hammer, AlertTriangle, BarChart2 } from 'lucide-react'
-import { useUsageStore, PLAN_AI_BUDGET_IDR } from '@/store/usageStore'
+import { Zap, TrendingUp, Package, Hammer, AlertTriangle, BarChart2, Image as ImageIcon } from 'lucide-react'
+import { LABEL_FITUR, type AIFeature, useUsageStore, PLAN_AI_BUDGET_IDR } from '@/store/usageStore'
 
 // Warna untuk provider
 const PROVIDER_COLOR: Record<string, string> = {
@@ -88,11 +88,19 @@ export default function AIUsageWidget({ planId = CURRENT_PLAN }: { planId?: stri
           <p className="text-lg font-black text-white">{summary.callCount}</p>
           <p className="text-[10px] text-white/40 mt-0.5">Request AI</p>
         </div>
+        {/* Jumlah gambar berdiri sendiri, bukan dilebur ke hitungan token.
+            Satu gambar berharga puluhan kali satu percakapan teks, jadi
+            menyembunyikannya di balik angka token membuat pos biaya terbesar
+            justru yang paling tidak terlihat. */}
         <div className="bg-white/[0.04] rounded-2xl p-3">
           <p className="text-lg font-black text-white">
-            {((summary.totalInputTokens + summary.totalOutputTokens) / 1000).toFixed(1)}K
+            {summary.totalImages > 0
+              ? summary.totalImages
+              : `${((summary.totalInputTokens + summary.totalOutputTokens) / 1000).toFixed(1)}K`}
           </p>
-          <p className="text-[10px] text-white/40 mt-0.5">Total Token</p>
+          <p className="text-[10px] text-white/40 mt-0.5">
+            {summary.totalImages > 0 ? 'Gambar AI' : 'Total Token'}
+          </p>
         </div>
         <div className="bg-white/[0.04] rounded-2xl p-3">
           <p className="text-lg font-black text-white">
@@ -103,6 +111,23 @@ export default function AIUsageWidget({ planId = CURRENT_PLAN }: { planId?: stri
           <p className="text-[10px] text-white/40 mt-0.5">Biaya AI</p>
         </div>
       </div>
+
+      {/* Berapa dari tagihan ini yang berasal dari pembuatan gambar.
+          Inilah pertanyaan yang tidak bisa dijawab sebelumnya ketika tagihan
+          di Google melonjak dalam sehari. */}
+      {summary.totalCostImageIDR > 0 && (
+        <div className="flex items-start gap-2 rounded-2xl bg-gold/10 border border-gold/25 p-3">
+          <ImageIcon className="w-3.5 h-3.5 text-gold mt-0.5 shrink-0" />
+          <p className="text-[11px] text-white/70 leading-relaxed">
+            <b className="text-gold">
+              Rp {summary.totalCostImageIDR.toLocaleString('id-ID')}
+            </b>{' '}
+            ({Math.round((summary.totalCostImageIDR / Math.max(1, summary.totalCostIDR)) * 100)}%)
+            berasal dari {summary.totalImages} gambar AI. Satu gambar puluhan kali lebih mahal
+            daripada satu percakapan teks.
+          </p>
+        </div>
+      )}
 
       {/* Usage by Feature */}
       {Object.keys(summary.byFeature).length > 0 && (
@@ -116,8 +141,9 @@ export default function AIUsageWidget({ planId = CURRENT_PLAN }: { planId?: stri
                 <div className="flex items-center gap-2 text-white/60">
                   {feat === 'rab_parser' ? <Package className="w-3 h-3" /> :
                    feat === 'material_schedule' ? <TrendingUp className="w-3 h-3" /> :
-                   <Hammer className="w-3 h-3" />}
-                  <span>{feat === 'rab_parser' ? 'Upload RAB' : feat === 'realisasi_chat' ? 'Chat Cost' : 'Material AI'}</span>
+                   feat === 'realisasi_chat' ? <Hammer className="w-3 h-3" /> :
+                   <ImageIcon className="w-3 h-3 text-gold" />}
+                  <span>{LABEL_FITUR[feat as AIFeature] ?? feat}</span>
                   <span className="text-white/30">{data.calls}×</span>
                 </div>
                 <span className="text-white/60 font-bold">Rp {data.costIDR.toLocaleString('id-ID')}</span>

@@ -10,6 +10,7 @@
 import type { SiteplanResult } from '@/engine/siteplan/layout.ts'
 import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
 import { renderIsometric } from '@/components/siteplan/render3d.ts'
+import { catatGambar } from '../store/usageStore'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
 export type RenderStyle = 'modern-minimalis' | 'tropis' | 'klasik' | 'industrial'
@@ -98,6 +99,9 @@ ${opts.sketchDataUrl ? '\nGAMBAR KEDUA adalah foto udara lokasi asli dengan core
 - Fotorealistis kualitas presentasi developer, rasio 16:9 landscape.`
 }
 
+/** Model gambar yang dicoba lebih dulu — dan yang tarifnya dipakai mencatat. */
+const MODEL_GAMBAR_UTAMA = 'gemini-2.5-flash-image'
+
 async function callGeminiImage(
   apiKey: string, prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
 ): Promise<string> {
@@ -110,7 +114,7 @@ async function callGeminiImage(
     contents: [{ parts }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
-  const models = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation']
+  const models = [MODEL_GAMBAR_UTAMA, 'gemini-2.0-flash-preview-image-generation']
   let lastErr = ''
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
@@ -170,9 +174,14 @@ export async function renderMasterplanViews(
     //    tanpa key / gagal → tampilkan skematiknya langsung
     if (geminiKey) {
       try {
+        const prompt = buildPrompt(result, opts)
         const dataUrl = await callGeminiImage(
-          geminiKey, buildPrompt(result, opts), schematicUrl.split(',')[1], sketch,
+          geminiKey, prompt, schematicUrl.split(',')[1], sketch,
         )
+        // Satu sudut = satu gambar berbayar. Merender tiga sudut sekaligus
+        // adalah pemakaian biasa, jadi yang terasa "sekali tekan" sebenarnya
+        // tiga kali bayar — dan sebelumnya tak satu pun dari tiga itu tercatat.
+        catatGambar('render_masterplan', MODEL_GAMBAR_UTAMA, 1, prompt)
         views.push({ angle, label: RENDER_ANGLE_LABELS[angle], dataUrl, source: 'ai' })
         onProgress?.(i + 1, opts.angles.length, RENDER_ANGLE_LABELS[angle])
         continue

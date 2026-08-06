@@ -6,6 +6,7 @@
 // ============================================================
 
 import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
+import { catatGambar } from '../store/usageStore'
 
 export interface CadQuestion {
   id: string
@@ -64,11 +65,21 @@ async function callGemini(models: string[], parts: Part[], imageOut: boolean): P
     const text = outParts.map(p => p.text ?? '').join('')
     const img = outParts.find(p => p.inlineData?.data || p.inline_data?.data)
     const b64 = img?.inlineData?.data ?? img?.inline_data?.data ?? null
-    if (text || b64) return { text, image: b64 ? `data:image/png;base64,${b64}` : null }
+    if (text || b64) {
+      // Dicatat hanya bila gambar benar-benar terbentuk: itulah yang ditagih
+      // per keluaran, dan sebelumnya tidak ada satu pun render CAD yang
+      // meninggalkan jejak di panel AI Billing.
+      if (imageOut && b64) catatGambar('render_cad', model, 1, teksPrompt(parts))
+      return { text, image: b64 ? `data:image/png;base64,${b64}` : null }
+    }
     lastErr = 'Respons AI kosong.'
   }
   throw new Error(`Gagal memanggil AI (${lastErr}).`)
 }
+
+/** Bagian teks dari prompt, untuk memperkirakan token masukannya. */
+const teksPrompt = (parts: Part[]): string =>
+  parts.map(p => ('text' in p ? p.text : '')).join(' ')
 
 function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json|```/g, '').trim()
