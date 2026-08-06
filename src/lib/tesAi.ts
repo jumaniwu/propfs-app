@@ -19,6 +19,10 @@
 import { batasWaktu } from './batasWaktu.ts'
 import { jenisGalat, type JenisGalat } from './galatAi.ts'
 import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
+import {
+  periksaKunci, saringModel, pilihModel, adaYangLebihBaik,
+  MODEL_TEKS, type ModelGemini, type PeriksaKunci,
+} from './modelAi.ts'
 
 export interface HasilTes {
   /** Kuncinya terpasang di lingkungan aplikasi. */
@@ -43,6 +47,17 @@ export interface HasilTes {
   diagnosa: Diagnosa | null
   /** Lama menunggu, milidetik. */
   ms: number
+  /** Bentuk kuncinya benar sebelum dikirim. */
+  periksa: PeriksaKunci
+  /**
+   * Model yang BOLEH dipakai kunci ini, langsung dari katalog Google.
+   * Kosong bila pengujiannya gagal — pertanyaannya belum sempat diajukan.
+   */
+  model: ModelGemini[]
+  /** Model yang akan dipakai aplikasi untuk percakapan & baca foto. */
+  modelDipakai: string | null
+  /** Ada model yang lebih baik daripada yang biasa dipakai; null bila tidak. */
+  modelLebihBaik: string | null
 }
 
 const env = (): Record<string, string | undefined> =>
@@ -95,12 +110,29 @@ export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
   const sumberKunci: 'aplikasi' | 'manual' = manual ? 'manual' : 'aplikasi'
   const kunci = manual || kunciTerpasang()
   const sidik = sidikKunci(kunci)
+  const periksa = periksaKunci(kunci)
+  const kosong = { model: [] as ModelGemini[], modelDipakai: null, modelLebihBaik: null }
 
   if (!kunci) {
     return {
-      adaKunci: false, ok: false, jenis: null, ms: 0, sumberKunci, sidik,
+      adaKunci: false, ok: false, jenis: null, ms: 0, sumberKunci, sidik, periksa, ...kosong,
       pesan: 'Kunci belum dipasang',
       diagnosa: diagnosaAi(undefined, 'No Gemini key'),
+    }
+  }
+
+  // Kredensial yang salah jenis dihentikan di sini. Mengirimnya hanya
+  // menghasilkan 401/403 yang bunyinya sama dengan kunci sah yang belum
+  // diizinkan — dan sebab yang sebenarnya jadi tertutup lagi.
+  if (!periksa.layak) {
+    return {
+      adaKunci: true, ok: false, jenis: 'kunci', ms: 0, sumberKunci, sidik, periksa, ...kosong,
+      pesan: 'Bentuk kuncinya tidak benar',
+      diagnosa: {
+        sebab: 'kunci_salah', apa: periksa.pesan,
+        perbaikan: 'Ambil API key di Google AI Studio, lalu uji ulang di sini.',
+        tautan: 'https://aistudio.google.com/apikey', asli: '', sisiKami: true,
+      },
     }
   }
 
@@ -121,30 +153,57 @@ export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
 
     if (!res) {
       return {
-        adaKunci: true, ok: false, jenis: 'jaringan', ms, sumberKunci, sidik,
+        adaKunci: true, ok: false, jenis: 'jaringan', ms, sumberKunci, sidik, periksa, ...kosong,
         pesan: 'Tidak menjawab dalam 20 detik',
         diagnosa: diagnosaAi(undefined, 'timeout'),
       }
     }
     if (res.ok) {
-      return { adaKunci: true, ok: true, jenis: null, ms, sumberKunci, sidik, pesan: 'Berhasil', diagnosa: null }
+      // Kuncinya jalan; sekarang tanyakan model apa saja yang BOLEH dipakainya.
+      // Menanyakan lebih murah dan lebih jujur daripada menebak nama lalu
+      // menunggu 404 — dan jawabannya tidak pernah basi.
+      const model = await daftarModelAi(kunci)
+      const modelDipakai = pilihModel(model, MODEL_TEKS)
+      return {
+        adaKunci: true, ok: true, jenis: null, ms, sumberKunci, sidik, periksa,
+        model, modelDipakai,
+        modelLebihBaik: adaYangLebihBaik(model, MODEL_DIPAKAI_SEKARANG),
+        pesan: 'Berhasil', diagnosa: null,
+      }
     }
 
     const badan = await res.text().catch(() => '')
     const jenis = jenisGalat(`${res.status} ${badan}`)
     return {
-      adaKunci: true, ok: false, jenis, ms, sumberKunci, sidik,
+      adaKunci: true, ok: false, jenis, ms, sumberKunci, sidik, periksa, ...kosong,
       pesan: `${PESAN[jenis]} (${res.status})`,
       diagnosa: diagnosaAi(res.status, badan),
     }
   } catch (e) {
     const jenis = jenisGalat(e)
     return {
-      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai, sumberKunci, sidik,
+      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai, sumberKunci, sidik, periksa, ...kosong,
       pesan: PESAN[jenis],
       diagnosa: diagnosaAi(undefined, e instanceof Error ? e.message : e),
     }
   }
+}
+
+/**
+ * Katalog model yang boleh dipakai sebuah kunci, langsung dari Google.
+ *
+ * Tidak pernah melempar: daftar kosong berarti pertanyaannya tidak terjawab,
+ * dan itu tidak boleh menggagalkan pengujian kunci yang sudah berhasil.
+ */
+export async function daftarModelAi(kunci: string): Promise<ModelGemini[]> {
+  try {
+    const res = await batasWaktu(
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${kunci}&pageSize=200`),
+      15000, null,
+    )
+    if (!res || !res.ok) return []
+    return saringModel(await res.json())
+  } catch { return [] }
 }
 
 /**
@@ -153,6 +212,9 @@ export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
  * Gemini adalah satu-satunya penyedia yang dipakai aplikasi, jadi keadaannya
  * langsung menentukan apakah Chat AI dan pembacaan foto nota bisa dipakai.
  */
+/** Model yang dipakai jalur percakapan hari ini — dibandingkan dengan katalog. */
+const MODEL_DIPAKAI_SEKARANG = 'gemini-2.5-flash'
+
 export function kesimpulanTes(hasil: HasilTes | null): { siap: boolean; pesan: string } {
   if (!hasil) return { siap: false, pesan: 'Belum diuji.' }
   if (hasil.ok) {

@@ -11,6 +11,7 @@ import type { SiteplanResult } from '@/engine/siteplan/layout.ts'
 import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
 import { renderIsometric } from '@/components/siteplan/render3d.ts'
 import { catatGambar } from '../store/usageStore'
+import { MODEL_GAMBAR } from './modelAi'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
 export type RenderStyle = 'modern-minimalis' | 'tropis' | 'klasik' | 'industrial'
@@ -114,7 +115,7 @@ async function callGeminiImage(
     contents: [{ parts }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
-  const models = [MODEL_GAMBAR_UTAMA, 'gemini-2.0-flash-preview-image-generation']
+  const models = MODEL_GAMBAR
   let lastErr = ''
   for (const model of models) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`

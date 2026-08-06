@@ -20,6 +20,7 @@ import { batasWaktu } from './batasWaktu.ts'
 import type { ProfilMarcom } from './marcom.ts'
 import { bersihkanHashtag, namaTampil } from './marcom.ts'
 import { catatGambar } from '../store/usageStore'
+import { MODEL_GAMBAR } from './modelAi'
 
 const kunci = (): string =>
   (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_GEMINI_API_KEY ?? ''
@@ -230,7 +231,7 @@ export async function rapikanFoto(dataUrl: string): Promise<HasilRapikan> {
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
 
-  for (const model of ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation']) {
+  for (const model of MODEL_GAMBAR) {
     try {
       const res = await batasWaktu(
         fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {

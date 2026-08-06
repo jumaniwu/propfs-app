@@ -6,6 +6,7 @@ import { diagnosaAi, ceritaDiagnosa, pesanPenyedia, type Diagnosa } from './diag
 import { useAuthStore } from '../store/authStore'
 import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
+import { MODEL_TEKS } from './modelAi'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
 
@@ -432,7 +433,7 @@ export async function chatRealisasiWithGemini(
   const hasImages = (newMessage.files?.length ?? 0) > 0
 
   const errors: string[] = []
-  const geminiModels = ['gemini-2.5-flash', 'gemini-2.0-flash']
+  const geminiModels = MODEL_TEKS
   const inputContext  = sysInstruction + (newMessage.text ?? '')
 
   // Kegagalan yang tidak akan membaik — kunci ditolak, kuota habis — membatalkan

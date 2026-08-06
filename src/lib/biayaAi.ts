@@ -47,6 +47,10 @@ export interface TarifModel {
  */
 export const TARIF: Record<string, TarifModel> = {
   'gemini-2.5-flash':      { masukan: 0.30, keluaran: 2.50, perGambar: 0, gambar: false },
+  // Beberapa kali lipat Flash — didaftarkan supaya kalau suatu saat dipakai,
+  // biayanya terhitung benar sejak panggilan pertama, bukan setelah tagihannya
+  // datang.
+  'gemini-2.5-pro':        { masukan: 1.25, keluaran: 10.00, perGambar: 0, gambar: false },
   'gemini-2.0-flash':      { masukan: 0.10, keluaran: 0.40, perGambar: 0, gambar: false },
   'gemini-2.5-flash-image': { masukan: 0.30, keluaran: 2.50, perGambar: 0.039, gambar: true },
   'gemini-2.0-flash-preview-image-generation':
