@@ -23,6 +23,14 @@ import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
 export interface HasilTes {
   /** Kuncinya terpasang di lingkungan aplikasi. */
   adaKunci: boolean
+  /** Kunci mana yang barusan diuji. */
+  sumberKunci: 'aplikasi' | 'manual'
+  /**
+   * Sidik kunci yang diuji — cukup untuk MENCOCOKKAN dengan kunci di Google
+   * Console, tidak cukup untuk dipakai. Tanpa ini tidak ada cara memastikan
+   * bahwa kunci yang benar-benar dipakai aplikasi adalah kunci yang dikira.
+   */
+  sidik: string
   ok: boolean
   /** Jenis kegagalan; null bila berhasil atau kuncinya memang belum dipasang. */
   jenis: JenisGalat | null
@@ -40,6 +48,25 @@ export interface HasilTes {
 const env = (): Record<string, string | undefined> =>
   (import.meta as unknown as { env: Record<string, string | undefined> }).env ?? {}
 
+/** Kunci yang benar-benar terpasang di build yang sedang berjalan. */
+export const kunciTerpasang = (): string => (env().VITE_GEMINI_API_KEY ?? '').trim()
+
+/**
+ * Sidik kunci: awal, akhir, dan panjangnya.
+ *
+ * Setelah membayar, sebab 403 yang paling sering adalah kunci yang berasal dari
+ * project LAIN — bukan project yang dibayar. Menyamakan kunci di aplikasi
+ * dengan kunci di Google Console adalah cara tercepat membuktikannya, dan itu
+ * mustahil bila kuncinya tak terlihat sama sekali. Yang ditampilkan sengaja
+ * tidak cukup untuk dipakai orang lain.
+ */
+export function sidikKunci(kunci: unknown): string {
+  const k = String(kunci ?? '').trim()
+  if (!k) return '(kosong)'
+  if (k.length <= 12) return `${'•'.repeat(k.length)} · ${k.length} karakter`
+  return `${k.slice(0, 6)}…${k.slice(-4)} · ${k.length} karakter`
+}
+
 const PESAN: Record<JenisGalat, string> = {
   kunci: 'Ditolak — izin/kunci belum berlaku',
   kuota: 'Kuota habis',
@@ -54,14 +81,24 @@ const PESAN: Record<JenisGalat, string> = {
  * Tidak pernah melempar: yang ditanyakan adalah keadaan, dan "gagal" pun
  * merupakan jawaban yang harus sampai utuh ke layar.
  */
-export async function tesKunciAi(): Promise<HasilTes> {
-  const tiruan = (globalThis as { __tesAiMock?: () => Promise<HasilTes> }).__tesAiMock
-  if (tiruan) return tiruan()
+export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
+  const tiruan = (globalThis as {
+    __tesAiMock?: (k?: string) => Promise<HasilTes>
+  }).__tesAiMock
+  if (tiruan) return tiruan(kunciManual)
 
-  const kunci = (env().VITE_GEMINI_API_KEY ?? '').trim()
+  // Kunci yang diketik manual TIDAK disimpan di mana pun: ia hidup selama satu
+  // panggilan lalu hilang. Gunanya menghapus siklus deploy dari proses
+  // coba-coba — kunci baru bisa dibuktikan dalam hitungan detik, bukan setelah
+  // mengubah environment variable dan menunggu build.
+  const manual = (kunciManual ?? '').trim()
+  const sumberKunci: 'aplikasi' | 'manual' = manual ? 'manual' : 'aplikasi'
+  const kunci = manual || kunciTerpasang()
+  const sidik = sidikKunci(kunci)
+
   if (!kunci) {
     return {
-      adaKunci: false, ok: false, jenis: null, ms: 0,
+      adaKunci: false, ok: false, jenis: null, ms: 0, sumberKunci, sidik,
       pesan: 'Kunci belum dipasang',
       diagnosa: diagnosaAi(undefined, 'No Gemini key'),
     }
@@ -84,26 +121,26 @@ export async function tesKunciAi(): Promise<HasilTes> {
 
     if (!res) {
       return {
-        adaKunci: true, ok: false, jenis: 'jaringan', ms,
+        adaKunci: true, ok: false, jenis: 'jaringan', ms, sumberKunci, sidik,
         pesan: 'Tidak menjawab dalam 20 detik',
         diagnosa: diagnosaAi(undefined, 'timeout'),
       }
     }
     if (res.ok) {
-      return { adaKunci: true, ok: true, jenis: null, ms, pesan: 'Berhasil', diagnosa: null }
+      return { adaKunci: true, ok: true, jenis: null, ms, sumberKunci, sidik, pesan: 'Berhasil', diagnosa: null }
     }
 
     const badan = await res.text().catch(() => '')
     const jenis = jenisGalat(`${res.status} ${badan}`)
     return {
-      adaKunci: true, ok: false, jenis, ms,
+      adaKunci: true, ok: false, jenis, ms, sumberKunci, sidik,
       pesan: `${PESAN[jenis]} (${res.status})`,
       diagnosa: diagnosaAi(res.status, badan),
     }
   } catch (e) {
     const jenis = jenisGalat(e)
     return {
-      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai,
+      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai, sumberKunci, sidik,
       pesan: PESAN[jenis],
       diagnosa: diagnosaAi(undefined, e instanceof Error ? e.message : e),
     }
@@ -118,7 +155,13 @@ export async function tesKunciAi(): Promise<HasilTes> {
  */
 export function kesimpulanTes(hasil: HasilTes | null): { siap: boolean; pesan: string } {
   if (!hasil) return { siap: false, pesan: 'Belum diuji.' }
-  if (hasil.ok) return { siap: true, pesan: 'Gemini siap — Chat AI dan baca nota dari foto bisa dipakai.' }
+  if (hasil.ok) {
+    // Kunci manual yang berhasil sementara kunci aplikasi gagal adalah temuan,
+    // bukan keberhasilan: artinya kuncinya sudah benar tetapi belum terpasang.
+    return hasil.sumberKunci === 'manual'
+      ? { siap: false, pesan: 'Kunci yang Anda ketik BERHASIL. Pasang kunci ini di Vercel sebagai VITE_GEMINI_API_KEY, lalu deploy ulang.' }
+      : { siap: true, pesan: 'Gemini siap — Chat AI dan baca nota dari foto bisa dipakai.' }
+  }
   if (!hasil.adaKunci) return { siap: false, pesan: 'Kunci Gemini belum terpasang di aplikasi.' }
   return { siap: false, pesan: hasil.diagnosa?.apa ?? 'Gemini belum bisa dipakai.' }
 }
