@@ -21,10 +21,12 @@
 // Tanpa DOM & tanpa jaringan supaya bisa diuji di Node.
 // ============================================================
 
-export type JenisGalat = 'kunci' | 'kuota' | 'sibuk' | 'jaringan' | 'waktu' | 'lain'
+export type JenisGalat =
+  | 'kunci' | 'kuota' | 'sibuk' | 'jaringan' | 'waktu' | 'ukuran' | 'gambar' | 'lain'
 
 /** Yang paling perlu ditindak didahulukan bila satu upaya gagal beragam. */
-const PRIORITAS: JenisGalat[] = ['kunci', 'kuota', 'waktu', 'jaringan', 'sibuk', 'lain']
+const PRIORITAS: JenisGalat[] =
+  ['kunci', 'kuota', 'ukuran', 'gambar', 'waktu', 'jaringan', 'sibuk', 'lain']
 
 /**
  * Kenali jenis kegagalan dari pesan galat apa pun.
@@ -53,6 +55,21 @@ export function jenisGalat(pesan: unknown): JenisGalat {
   // terputus di tempat yang sama. Sempat keduanya disamakan, dan pengaman
   // yang dipasang untuk menghentikan penungguan justru melipatgandakannya.
   if (t.includes('waktu_habis')) return 'waktu'
+
+  // Muatan terlalu besar untuk fungsi serverless.
+  //
+  // Vercel menjawabnya dengan 413 berupa HALAMAN HTML, bukan JSON, dan halaman
+  // itu tidak menyebut ukuran sama sekali. Tanpa dikenali, ia jatuh ke "lain"
+  // yang layak diulang — sehingga foto yang terlalu besar dikirim ulang
+  // berkali-kali, masing-masing sampai batas waktunya, dan tak satu pun bisa
+  // berhasil. Ukuran tidak berubah karena dicoba lagi.
+  if (/\b413\b/.test(t) || t.includes('payload_too_large') || t.includes('payload too large')
+    || t.includes('request entity too large')) return 'ukuran'
+
+  // Gambarnya sampai, tetapi Google tidak bisa membacanya.
+  if (t.includes('unable to process input image')
+    || t.includes('invalid image') || t.includes('image is not valid')
+    || t.includes('unsupported mime type')) return 'gambar'
 
   if (t.includes('no_server_key')) return 'kunci'
   if (t.includes('model_not_allowed')) return 'lain'
@@ -144,6 +161,14 @@ const PESAN: Record<JenisGalat, (o: OpsiRingkas) => string> = {
 
   jaringan: () => 'Koneksi terputus saat menghubungi layanan AI.\n\n'
     + 'Periksa sinyal atau Wi-Fi Anda, lalu kirim ulang. 🙏',
+
+  ukuran: () => 'Lampirannya terlalu besar untuk dikirim sekaligus.\n\n'
+    + 'Kirim satu foto saja per pesan, atau foto ulang dari jarak lebih dekat — '
+    + 'foto yang lebih rapat pada notanya justru lebih mudah dibaca AI.',
+
+  gambar: () => 'Fotonya sampai, tetapi AI tidak bisa membacanya.\n\n'
+    + 'Biasanya karena terlalu buram, terlalu gelap, atau formatnya tidak lazim. '
+    + 'Coba foto ulang dengan cahaya cukup dan nota terbentang rata — atau ketik isinya manual.',
 
   waktu: o => 'AI belum selesai membaca dalam waktu yang wajar.\n\n'
     + (o.adaGambar
