@@ -1,3 +1,11 @@
+// Sengaja TIDAK ada jalan mundur ke nama berawalan VITE_.
+//
+// Setiap variabel berawalan VITE_ disisipkan Vite ke dalam bundel yang diunduh
+// setiap pengunjung. Menerimanya di sini membuat nama yang berbahaya itu
+// tampak sah — dan begitu seseorang memakainya, rahasianya langsung terbaca
+// publik tanpa satu pun tanda. Kunci Gemini sudah pernah bocor persis begitu,
+// dipakai orang lain, dan project-nya disuspend Google.
+
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -82,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let emailStatus = 'sent';
       let messageId = 'simulated_id';
 
-      const resendKey = process.env.RESEND_API_KEY || process.env.VITE_RESEND_API_KEY;
+      const resendKey = process.env.RESEND_API_KEY;
 
       if (resendKey) {
         const emailHtml = `

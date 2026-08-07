@@ -1,3 +1,11 @@
+// Sengaja TIDAK ada jalan mundur ke nama berawalan VITE_.
+//
+// Setiap variabel berawalan VITE_ disisipkan Vite ke dalam bundel yang diunduh
+// setiap pengunjung. Menerimanya di sini membuat nama yang berbahaya itu
+// tampak sah — dan begitu seseorang memakainya, rahasianya langsung terbaca
+// publik tanpa satu pun tanda. Kunci Gemini sudah pernah bocor persis begitu,
+// dipakai orang lain, dan project-nya disuspend Google.
+
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
@@ -41,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ message: 'plan_id is required' });
   }
 
-  const serverKey = process.env.MIDTRANS_SERVER_KEY || process.env.VITE_MIDTRANS_SERVER_KEY;
+  const serverKey = process.env.MIDTRANS_SERVER_KEY;
   if (!serverKey || serverKey.startsWith('isi_')) {
     return res.status(500).json({ message: 'Server key Midtrans belum dikonfigurasi di environment variables Vercel.' });
   }

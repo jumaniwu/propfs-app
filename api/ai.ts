@@ -104,6 +104,9 @@ const ingatanToken = new Map<string, number>()
 const UMUR_INGATAN = 60_000
 
 async function penggunaSah(token: string): Promise<boolean> {
+  // URL & anon key Supabase memang publik — keduanya dipagari RLS dan sudah
+  // ada di bundel dengan sengaja. Jadi jalan mundur ke nama VITE_ di sini
+  // tidak membocorkan apa pun, tidak seperti kunci Gemini/Midtrans/Resend.
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
   if (!url || !anon || !token) return false
