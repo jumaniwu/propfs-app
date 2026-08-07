@@ -17,8 +17,8 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(Math.max(lebar, tinggi) === SISI_MAKS, `sisi terpanjang jadi ${SISI_MAKS}: ${lebar}×${tinggi}`)
   const rasioAsal = 4032 / 3024
   assert(Math.abs(lebar / tinggi - rasioAsal) < 0.01, 'perbandingan sisinya dipertahankan')
-  // Luas piksel turun ~5,7×; berkasnya turun jauh lebih banyak lagi.
-  assert((lebar * tinggi) / (4032 * 3024) < 0.2, 'luas pikselnya tinggal seperlima')
+  // Luas piksel turun ~10×; berkasnya turun jauh lebih banyak lagi.
+  assert((lebar * tinggi) / (4032 * 3024) < 0.12, 'luas pikselnya tinggal sepersepuluh')
 }
 {
   // Foto tegak dari ponsel — sisi terpanjangnya yang dibatasi, bukan lebarnya.
@@ -33,7 +33,7 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(u.lebar === 800 && u.tinggi === 600,
     'gambar kecil dibiarkan — memperbesar tidak menambah detail, hanya byte')
 }
-assert(ukuranTarget(1600, 1200).lebar === 1600, 'yang persis di batas tidak diubah')
+assert(ukuranTarget(SISI_MAKS, 900).lebar === SISI_MAKS, 'yang persis di batas tidak diubah')
 
 // ── Gambar ekstrem tidak boleh menghasilkan kanvas nol ──────────────────
 {

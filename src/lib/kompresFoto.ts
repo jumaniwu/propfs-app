@@ -14,18 +14,34 @@
 // galat yang tidak menyebut ukuran sama sekali.
 //
 // Dan tidak ada yang didapat dari mengirimnya sebesar itu. Yang dibaca AI
-// adalah tulisan pada nota; 1600 piksel sisi terpanjang sudah jauh melampaui
+// adalah tulisan pada nota; 1280 piksel sisi terpanjang sudah jauh melampaui
 // yang dibutuhkan untuk itu, dan menghasilkan berkas belasan kali lebih kecil.
 // Ukuran yang berlebih hanya menambah waktu tunggu dan biaya token masukan.
 //
 // Bagian hitungannya dipisah supaya bisa diuji di Node tanpa DOM.
 // ============================================================
 
-/** Sisi terpanjang setelah dikecilkan. Cukup untuk membaca tulisan pada nota. */
-export const SISI_MAKS = 1600
+/**
+ * Sisi terpanjang setelah dikecilkan.
+ *
+ * Gemini memproses gambar dalam petak 768 piksel, jadi detail di atas itu
+ * sebagian besar terbuang sebelum sempat dibaca. 1280 memberi kelonggaran
+ * cukup untuk cetakan kecil pada nota tanpa membayar byte yang tidak dipakai.
+ */
+export const SISI_MAKS = 1280
 
 /** Mutu JPEG. 0.8 masih tajam untuk teks, jauh lebih kecil daripada 1.0. */
 export const MUTU = 0.8
+
+/**
+ * Ukuran yang masih dianggap wajar untuk satu lampiran.
+ *
+ * Di atas ini, foto dikecilkan sekali lagi dengan mutu lebih rendah. Sebabnya
+ * bukan batas teknis melainkan waktu tunggu: tiap 100 KB tambahan berarti
+ * detik tambahan pada sambungan seluler di lapangan, dua kali — sekali ke
+ * server kami, sekali dari server kami ke Google.
+ */
+export const TARGET_BYTE = 400_000
 
 /**
  * Ambang aman untuk satu permintaan, dalam byte base64.
@@ -123,9 +139,22 @@ export async function kecilkanFoto(berkas: File, maks = SISI_MAKS): Promise<Hasi
     ctx.drawImage(bitmap, 0, 0, lebar, tinggi)
     bitmap.close?.()
 
-    const dataUrl = kanvas.toDataURL('image/jpeg', MUTU)
-    const base64Data = dataUrl.slice(dataUrl.indexOf(',') + 1)
-    const byteAkhir = byteBase64(base64Data)
+    let dataUrl = kanvas.toDataURL('image/jpeg', MUTU)
+    let base64Data = dataUrl.slice(dataUrl.indexOf(',') + 1)
+    let byteAkhir = byteBase64(base64Data)
+
+    // Nota yang ramai — banyak baris, latar bertekstur — bisa tetap besar
+    // meski sudah dikecilkan. Satu putaran lagi dengan mutu lebih rendah
+    // memangkasnya tanpa mengubah ukuran pikselnya, sehingga tulisannya tetap
+    // sebesar tadi dan hanya kehalusan warnanya yang berkurang.
+    if (byteAkhir > TARGET_BYTE) {
+      const lagi = kanvas.toDataURL('image/jpeg', 0.62)
+      const isiLagi = lagi.slice(lagi.indexOf(',') + 1)
+      const byteLagi = byteBase64(isiLagi)
+      if (byteLagi < byteAkhir) {
+        dataUrl = lagi; base64Data = isiLagi; byteAkhir = byteLagi
+      }
+    }
 
     // Kalau hasil "pengecilan" justru lebih besar — bisa terjadi pada gambar
     // kecil bertekstur ramai — pakai yang asli.
