@@ -8,6 +8,7 @@
 
 import type { SiteplanConcept } from '@/engine/siteplan/layout.ts'
 import { MODEL_TEKS } from './modelAi'
+import { panggilGemini } from './gemini'
 
 export interface AIZone {
   /** jenis zona yang teridentifikasi, mis. "ruko", "apartemen", "commercial plaza" */
@@ -78,7 +79,7 @@ function extractJson(text: string): unknown {
 
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } }
 
-async function callGeminiVision(apiKey: string, parts: GeminiPart[]): Promise<string> {
+async function callGeminiVision(parts: GeminiPart[]): Promise<string> {
   const body = {
     contents: [{ parts }],
     generationConfig: { temperature: 0.2 },
@@ -86,12 +87,7 @@ async function callGeminiVision(apiKey: string, parts: GeminiPart[]): Promise<st
   const models = MODEL_TEKS
   let lastErr = ''
   for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    const res = await panggilGemini(model, body)
     if (res.ok) {
       const data = await res.json()
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -125,14 +121,15 @@ export async function extractCoordsWithAI(canvases: HTMLCanvasElement[]): Promis
   const mock = (window as { __aiCoordsMock?: (n: number) => Promise<[number, number][]> }).__aiCoordsMock
   if (mock) return mock(canvases.length)
 
-  const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
-  if (!geminiKey) throw new Error('VITE_GEMINI_API_KEY belum di-set.')
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   const parts: GeminiPart[] = [{ text: COORD_PROMPT }]
   for (const c of canvases) {
     parts.push({ inline_data: { mime_type: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.9).split(',')[1] } })
   }
-  const raw = await callGeminiVision(geminiKey, parts)
+  const raw = await callGeminiVision(parts)
   const parsed = extractJson(raw) as { points?: unknown }
   if (!Array.isArray(parsed.points)) throw new Error('AI tidak menemukan koordinat pada dokumen.')
   const pts: [number, number][] = []
@@ -145,10 +142,16 @@ export async function extractCoordsWithAI(canvases: HTMLCanvasElement[]): Promis
   return pts
 }
 
-/** Apakah jalur AI vision tersedia (key ter-set atau mock aktif). */
+/**
+ * Apakah jalur AI vision tersedia.
+ *
+ * Selalu true sejak kuncinya pindah ke server: browser tidak lagi bisa tahu
+ * apakah kunci terpasang, dan memang tidak perlu tahu. Kalau ternyata belum
+ * terpasang, /api/ai menjawabnya sendiri dengan kalimat yang jelas — jauh lebih
+ * baik daripada tombol yang mati tanpa keterangan.
+ */
 export function aiVisionAvailable(): boolean {
-  if ((window as { __aiCoordsMock?: unknown }).__aiCoordsMock) return true
-  return Boolean((import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY)
+  return true
 }
 
 /** Analisis gambar draft konsep → rekomendasi terstruktur. */
@@ -160,10 +163,9 @@ export async function analyzeConceptSketch(file: File, boundary?: [number, numbe
     return { ...m, jalanUtamaEdge: m.jalanUtamaEdge ?? null }
   }
 
-  const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
-  if (!geminiKey) {
-    throw new Error('Fitur AI membutuhkan VITE_GEMINI_API_KEY (model vision). Hubungi admin untuk mengaktifkannya.')
-  }
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   const image = await fileToBase64(file)
   let prompt = PROMPT
@@ -172,7 +174,7 @@ export async function analyzeConceptSketch(file: File, boundary?: [number, numbe
 Sisi i menghubungkan titik i ke titik i+1 (0-based, sisi terakhir kembali ke titik 0).
 Cocokkan bentuk polygon ini dengan bentuk lahan pada foto, lalu tambahkan field "jalanUtamaEdge": index sisi yang menghadap jalan raya utama.`
   }
-  const raw = await callGeminiVision(geminiKey, [
+  const raw = await callGeminiVision([
     { text: prompt },
     { inline_data: { mime_type: image.mime, data: image.data } },
   ])

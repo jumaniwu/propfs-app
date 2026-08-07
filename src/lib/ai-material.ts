@@ -1,5 +1,7 @@
 import { BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
+import { panggilGemini } from './gemini'
+import { MODEL_TEKS } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -64,40 +66,21 @@ function mapToMaterialItem(item: any): MaterialScheduleItem {
   };
 }
 
-async function callAIMaterialChunk(provider: string, apiKey: string, chunk: string, retries = 3): Promise<any[]> {
+async function callAIMaterialChunk(chunk: string, retries = 3): Promise<any[]> {
   const systemMsg = 'You are a JSON-only API. You MUST respond with ONLY a valid JSON array, no markdown, no explanation.';
   const userPrompt = buildMaterialPrompt(chunk);
   
-  let url = '';
-  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  let body: any = {};
-
-  if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    body = {
-      contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
-      generationConfig: { 
-        temperature: 0.1, 
-        responseMimeType: 'application/json'
-      }
-    };
-  } else {
-    url = provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
-    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
-    body = {
-      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: systemMsg },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.05,
-      response_format: { type: 'json_object' }
-    };
-  }
+  // Kunci tidak lagi ada di sisi klien: panggilannya lewat /api/ai, dan
+  // servernyalah yang menyimpan kunci. Cabang OpenRouter/Groq ikut hilang
+  // karena keduanya sudah dihapus dari aplikasi.
+  const body = {
+    contents: [{ parts: [{ text: `${systemMsg}\n\n${userPrompt}` }] }],
+    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+  };
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      const res = await panggilGemini(MODEL_TEKS[1], body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 8000;
@@ -116,12 +99,7 @@ async function callAIMaterialChunk(provider: string, apiKey: string, chunk: stri
       }
 
       const data = await res.json();
-      let responseText = '';
-      if (provider === 'gemini') {
-        responseText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      } else {
-        responseText = data.choices?.[0]?.message?.content ?? '';
-      }
+      const responseText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
       if (!responseText) return [];
 
@@ -174,10 +152,9 @@ export async function predictMaterialSchedule(
   // Gemini saja — lihat catatan yang sama di ai-parser.ts. Untuk penjadwalan
   // material yang bersandar pada penalaran AHSP, penyedia cadangan pun tak
   // pernah setara; kini keduanya bahkan tidak menjawab sama sekali.
-  const provider = 'gemini';
-  const activeKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
-
-  if (!activeKey) throw new Error('Kunci Gemini belum dipasang. Isi VITE_GEMINI_API_KEY, lalu deploy ulang.');
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   // Filter pekerjaan fisik (termasuk yang unitMaterialCost == 0 karena mungkin ada material quant)
   const validComponents = components.filter(c => 
@@ -203,7 +180,7 @@ export async function predictMaterialSchedule(
 
   for (let i = 0; i < rabChunks.length; i++) {
     console.log(`[Material AI] Memproses Part ${i + 1}/${rabChunks.length}`);
-    const items = await callAIMaterialChunk(provider, activeKey, rabChunks[i]);
+    const items = await callAIMaterialChunk(rabChunks[i]);
     allMaterials.push(...items);
     
     if (i < rabChunks.length - 1) {

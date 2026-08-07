@@ -11,6 +11,7 @@
 
 import type { DoItem } from './penerimaan'
 import { MODEL_TEKS } from './modelAi.ts'
+import { panggilGemini } from './gemini.ts'
 
 export interface HasilBacaDo {
   nomor_do: string
@@ -156,9 +157,9 @@ export async function bacaNotaDo(
   namaBarangPo: string[] = [],
   catatanTambahan = '',
 ): Promise<HasilBacaDo> {
-  const key = (import.meta as unknown as { env: Record<string, string | undefined> })
-    .env.VITE_GEMINI_API_KEY
-  if (!key) throw new Error('Fitur baca otomatis belum aktif — isi datanya manual dulu.')
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
   if (berkas.length === 0) throw new Error('Lampirkan foto surat jalan atau notanya dulu.')
 
   const parts: Array<Record<string, unknown>> = [
@@ -169,18 +170,11 @@ export async function bacaNotaDo(
   let galat = ''
   for (const model of MODEL_TEKS) {
     try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: instruksiBacaDo(namaBarangPo) }] },
-            contents: [{ role: 'user', parts }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
-          }),
-        },
-      )
+      const res = await panggilGemini(model, {
+        systemInstruction: { parts: [{ text: instruksiBacaDo(namaBarangPo) }] },
+        contents: [{ role: 'user', parts }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+      })
       if (!res.ok) { galat = `HTTP ${res.status}`; continue }
       const data = await res.json() as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>

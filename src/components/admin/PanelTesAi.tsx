@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Stethoscope, CheckCircle2, XCircle, MinusCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { tesKunciAi, kesimpulanTes, sidikKunci, kunciTerpasang, type HasilTes } from '@/lib/tesAi'
-import { periksaKunci } from '@/lib/modelAi'
+import { tesKunciAi, kesimpulanTes, type HasilTes } from '@/lib/tesAi'
 
 /**
  * Memeriksa kunci AI, sekarang juga.
@@ -17,12 +16,11 @@ export default function PanelTesAi() {
   const [jalan, setJalan] = useState(false)
   const [hasil, setHasil] = useState<HasilTes | null>(null)
   const [waktu, setWaktu] = useState<string>('')
-  const [kunciCoba, setKunciCoba] = useState('')
 
-  async function jalankan(manual?: string) {
+  async function jalankan() {
     setJalan(true)
     try {
-      setHasil(await tesKunciAi(manual))
+      setHasil(await tesKunciAi())
       setWaktu(new Date().toLocaleTimeString('id-ID'))
     } finally { setJalan(false) }
   }
@@ -42,64 +40,15 @@ export default function PanelTesAi() {
         apa yang harus diperbaiki.
       </p>
 
-      {/* Kunci mana yang BENAR-BENAR dipakai build ini. Setelah membayar, sebab
-          403 yang paling sering adalah kunci dari project lain — dan itu tidak
-          bisa dibuktikan bila kuncinya tak terlihat sama sekali. */}
-      <div className="rounded-xl bg-slate-50 border border-border p-3">
-        <p className="text-[11px] text-muted-foreground">Kunci yang dipakai aplikasi saat ini</p>
-        <p data-sidik-kunci className="text-sm font-mono font-bold text-navy break-all">
-          {sidikKunci(kunciTerpasang())}
-        </p>
-        <p className="text-[11px] text-muted-foreground mt-1">
-          Cocokkan dengan kunci di Google AI Studio. Bila berbeda, aplikasi memakai kunci lain
-          dari yang Anda kira — dan itu sudah cukup menjelaskan 403.
-        </p>
-      </div>
-
+      {/* Kotak "kunci yang dipakai aplikasi" dan "uji kunci lain" dihapus
+          bersama kuncinya. Keduanya berguna selama kunci masih ikut terbundel
+          ke browser; sekarang browser memang tidak memegang apa pun, dan itulah
+          perbaikannya. Yang diketuk di bawah ini adalah /api/ai — jalur yang
+          benar-benar dipakai fiturnya, bukan tiruannya. */}
       <Button onClick={() => void jalankan()} disabled={jalan} variant="gold" className="font-bold gap-2">
         {jalan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Stethoscope className="h-4 w-4" />}
         {jalan ? 'Menguji…' : 'Tes Sekarang'}
       </Button>
-
-      {/* Menguji kunci lain tanpa deploy.
-          Tanpa ini, membuktikan satu kunci baru berarti mengubah environment
-          variable, menunggu build, lalu menguji — beberapa menit untuk satu
-          percobaan, padahal sebab 403 ada empat dan biasanya perlu dicoba
-          bergantian. Kunci yang diketik di sini tidak disimpan ke mana pun. */}
-      <details className="rounded-xl border border-border">
-        <summary className="cursor-pointer select-none px-3 py-2 text-sm font-bold text-navy">
-          Uji kunci lain dulu (tanpa deploy)
-        </summary>
-        <div className="px-3 pb-3 space-y-2">
-          <p className="text-[11px] text-muted-foreground">
-            Buat kunci baru di project yang <b>dibayar</b>, tempel di sini, lalu uji. Kunci ini
-            hanya dipakai untuk satu pengujian dan tidak disimpan.
-          </p>
-          <input
-            data-kunci-coba
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            value={kunciCoba}
-            onChange={e => setKunciCoba(e.target.value)}
-            placeholder="AIzaSy…"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono"
-          />
-          {kunciCoba.trim() && !periksaKunci(kunciCoba).layak && (
-            <p data-kunci-salah className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2">
-              {periksaKunci(kunciCoba).pesan}
-            </p>
-          )}
-          <Button
-            onClick={() => void jalankan(kunciCoba)}
-            disabled={jalan || !kunciCoba.trim()}
-            variant="outline" className="font-bold gap-2 w-full"
-          >
-            <Stethoscope className="h-4 w-4" />
-            Uji kunci ini
-          </Button>
-        </div>
-      </details>
 
       {hasil && (
         <div className="space-y-3">
@@ -116,9 +65,6 @@ export default function PanelTesAi() {
                   tercetak dua kali dan mengaburkan mana yang perlu dibaca. */}
               <p className="text-sm font-bold">{hasil.ok ? simpul.pesan : hasil.pesan}</p>
               {hasil.adaKunci && <p className="text-xs opacity-80">{hasil.ms} ms</p>}
-              <p className="text-[11px] opacity-70 font-mono break-all mt-0.5">
-                {hasil.sumberKunci === 'manual' ? 'Kunci yang diketik' : 'Kunci aplikasi'}: {hasil.sidik}
-              </p>
             </div>
           </div>
 

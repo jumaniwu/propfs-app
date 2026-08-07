@@ -20,10 +20,11 @@ import { batasWaktu } from './batasWaktu.ts'
 import type { ProfilMarcom } from './marcom.ts'
 import { bersihkanHashtag, namaTampil } from './marcom.ts'
 import { catatGambar } from '../store/usageStore'
-import { MODEL_GAMBAR } from './modelAi'
+import { MODEL_GAMBAR, MODEL_TEKS } from './modelAi'
+import { panggilGemini } from './gemini'
 
 const kunci = (): string =>
-  (import.meta as unknown as { env: Record<string, string | undefined> }).env?.VITE_GEMINI_API_KEY ?? ''
+  ''  // kunci sudah pindah ke server; lihat gemini.ts
 
 export type GayaCaption = 'progres' | 'selesai' | 'promo' | 'edukasi'
 
@@ -164,11 +165,7 @@ export async function buatCaption(k: KonteksCaption): Promise<HasilCaption> {
     if (foto) parts.push({ inline_data: { mime_type: foto.mime, data: foto.data } })
 
     const res = await batasWaktu(
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts }] }),
-      }),
+      panggilGemini(MODEL_TEKS[1], { contents: [{ parts }] }),
       25000,
       null,
     )
@@ -234,9 +231,7 @@ export async function rapikanFoto(dataUrl: string): Promise<HasilRapikan> {
   for (const model of MODEL_GAMBAR) {
     try {
       const res = await batasWaktu(
-        fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-        }),
+        panggilGemini(model, body),
         45000,
         null,
       )

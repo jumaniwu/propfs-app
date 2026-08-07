@@ -12,6 +12,7 @@ import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
 import { renderIsometric } from '@/components/siteplan/render3d.ts'
 import { catatGambar } from '../store/usageStore'
 import { MODEL_GAMBAR } from './modelAi'
+import { panggilGemini } from './gemini'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
 export type RenderStyle = 'modern-minimalis' | 'tropis' | 'klasik' | 'industrial'
@@ -104,7 +105,7 @@ ${opts.sketchDataUrl ? '\nGAMBAR KEDUA adalah foto udara lokasi asli dengan core
 const MODEL_GAMBAR_UTAMA = 'gemini-2.5-flash-image'
 
 async function callGeminiImage(
-  apiKey: string, prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
+  prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
 ): Promise<string> {
   const parts: Array<Record<string, unknown>> = [
     { text: prompt },
@@ -118,12 +119,7 @@ async function callGeminiImage(
   const models = MODEL_GAMBAR
   let lastErr = ''
   for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    const res = await panggilGemini(model, body)
     if (!res.ok) {
       lastErr = `HTTP ${res.status}`
       continue
@@ -152,7 +148,9 @@ export async function renderMasterplanViews(
   }).__aiRenderMock
   if (mock) return (await mock(opts)).map(v => ({ ...v, source: v.source ?? ('ai' as const) }))
 
-  const geminiKey = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   const sketch = opts.sketchDataUrl
     ? {
@@ -173,11 +171,11 @@ export async function renderMasterplanViews(
     const schematicUrl = schematic.toDataURL('image/png')
     // 2) AI memfotorealistiskan skematik (geometri dipertahankan);
     //    tanpa key / gagal → tampilkan skematiknya langsung
-    if (geminiKey) {
+    {
       try {
         const prompt = buildPrompt(result, opts)
         const dataUrl = await callGeminiImage(
-          geminiKey, prompt, schematicUrl.split(',')[1], sketch,
+          prompt, schematicUrl.split(',')[1], sketch,
         )
         // Satu sudut = satu gambar berbayar. Merender tiga sudut sekaligus
         // adalah pemakaian biasa, jadi yang terasa "sekali tekan" sebenarnya
