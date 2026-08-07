@@ -49,6 +49,27 @@ const MODEL_BOLEH = new Set([
 const GOOGLE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
+ * Bentuk kunci hanya dipakai untuk MENJELASKAN kegagalan, tidak untuk menolak.
+ *
+ * API key Gemini berbentuk `AIza…` sepanjang 39 karakter. Kredensial Google
+ * lain yang mirip sekilas — token sesi `AQ.…`, access token `ya29.…` — ditolak
+ * Google dengan 401/403 yang bunyinya sama persis dengan kunci sah yang belum
+ * diizinkan, sehingga waktunya habis memperbaiki izin dan penagihan untuk
+ * kunci yang memang tidak akan pernah dipakai.
+ *
+ * Tetapi menolaknya di sini akan lebih buruk: bentuk kunci ditentukan Google
+ * dan bisa berubah kapan saja, dan kalau itu terjadi kita akan memblokir kunci
+ * yang sebenarnya sah — kegagalan yang jauh lebih sulit ditelusuri daripada
+ * yang sedang dicegah. Jadi kuncinya tetap dikirim; bentuknya hanya
+ * ditempelkan sebagai keterangan bila Google memang menolaknya.
+ */
+function bentukKunci(k: string): 'api_key' | 'oauth' | 'tidak_dikenali' {
+  if (/^AIza[0-9A-Za-z_-]{35}$/.test(k)) return 'api_key'
+  if (/^ya29\./.test(k) || /^AQ\./.test(k) || /^1\/\//.test(k)) return 'oauth'
+  return 'tidak_dikenali'
+}
+
+/**
  * Apakah pemanggilnya pengguna yang sah.
  *
  * Diperiksa dengan menanyakan token itu ke Supabase, bukan dengan membaca
@@ -80,9 +101,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Sengaja TIDAK jatuh kembali ke VITE_GEMINI_API_KEY. Kunci yang pernah
     // ikut terbundel harus dianggap sudah bocor, dan memakainya lagi berarti
     // mengulang persis kejadian yang membuat project-nya disuspend.
-    console.error('[ai] GEMINI_API_KEY belum dipasang di server')
+    //
+    // NAMA variabel yang mirip ikut dilaporkan — nilainya tidak pernah. Tanpa
+    // ini, "belum terbaca" bisa berarti tiga hal yang perbaikannya berbeda:
+    // belum ditambahkan sama sekali, salah nama (masih berawalan VITE_, atau
+    // ada spasi ikut tersalin), atau tercentang untuk Preview saja sehingga
+    // Production tetap kosong. Membedakannya dengan menebak berarti satu
+    // siklus deploy untuk setiap tebakan.
+    const mirip = Object.keys(process.env)
+      .filter(k => /GEMINI|GOOGLE|GENAI/i.test(k))
+      .sort()
+    console.error('[ai] GEMINI_API_KEY belum dipasang. Yang mirip:', mirip)
     return res.status(500).json({
-      error: { code: 500, status: 'NO_SERVER_KEY', message: 'GEMINI_API_KEY belum dipasang di server.' },
+      error: {
+        code: 500,
+        status: 'NO_SERVER_KEY',
+        message: 'GEMINI_API_KEY belum dipasang di server.',
+        // Hanya nama, tidak pernah nilai.
+        variabelMirip: mirip,
+      },
     })
   }
 
@@ -125,6 +162,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // keterangan yang berguna.
     res.status(r.status)
     res.setHeader('Content-Type', r.headers.get('content-type') ?? 'application/json')
+    // Keterangan tambahan lewat header, supaya badan dari Google tetap utuh.
+    if (!r.ok) res.setHeader('X-PropFS-Bentuk-Kunci', bentukKunci(kunci))
     return res.send(await r.text())
   } catch (e) {
     console.error('[ai] gagal menghubungi Google:', e)

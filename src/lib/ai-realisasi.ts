@@ -472,7 +472,9 @@ export async function chatRealisasiWithGemini(
   // yang bisa membetulkannya, dan tanpa kalimat itu ia hanya bisa menebak
   // di antara empat sebab yang semuanya berbunyi 403.
   if (superadmin && dg && dg.sisiKami) {
-    throw new Error(`⚠️ ${ceritaDiagnosa(dg)}`)
+    // Tanpa ikon: ChatAiPage sudah menambahkannya sendiri untuk setiap galat.
+    // Menambahkan di sini juga membuat "⚠️ ⚠️" tercetak di gelembung chat.
+    throw new Error(ceritaDiagnosa(dg))
   }
   throw new Error(ringkas.pesan)
 }
