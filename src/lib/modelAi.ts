@@ -15,12 +15,6 @@
 // lewat ListModels; aplikasi tinggal bertanya. Menanyakan lebih murah dan lebih
 // jujur daripada menebak, dan hasilnya tidak pernah basi.
 //
-// Ditambah pemeriksaan bentuk kunci — sebab kredensial Google ada banyak macam
-// dan hanya satu yang berlaku di sini. Menempelkan token yang salah jenis
-// menghasilkan penolakan yang bunyinya sama persis dengan kunci yang benar
-// tetapi belum diizinkan, sehingga waktunya habis untuk memperbaiki hal yang
-// tidak rusak.
-//
 // Tanpa DOM & tanpa jaringan supaya bisa diuji di Node.
 // ============================================================
 
@@ -65,9 +59,6 @@ export const MODEL_TEKS = [
  */
 export const MODEL_LEBIH_BAIK = ['gemini-3-flash', 'gemini-3-pro-preview', 'gemini-2.5-pro'] as const
 
-/** Nama lama; disimpan supaya pemanggil yang sudah ada tidak putus. */
-export const MODEL_PREMIUM = MODEL_LEBIH_BAIK
-
 /**
  * Model untuk panggilan tunggal yang tidak punya perulangan sendiri.
  *
@@ -86,65 +77,11 @@ export const MODEL_GAMBAR = [
   'gemini-2.0-flash-preview-image-generation',
 ] as const
 
-// ── Bentuk kunci ────────────────────────────────────────────────────────────
-
-export type BentukKunci = 'api_key' | 'oauth' | 'terlalu_pendek' | 'bukan_kunci'
-
-export interface PeriksaKunci {
-  bentuk: BentukKunci
-  /** Layak dikirim ke Google sama sekali. */
-  layak: boolean
-  /** Satu kalimat, siap ditampilkan. */
-  pesan: string
-}
-
-/** API key Gemini: diawali AIzaSy, 39 karakter, tanpa titik maupun spasi. */
-const POLA_API_KEY = /^AIza[0-9A-Za-z_-]{35}$/
-
-/**
- * Periksa bentuk kunci SEBELUM mengirimnya.
- *
- * Google memakai beberapa jenis kredensial yang serupa sekilas: API key,
- * access token OAuth (`ya29.…`), dan token sesi (`AQ.…`). Hanya API key yang
- * berlaku pada `?key=` di Generative Language API. Yang lain ditolak dengan
- * 401/403 — bunyinya sama persis dengan kunci sah yang belum diizinkan, jadi
- * tanpa pemeriksaan ini orang akan menghabiskan waktu membetulkan izin,
- * penagihan, dan pembatasan domain untuk kunci yang memang tidak akan pernah
- * dipakai.
- */
-export function periksaKunci(kunci: unknown): PeriksaKunci {
-  const k = String(kunci ?? '').trim()
-
-  if (!k) {
-    return { bentuk: 'bukan_kunci', layak: false, pesan: 'Kunci masih kosong.' }
-  }
-  if (POLA_API_KEY.test(k)) {
-    return { bentuk: 'api_key', layak: true, pesan: 'Bentuknya benar (API key Gemini).' }
-  }
-  if (/^ya29\./.test(k) || /^AQ\./.test(k) || /^1\/\//.test(k)) {
-    return {
-      bentuk: 'oauth',
-      layak: false,
-      pesan: 'Ini token OAuth/sesi Google, bukan API key. Token seperti ini tidak berlaku di '
-        + 'Gemini API dan akan selalu ditolak. Ambil API key di Google AI Studio — bentuknya '
-        + 'diawali "AIzaSy" dan panjangnya 39 karakter.',
-    }
-  }
-  if (k.length < 39) {
-    return {
-      bentuk: 'terlalu_pendek',
-      layak: false,
-      pesan: `Kunci ini hanya ${k.length} karakter; API key Gemini panjangnya 39. `
-        + 'Kemungkinan tersalin sebagian.',
-    }
-  }
-  return {
-    bentuk: 'bukan_kunci',
-    layak: false,
-    pesan: 'Bentuknya tidak seperti API key Gemini, yang selalu diawali "AIzaSy" dan '
-      + 'panjangnya 39 karakter. Periksa apakah yang tersalin memang kuncinya.',
-  }
-}
+// Pemeriksaan bentuk kunci dulu ada di sini, dipakai kotak "uji kunci lain"
+// di halaman admin. Keduanya hilang bersama kuncinya: sejak kunci pindah ke
+// server, browser tidak lagi memegang apa pun untuk diperiksa. Yang masih
+// memeriksa bentuk adalah api/ai.ts — di sanalah kuncinya berada, dan di sana
+// pemeriksaannya hanya MENJELASKAN penolakan, tidak menolak.
 
 // ── Daftar model dari Google ────────────────────────────────────────────────
 
