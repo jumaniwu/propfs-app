@@ -24,6 +24,7 @@ import type { PoPayment } from '@/lib/penerimaan'
 import { nomorDo } from '@/lib/penerimaan'
 import type { PurchaseOrder } from '@/lib/procurement'
 import type { DeliveryOrder } from '@/lib/penerimaan'
+import { kecilkanFoto, ukuranTampil } from '@/lib/kompresFoto'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
@@ -176,22 +177,16 @@ export default function TabRealisasiBiaya() {
     try { sessionStorage.setItem(storageKey, JSON.stringify(cleaned)) } catch { /* ignore */ }
   }, [messages, storageKey])
 
-  const fileToBase64 = (file: File) => new Promise<{ base64Data: string; preview?: string }>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = () => {
-      const result = reader.result as string
-      resolve({ base64Data: result.split(',')[1], preview: file.type.startsWith('image/') ? result : undefined })
-    }
-    reader.onerror = reject
-  })
-
+  // Lihat catatan yang sama di ChatAiPage: foto dikecilkan sebelum dikirim.
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     const results = await Promise.all(files.map(async f => {
-      if (f.size > 8 * 1024 * 1024) { toast({ title: `${f.name} terlalu besar (maks 8MB)`, variant: 'destructive' }); return null }
-      const { base64Data, preview } = await fileToBase64(f)
-      return { name: f.name, mimeType: f.type, base64Data, preview }
+      if (f.size > 25 * 1024 * 1024) { toast({ title: `${f.name} terlalu besar (maks 25MB)`, variant: 'destructive' }); return null }
+      const { base64Data, mimeType, byteAsal, byteAkhir } = await kecilkanFoto(f)
+      if (byteAkhir < byteAsal * 0.7) {
+        console.log(`[lampiran] ${f.name}: ${ukuranTampil(byteAsal)} → ${ukuranTampil(byteAkhir)}`)
+      }
+      return { name: f.name, mimeType, base64Data, preview: `data:${mimeType};base64,${base64Data}` }
     }))
     setPendingFiles(prev => [...prev, ...results.filter(Boolean) as any])
     e.target.value = ''
