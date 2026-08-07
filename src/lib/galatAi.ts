@@ -49,6 +49,17 @@ export function jenisGalat(pesan: unknown): JenisGalat {
   if (t.includes('no_server_key')) return 'kunci'
   if (t.includes('model_not_allowed')) return 'lain'
 
+  // Kuota yang DINYATAKAN eksplisit didahulukan.
+  //
+  // Pesan 429 dari Google berbunyi "You exceeded your current quota, please
+  // check your plan and billing details" — memuat kata "billing". Karena
+  // cabang kunci di bawah ikut mencocokkan kata itu, kuota habis sempat
+  // terbaca sebagai masalah kunci, dan orang dikirim memperbaiki penagihan
+  // project yang sebenarnya tidak apa-apa. Kode 429 dan RESOURCE_EXHAUSTED
+  // tidak pernah ambigu; keduanya diputuskan lebih dulu.
+  if (/\b429\b/.test(t) || t.includes('resource_exhausted')
+    || t.includes('exceeded your current quota')) return 'kuota'
+
   // Kunci/izin — tidak akan membaik dengan menunggu.
   if (/\b(401|403)\b/.test(t)
     || t.includes('permission denied') || t.includes('permission_denied')

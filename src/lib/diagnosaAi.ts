@@ -233,6 +233,24 @@ const ATURAN: Aturan[] = [
         + 'identitas, tagihan tertunggak, atau dugaan penyalahgunaan) beserta tombol bandingnya.',
       TAUTAN.billing),
   },
+  // Kuota didahulukan atas penagihan.
+  //
+  // Pesan 429 dari Google berbunyi "You exceeded your current quota, please
+  // check your plan and billing details" — memuat kata "billing". Aturan
+  // penagihan di bawah mencocokkan kata itu, sehingga kuota habis sempat
+  // didiagnosis sebagai project yang tidak tertaut akun penagihan: orang
+  // dikirim memeriksa sesuatu yang sebenarnya sudah benar. Ini kesalahan yang
+  // sama dengan yang sudah diperingatkan di atas untuk SERVICE_DISABLED,
+  // terulang lewat pesan yang berbeda.
+  {
+    cocok: (t, k) => k === 429 || t.includes('quota') || t.includes('resource_exhausted')
+      || t.includes('rate limit') || t.includes('rate_limit'),
+    jadi: d('kuota',
+      'Kuota Gemini untuk saat ini sudah terpakai habis.',
+      'Kuota gratis pulih pada pergantian hari waktu Pasifik AS. Untuk menaikkan batasnya, '
+        + 'aktifkan penagihan pada project kuncinya.',
+      TAUTAN.billing),
+  },
   {
     cocok: t => t.includes('billing'),
     jadi: d('billing',
@@ -260,15 +278,6 @@ const ATURAN: Aturan[] = [
       'GEMINI_API_KEY kosong di server. Periksa isinya di Vercel → Settings → Environment '
         + 'Variables, pastikan tercentang untuk Production, lalu redeploy.',
       TAUTAN.studio),
-  },
-  {
-    cocok: (t, k) => k === 429 || t.includes('quota') || t.includes('resource_exhausted')
-      || t.includes('rate limit') || t.includes('rate_limit'),
-    jadi: d('kuota',
-      'Kuota Gemini untuk saat ini sudah terpakai habis.',
-      'Kuota gratis pulih pada pergantian hari waktu Pasifik AS. Untuk menaikkan batasnya, '
-        + 'aktifkan penagihan pada project kuncinya.',
-      TAUTAN.billing),
   },
   {
     cocok: (t, k) => k === 404 || t.includes('is not found') || t.includes('not supported'),

@@ -138,4 +138,26 @@ assert(ringkasTeknis(['x'.repeat(500)]).length <= 160, 'satu galat panjang sudah
 assert(jenisGalat('400 {"error":{"status":"MODEL_NOT_ALLOWED"}}') === 'lain',
   'model di luar daftar izin perantara bukan masalah kunci maupun kepadatan')
 
+// ── Kuota habis TIDAK boleh terbaca sebagai masalah kunci ────────────────
+//
+// Pesan 429 dari Google, disalin apa adanya, memuat kata "billing" — dan
+// cabang kunci mencocokkan kata itu. Akibatnya kuota yang habis terbaca sebagai
+// masalah kunci/izin, dan orang dikirim memperbaiki penagihan project yang
+// sebenarnya tidak apa-apa. Kesalahan yang sama persis dengan yang modul ini
+// dibuat untuk menghentikannya, terulang lewat pesan yang berbeda.
+{
+  const KUOTA_429 = '429 {"error":{"code":429,"message":"You exceeded your current quota, '
+    + 'please check your plan and billing details. For more information on this error, head to: '
+    + 'https://ai.google.dev/gemini-api/docs/rate-limits","status":"RESOURCE_EXHAUSTED"}}'
+  assert(jenisGalat(KUOTA_429) === 'kuota', '429 dengan kata "billing" tetap kuota')
+  assert(jenisGalat(KUOTA_429) !== 'kunci', 'dan BUKAN masalah kunci')
+  assert(bisaDiulang('kuota') === false, 'kuota harian tidak pulih dalam hitungan detik')
+}
+{
+  // Dan sebaliknya: 403 yang memang soal penagihan tidak boleh ikut tergeser.
+  assert(jenisGalat('403 {"error":{"message":"This API method requires billing to be enabled."}}')
+    === 'kunci', 'penagihan yang memang penagihan tetap masalah kunci/izin')
+  assert(jenisGalat('403 PERMISSION_DENIED') === 'kunci', '403 biasa tidak berubah')
+}
+
 console.log(`galat-ai: ${ok} assert lulus`)

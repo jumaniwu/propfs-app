@@ -242,4 +242,21 @@ const badanTanpaKunci = (mirip) => JSON.stringify({
     'tanpa daftar, langkah dasarnya tetap lengkap')
 }
 
+// ── Kuota vs penagihan: dua sebab, satu kata yang sama ───────────────────
+{
+  const pesan = 'You exceeded your current quota, please check your plan and billing details. '
+    + 'For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits'
+  const dg = diagnosaAi(429, badan(pesan, 'RESOURCE_EXHAUSTED', 429))
+  assert(dg.sebab === 'kuota', 'kuota habis dikenali sebagai kuota')
+  assert(dg.sebab !== 'billing',
+    'dan BUKAN penagihan, meski kalimat Google memuat kata "billing"')
+  assert(/pergantian hari|penagihan pada project/i.test(dg.perbaikan),
+    'perbaikannya menyebut kapan pulih dan cara menaikkan batasnya')
+}
+{
+  // Sebaliknya: penagihan yang memang penagihan tidak boleh ikut tergeser.
+  const dg = diagnosaAi(403, badan('This API method requires billing to be enabled.'))
+  assert(dg.sebab === 'billing', 'penagihan yang memang penagihan tetap dikenali')
+}
+
 console.log(`diagnosa-ai: ${ok} assert lulus`)
