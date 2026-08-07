@@ -21,10 +21,10 @@
 // Tanpa DOM & tanpa jaringan supaya bisa diuji di Node.
 // ============================================================
 
-export type JenisGalat = 'kunci' | 'kuota' | 'sibuk' | 'jaringan' | 'lain'
+export type JenisGalat = 'kunci' | 'kuota' | 'sibuk' | 'jaringan' | 'waktu' | 'lain'
 
 /** Yang paling perlu ditindak didahulukan bila satu upaya gagal beragam. */
-const PRIORITAS: JenisGalat[] = ['kunci', 'kuota', 'jaringan', 'sibuk', 'lain']
+const PRIORITAS: JenisGalat[] = ['kunci', 'kuota', 'waktu', 'jaringan', 'sibuk', 'lain']
 
 /**
  * Kenali jenis kegagalan dari pesan galat apa pun.
@@ -46,6 +46,14 @@ export function jenisGalat(pesan: unknown): JenisGalat {
   // Google, lalu diulang berkali-kali menunggu sesuatu yang tidak akan datang.
   // Persis kesalahan yang modul ini dibuat untuk menghentikannya, terulang
   // lewat kode status milik kami sendiri.
+  // Anggaran waktu kita sendiri yang habis — bukan gangguan jaringan.
+  //
+  // Dibedakan karena akibatnya berlawanan: gangguan jaringan layak diulang,
+  // sedangkan tenggat yang terlampaui berarti percobaan berikutnya akan
+  // terputus di tempat yang sama. Sempat keduanya disamakan, dan pengaman
+  // yang dipasang untuk menghentikan penungguan justru melipatgandakannya.
+  if (t.includes('waktu_habis')) return 'waktu'
+
   if (t.includes('no_server_key')) return 'kunci'
   if (t.includes('model_not_allowed')) return 'lain'
 
@@ -136,6 +144,12 @@ const PESAN: Record<JenisGalat, (o: OpsiRingkas) => string> = {
 
   jaringan: () => 'Koneksi terputus saat menghubungi layanan AI.\n\n'
     + 'Periksa sinyal atau Wi-Fi Anda, lalu kirim ulang. 🙏',
+
+  waktu: o => 'AI belum selesai membaca dalam waktu yang wajar.\n\n'
+    + (o.adaGambar
+      ? 'Foto yang besar atau banyak sekaligus membuatnya lama. Coba kirim satu foto saja, '
+        + 'atau ketik isi notanya — itu justru paling cepat.'
+      : 'Coba kirim ulang. Bila berulang, pesan yang lebih pendek biasanya selesai lebih cepat.'),
 
   lain: o => 'Layanan AI tidak bisa memproses pesan ini.\n\n'
     + 'Silakan coba lagi, atau ketik isi nota secara manual. 🙏'

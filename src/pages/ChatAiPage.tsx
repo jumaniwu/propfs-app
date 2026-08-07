@@ -376,9 +376,9 @@ export default function ChatAiPage() {
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>
                       AI sedang membaca… {detik > 2 && <b className="font-mono">{detik}s</b>}
-                      {detik > 25 && (
+                      {detik > 20 && (
                         <span className="block text-[11px] opacity-80">
-                          Foto besar memang lebih lama. Menyerah otomatis di 75 detik.
+                          Foto besar memang lebih lama. Berhenti otomatis di 70 detik.
                         </span>
                       )}
                     </span>
