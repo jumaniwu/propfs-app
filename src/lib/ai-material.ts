@@ -1,7 +1,7 @@
 import { BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
 import { panggilGemini } from './gemini'
-import { MODEL_TEKS } from './modelAi'
+import { MODEL_UTAMA, MODEL_CADANGAN } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -80,7 +80,7 @@ async function callAIMaterialChunk(chunk: string, retries = 3): Promise<any[]> {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await panggilGemini(MODEL_TEKS[1], body);
+      const res = await panggilGemini(MODEL_UTAMA, body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 8000;

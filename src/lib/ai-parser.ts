@@ -1,7 +1,7 @@
 import { BudgetComponent, CostCategory } from '../types/cost.types';
 import { v4 as uuidv4 } from 'uuid';
 import { panggilGemini } from './gemini'
-import { MODEL_TEKS } from './modelAi'
+import { MODEL_UTAMA, MODEL_CADANGAN } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -119,7 +119,7 @@ async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await panggilGemini(MODEL_TEKS[1], body);
+      const res = await panggilGemini(MODEL_UTAMA, body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 10000; // 10s, 20s, 30s
@@ -140,7 +140,7 @@ async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
         if (res.status === 404) {
           const errText = await res.text()
           console.warn(`[AI Chunk] Model 404 - response: ${errText.substring(0, 200)}. Trying fallback model gemini-2.0-flash...`)
-          const fallbackRes = await panggilGemini(MODEL_TEKS[2], body)
+          const fallbackRes = await panggilGemini(MODEL_CADANGAN, body)
           if (!fallbackRes.ok) {
             const fb404 = await fallbackRes.text()
             throw new Error(`Gagal memproses RAB: Model utama dan fallback gagal (${fallbackRes.status}). Detail: ${fb404.substring(0, 100)}`)
@@ -232,11 +232,11 @@ ${JSON.stringify(components)}
   };
 
   try {
-    const res = await panggilGemini(MODEL_TEKS[1], body);
+    const res = await panggilGemini(MODEL_UTAMA, body);
     if (!res.ok) {
       if (res.status === 404) {
         console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-2.0-flash...`)
-        const fallbackRes = await panggilGemini(MODEL_TEKS[2], body)
+        const fallbackRes = await panggilGemini(MODEL_CADANGAN, body)
         if (!fallbackRes.ok) return components;
         const fallbackData = await fallbackRes.json()
         const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''

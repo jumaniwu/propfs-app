@@ -132,4 +132,36 @@ assert(pesanPenyedia(null) === '', 'null aman')
   assert(c.length < 700, `dan ceritanya tetap terbaca: ${c.length} karakter`)
 }
 
+// ── Galat perantara /api/ai punya perbaikannya sendiri ───────────────────
+{
+  const badan = JSON.stringify({ error: { code: 500, status: 'NO_SERVER_KEY',
+    message: 'GEMINI_API_KEY belum dipasang di server.' } })
+  const dg = diagnosaAi(500, badan)
+  assert(dg.sebab === 'kunci_salah', 'kunci server yang belum dipasang dikenali')
+  assert(dg.sebab !== 'padat', 'dan BUKAN kepadatan, meski statusnya 500')
+  assert(/GEMINI_API_KEY/.test(dg.perbaikan), 'menyebut nama variabelnya')
+  assert(/TANPA awalan VITE_/.test(dg.perbaikan),
+    'dan mengingatkan tanpa awalan VITE_ — awalan itulah yang dulu membocorkannya')
+  assert(/REDEPLOY|deploy ulang/i.test(dg.perbaikan), 'serta bahwa menyimpan saja tidak berlaku')
+}
+{
+  const badan = JSON.stringify({ error: { code: 401, status: 'UNAUTHENTICATED',
+    message: 'Silakan masuk dulu untuk memakai fitur AI.' } })
+  const dg = diagnosaAi(401, badan)
+  assert(/masuk kembali/i.test(dg.perbaikan), 'sesi yang tidak terbaca disuruh masuk ulang')
+  assert(dg.sisiKami === false, 'dan itu bukan setelan yang perlu admin ubah')
+}
+{
+  const badan = JSON.stringify({ error: { code: 400, status: 'MODEL_NOT_ALLOWED',
+    message: 'Model "gemini-9" tidak diizinkan.' } })
+  const dg = diagnosaAi(400, badan)
+  assert(dg.sebab === 'model_tak_ada', 'model di luar daftar izin dikenali')
+  assert(/MODEL_BOLEH/.test(dg.perbaikan), 'dan disebutkan di mana daftarnya')
+}
+{
+  // 500 yang memang dari Google tidak boleh ikut terbaca sebagai kunci server.
+  const dg = diagnosaAi(500, JSON.stringify({ error: { code: 500, status: 'INTERNAL' } }))
+  assert(dg.sebab === 'padat', '500 biasa tetap kepadatan')
+}
+
 console.log(`diagnosa-ai: ${ok} assert lulus`)

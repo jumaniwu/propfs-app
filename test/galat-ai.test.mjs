@@ -111,4 +111,31 @@ assert(ringkasTeknis(['x'.repeat(500)]).length <= 160, 'satu galat panjang sudah
   assert(t.endsWith('…'), 'pemotongannya ditandai, bukan terputus diam-diam')
 }
 
+// ── Galat dari perantara /api/ai — bukan dari Google ─────────────────────
+//
+// Yang terjadi di lapangan: kunci server belum terpasang, perantara menjawab
+// 500 NO_SERVER_KEY, dan 500 masuk keranjang "sedang padat" — sehingga layar
+// berbunyi "Layanan AI sedang sangat padat, coba lagi dalam ±1 menit" untuk
+// sesuatu yang tidak akan pernah pulih sendiri, lalu diulang berkali-kali.
+// Persis kesalahan yang modul ini dibuat untuk menghentikannya, terulang lewat
+// kode status milik kami sendiri.
+{
+  const NO_KEY = '500 {"error":{"code":500,"status":"NO_SERVER_KEY",'
+    + '"message":"GEMINI_API_KEY belum dipasang di server."}}'
+  assert(jenisGalat(NO_KEY) === 'kunci', 'kunci server yang belum dipasang = masalah kunci')
+  assert(jenisGalat(NO_KEY) !== 'sibuk', 'dan BUKAN kepadatan, meski statusnya 500')
+  assert(bisaDiulang('kunci') === false, 'jadi tidak diulang — menunggu tidak memasang kunci')
+
+  const r = ringkasGalatAi([NO_KEY, NO_KEY])
+  assert(!/padat|sibuk/i.test(r.pesan), `pesannya tidak menyebut kepadatan: ${r.pesan.slice(0, 60)}`)
+  assert(!/±1 menit/.test(r.pesan), 'dan tidak menyuruh menunggu semenit')
+}
+{
+  // 500 yang memang dari Google tetap dibaca sebagai kepadatan.
+  assert(jenisGalat('500 {"error":{"code":500,"status":"INTERNAL"}}') === 'sibuk',
+    '500 biasa tetap kepadatan — perbaikannya tidak boleh membutakan yang lain')
+}
+assert(jenisGalat('400 {"error":{"status":"MODEL_NOT_ALLOWED"}}') === 'lain',
+  'model di luar daftar izin perantara bukan masalah kunci maupun kepadatan')
+
 console.log(`galat-ai: ${ok} assert lulus`)

@@ -20,7 +20,7 @@ import { batasWaktu } from './batasWaktu.ts'
 import type { ProfilMarcom } from './marcom.ts'
 import { bersihkanHashtag, namaTampil } from './marcom.ts'
 import { catatGambar } from '../store/usageStore'
-import { MODEL_GAMBAR, MODEL_TEKS } from './modelAi'
+import { MODEL_GAMBAR, MODEL_UTAMA } from './modelAi'
 import { panggilGemini } from './gemini'
 
 const kunci = (): string =>
@@ -165,7 +165,7 @@ export async function buatCaption(k: KonteksCaption): Promise<HasilCaption> {
     if (foto) parts.push({ inline_data: { mime_type: foto.mime, data: foto.data } })
 
     const res = await batasWaktu(
-      panggilGemini(MODEL_TEKS[1], { contents: [{ parts }] }),
+      panggilGemini(MODEL_UTAMA, { contents: [{ parts }] }),
       25000,
       null,
     )
