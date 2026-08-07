@@ -70,6 +70,8 @@ const PESAN: Record<JenisGalat, string> = {
   sibuk: 'Layanan sedang padat',
   jaringan: 'Tidak tersambung',
   waktu: 'Terlalu lama, dihentikan',
+  ukuran: 'Muatan terlalu besar',
+  gambar: 'Gambar tidak terbaca',
   lain: 'Ditolak dengan alasan yang tidak dikenali',
 }
 

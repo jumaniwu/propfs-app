@@ -30,6 +30,8 @@ export type SebabAi =
   | 'billing'           // project kunci tidak terhubung ke akun penagihan
   | 'kunci_salah'       // kunci keliru, kedaluwarsa, atau tidak terkirim
   | 'kuota'             // kuota / rate limit
+  | 'terlalu_besar'     // muatan melewati batas fungsi serverless
+  | 'gambar_ditolak'    // gambarnya sampai, tetapi tidak terbaca
   | 'model_tak_ada'     // nama model tidak dikenal
   | 'padat'             // sisi Google sedang penuh
   | 'jaringan'
@@ -171,6 +173,28 @@ const d = (
  * kesalahan arah yang modul ini dibuat untuk menghentikannya.
  */
 const ATURAN: Aturan[] = [
+  // Muatan terlalu besar. Dijawab Vercel dengan HALAMAN HTML, jadi tidak ada
+  // kalimat Google yang bisa dikutip — dan HTML mentah tidak boleh sampai ke
+  // layar. Sebabnya disebutkan sendiri.
+  {
+    cocok: (t, k) => k === 413 || t.includes('payload_too_large')
+      || t.includes('request entity too large'),
+    jadi: d('terlalu_besar',
+      'Lampirannya terlalu besar untuk satu permintaan.',
+      'Kirim satu foto saja per pesan. Bila tetap gagal, foto ulang dari jarak lebih dekat — '
+        + 'foto yang lebih rapat pada notanya menghasilkan berkas lebih kecil DAN lebih mudah '
+        + 'dibaca AI.',
+      undefined, false, 'kami'),
+  },
+  {
+    cocok: t => t.includes('unable to process input image')
+      || t.includes('invalid image') || t.includes('unsupported mime type'),
+    jadi: d('gambar_ditolak',
+      'Fotonya sampai ke Google, tetapi tidak bisa dibaca.',
+      'Biasanya karena terlalu buram, terlalu gelap, atau formatnya tidak lazim. Coba foto '
+        + 'ulang dengan cahaya cukup dan nota terbentang rata, atau ketik isinya manual.',
+      undefined, false),
+  },
   // Galat perantara kami sendiri didahulukan: statusnya (500/401) kebetulan
   // sama dengan status Google untuk hal yang sama sekali berbeda, jadi
   // mencocokkan kode lebih dulu akan menyesatkan.
