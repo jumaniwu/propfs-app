@@ -59,6 +59,7 @@ export interface Diagnosa {
 }
 
 export const TAUTAN = {
+  vercel: 'https://vercel.com/dashboard',
   kunci: 'https://console.cloud.google.com/apis/credentials',
   aktifkanApi: 'https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com',
   billing: 'https://console.cloud.google.com/billing',
@@ -95,9 +96,65 @@ function kodeDalam(teks: string): number {
   return Number(/\b(400|401|402|403|404|429|500|502|503|504)\b/.exec(teks)?.[1] ?? 0)
 }
 
+const LANGKAH_ENV = 'Vercel → Settings → Environment Variables. Namanya harus persis '
+  + 'GEMINI_API_KEY (TANPA awalan VITE_), tercentang Production, lalu REDEPLOY — menyimpan '
+  + 'variabel saja tidak berlaku sampai di-deploy ulang.'
+
+/**
+ * Ubah daftar nama variabel yang dilihat server menjadi langkah perbaikan.
+ *
+ * "Belum terbaca" bisa berarti tiga hal yang perbaikannya berlainan: belum
+ * ditambahkan sama sekali, salah nama (masih berawalan VITE_, atau ada spasi
+ * ikut tersalin), atau tercentang untuk Preview saja sehingga Production tetap
+ * kosong. Membedakannya dengan menebak berarti satu siklus deploy untuk setiap
+ * tebakan — dan itu sudah beberapa kali terjadi.
+ *
+ * Yang dilaporkan server hanya NAMA variabel, tidak pernah nilainya.
+ */
+export function petunjukVariabel(badan: unknown): string {
+  let mirip: string[] = []
+  try {
+    const j = JSON.parse(String(badan ?? '')) as { error?: { variabelMirip?: unknown } }
+    if (Array.isArray(j?.error?.variabelMirip)) mirip = j.error.variabelMirip.map(String)
+  } catch { /* server versi lama belum mengirimkannya */ }
+
+  // Server melaporkan juga nama lain yang mengandung "API_KEY" supaya salah
+  // ketik pada bagian "GEMINI" ikut terlihat — GEMNI_API_KEY tidak akan pernah
+  // cocok dengan pencarian kata "GEMINI". Tetapi kunci layanan lain yang
+  // kebetulan ikut terdaftar harus DIBUANG dari kesimpulan: menyuruh menghapus
+  // VITE_SUPABASE_ANON_KEY karena "berawalan VITE_" akan mematikan seluruh
+  // aplikasinya, dan itu jauh lebih buruk daripada masalah yang sedang dicari.
+  const LAYANAN_LAIN = /SUPABASE|MIDTRANS|RESEND|VERCEL|SENTRY|GA_ID|ANALYTICS/i
+  const gemini = mirip.filter(m => !LAYANAN_LAIN.test(m))
+  const viteGemini = gemini.filter(m => m.startsWith('VITE_'))
+  const lainnya = gemini.filter(m => !m.startsWith('VITE_'))
+
+  if (!gemini.length) {
+    const tambahan = mirip.length ? ` (yang terlihat hanya: ${mirip.join(', ')})` : ''
+    return 'Server tidak melihat SATU PUN variabel yang namanya berkaitan dengan Gemini'
+      + `${tambahan}. Artinya variabelnya belum sampai ke deployment ini sama sekali. `
+      + LANGKAH_ENV
+  }
+  if (viteGemini.length && !lainnya.length) {
+    return `Yang dilihat server: ${viteGemini.join(', ')} — masih berawalan VITE_. Itu justru `
+      + 'yang membocorkan kunci ke browser, jadi server sengaja TIDAK memakainya. Hapus yang '
+      + `VITE_, lalu tambahkan yang tanpa awalan. ${LANGKAH_ENV}`
+  }
+  return `Yang dilihat server: ${gemini.join(', ')} — belum ada yang persis GEMINI_API_KEY. `
+    + 'Periksa huruf besar-kecil dan spasi yang mungkin ikut tersalin saat menempel. '
+    + LANGKAH_ENV
+}
+
 interface Aturan {
   cocok: (t: string, kode: number) => boolean
   jadi: Omit<Diagnosa, 'asli'>
+  /**
+   * Perbaikan yang bergantung pada isi respons, bukan hanya pada jenisnya.
+   *
+   * Dipakai ketika server melampirkan bukti yang mempersempit sebabnya —
+   * misalnya daftar nama variabel yang benar-benar dilihatnya.
+   */
+  sesuaikan?: (badan: string) => Partial<Diagnosa>
 }
 
 const d = (
@@ -121,10 +178,10 @@ const ATURAN: Aturan[] = [
     cocok: t => t.includes('no_server_key'),
     jadi: d('kunci_salah',
       'GEMINI_API_KEY belum terbaca di server.',
-      'Vercel → Settings → Environment Variables → tambahkan GEMINI_API_KEY (TANPA awalan '
-        + 'VITE_, supaya tidak ikut terbundel ke browser), centang Production, lalu REDEPLOY. '
-        + 'Menyimpan variabel saja tidak berlaku sampai di-deploy ulang.',
-      TAUTAN.studio, true, 'kami'),
+      LANGKAH_ENV, TAUTAN.vercel, true, 'kami'),
+    // Server melampirkan nama variabel yang benar-benar ia lihat; itulah yang
+    // memisahkan tiga sebab yang kalimat generiknya tidak bisa membedakan.
+    sesuaikan: badan => ({ perbaikan: petunjukVariabel(badan) }),
   },
   {
     cocok: t => t.includes('unauthenticated') && t.includes('masuk dulu'),
@@ -241,10 +298,13 @@ const ATURAN: Aturan[] = [
  */
 export function diagnosaAi(status: number | undefined, badan: unknown): Diagnosa {
   const asli = pesanPenyedia(badan)
-  const teks = `${status ?? ''} ${asli} ${String(badan ?? '')}`.toLowerCase()
+  const mentah = String(badan ?? '')
+  const teks = `${status ?? ''} ${asli} ${mentah}`.toLowerCase()
   const kode = Number(status) || kodeDalam(teks)
 
-  for (const a of ATURAN) if (a.cocok(teks, kode)) return { ...a.jadi, asli }
+  for (const a of ATURAN) {
+    if (a.cocok(teks, kode)) return { ...a.jadi, ...(a.sesuaikan?.(mentah) ?? {}), asli }
+  }
 
   return {
     sebab: 'tidak_dikenali',

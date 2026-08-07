@@ -109,7 +109,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Production tetap kosong. Membedakannya dengan menebak berarti satu
     // siklus deploy untuk setiap tebakan.
     const mirip = Object.keys(process.env)
-      .filter(k => /GEMINI|GOOGLE|GENAI/i.test(k))
+      // Termasuk yang mengandung API_KEY, supaya salah ketik pada bagian
+      // "GEMINI" (mis. GEMNI_API_KEY) tetap terlihat. Nama saja, tak pernah nilai.
+      .filter(k => /GEMINI|GOOGLE|GENAI|API_?KEY/i.test(k))
       .sort()
     console.error('[ai] GEMINI_API_KEY belum dipasang. Yang mirip:', mirip)
     return res.status(500).json({

@@ -23,7 +23,7 @@
 
 import { batasWaktu } from './batasWaktu.ts'
 import { jenisGalat, type JenisGalat } from './galatAi.ts'
-import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
+import { diagnosaAi, petunjukVariabel, type Diagnosa } from './diagnosaAi.ts'
 import {
   saringModel, pilihModel, adaYangLebihBaik,
   MODEL_TEKS, MODEL_UTAMA, type ModelGemini,
@@ -164,38 +164,6 @@ function bubuhiBentuk(dg: Diagnosa, bentuk: string): Diagnosa {
     perbaikan: `${dg.perbaikan}\n\nPeriksa juga bentuk kuncinya — lihat keterangan di atas.`,
     tautan: 'https://aistudio.google.com/apikey',
   }
-}
-
-/**
- * Ubah daftar nama variabel yang dilihat server menjadi langkah perbaikan.
- *
- * "Belum terbaca" bisa berarti tiga hal yang perbaikannya berlainan: belum
- * ditambahkan sama sekali, salah nama (masih berawalan VITE_, atau ada spasi
- * ikut tersalin), atau tercentang untuk Preview saja sehingga Production tetap
- * kosong. Membedakannya dengan menebak berarti satu siklus deploy untuk setiap
- * tebakan — dan itulah yang sudah beberapa kali terjadi.
- *
- * Yang dilaporkan server hanya NAMA variabel, tidak pernah nilainya.
- */
-export function petunjukVariabel(badan: string): string {
-  let mirip: string[] = []
-  try {
-    const j = JSON.parse(badan) as { error?: { variabelMirip?: unknown } }
-    if (Array.isArray(j?.error?.variabelMirip)) mirip = j.error.variabelMirip.map(String)
-  } catch { /* server versi lama belum mengirimkannya */ }
-
-  const dasar = 'Vercel → Settings → Environment Variables. Namanya harus persis GEMINI_API_KEY '
-    + '(TANPA awalan VITE_), tercentang Production, lalu REDEPLOY — menyimpan variabel saja '
-    + 'tidak berlaku sampai di-deploy ulang.'
-
-  if (!mirip.length) {
-    return `Server tidak melihat SATU PUN variabel bernama mirip Gemini. ${dasar}`
-  }
-  const adaVite = mirip.some(m => m.startsWith('VITE_'))
-  const catatan = adaVite
-    ? ' Yang ada masih berawalan VITE_ — itu justru yang membocorkan kunci ke browser dan harus DIHAPUS.'
-    : ' Namanya belum persis; periksa huruf besar-kecil dan spasi yang mungkin ikut tersalin.'
-  return `Yang dilihat server: ${mirip.join(', ')}.${catatan} ${dasar}`
 }
 
 /**
