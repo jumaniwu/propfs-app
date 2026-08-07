@@ -227,6 +227,8 @@ export default function ChatAiPage() {
     } catch (e) {
       setPesan(v => [...v, {
         id: String(Date.now() + 1), role: 'assistant',
+        // Ditandai supaya tidak ikut dikirim balik ke model sebagai riwayat.
+        galat: true,
         text: `⚠️ ${e instanceof Error ? e.message : String(e)}`,
       }])
     } finally { setSibuk(false) }
