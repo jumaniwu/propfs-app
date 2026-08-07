@@ -8,7 +8,7 @@
 
 import type { SiteplanConcept } from '@/engine/siteplan/layout.ts'
 import { MODEL_TEKS } from './modelAi'
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi, type SesiAi } from './gemini'
 
 export interface AIZone {
   /** jenis zona yang teridentifikasi, mis. "ruko", "apartemen", "commercial plaza" */
@@ -80,6 +80,7 @@ function extractJson(text: string): unknown {
 type GeminiPart = { text: string } | { inline_data: { mime_type: string; data: string } }
 
 async function callGeminiVision(parts: GeminiPart[]): Promise<string> {
+  const ai = mulaiSesiAi(70_000, 45_000)
   const body = {
     contents: [{ parts }],
     generationConfig: { temperature: 0.2 },
@@ -87,7 +88,7 @@ async function callGeminiVision(parts: GeminiPart[]): Promise<string> {
   const models = MODEL_TEKS
   let lastErr = ''
   for (const model of models) {
-    const res = await panggilGemini(model, body)
+    const res = await ai.panggil(model, body)
     if (res.ok) {
       const data = await res.json()
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''

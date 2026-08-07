@@ -11,7 +11,7 @@
 
 import type { DoItem } from './penerimaan'
 import { MODEL_TEKS } from './modelAi.ts'
-import { panggilGemini } from './gemini.ts'
+import { mulaiSesiAi } from './gemini.ts'
 
 export interface HasilBacaDo {
   nomor_do: string
@@ -157,9 +157,7 @@ export async function bacaNotaDo(
   namaBarangPo: string[] = [],
   catatanTambahan = '',
 ): Promise<HasilBacaDo> {
-  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
-  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
-  // dengan kalimat yang jelas.
+  const ai = mulaiSesiAi(70_000, 45_000)
   if (berkas.length === 0) throw new Error('Lampirkan foto surat jalan atau notanya dulu.')
 
   const parts: Array<Record<string, unknown>> = [
@@ -170,7 +168,7 @@ export async function bacaNotaDo(
   let galat = ''
   for (const model of MODEL_TEKS) {
     try {
-      const res = await panggilGemini(model, {
+      const res = await ai.panggil(model, {
         systemInstruction: { parts: [{ text: instruksiBacaDo(namaBarangPo) }] },
         contents: [{ role: 'user', parts }],
         generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },

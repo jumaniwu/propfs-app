@@ -21,7 +21,7 @@ import type { ProfilMarcom } from './marcom.ts'
 import { bersihkanHashtag, namaTampil } from './marcom.ts'
 import { catatGambar } from '../store/usageStore'
 import { MODEL_GAMBAR, MODEL_UTAMA } from './modelAi'
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi } from './gemini'
 
 const kunci = (): string =>
   ''  // kunci sudah pindah ke server; lihat gemini.ts
@@ -165,7 +165,7 @@ export async function buatCaption(k: KonteksCaption): Promise<HasilCaption> {
     if (foto) parts.push({ inline_data: { mime_type: foto.mime, data: foto.data } })
 
     const res = await batasWaktu(
-      panggilGemini(MODEL_UTAMA, { contents: [{ parts }] }),
+      mulaiSesiAi(30_000, 25_000).panggil(MODEL_UTAMA, { contents: [{ parts }] }),
       25000,
       null,
     )
@@ -228,10 +228,13 @@ export async function rapikanFoto(dataUrl: string): Promise<HasilRapikan> {
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
 
+  // Tiap percobaan menghasilkan gambar berbayar bila berhasil; perulangannya
+  // harus punya akhir yang pasti.
+  const ai = mulaiSesiAi(150_000, 50_000)
   for (const model of MODEL_GAMBAR) {
     try {
       const res = await batasWaktu(
-        panggilGemini(model, body),
+        ai.panggil(model, body),
         45000,
         null,
       )

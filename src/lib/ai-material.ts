@@ -1,6 +1,6 @@
 import { BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { v4 as uuidv4 } from 'uuid'
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi, type SesiAi } from './gemini'
 import { MODEL_UTAMA, MODEL_CADANGAN } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
@@ -66,7 +66,7 @@ function mapToMaterialItem(item: any): MaterialScheduleItem {
   };
 }
 
-async function callAIMaterialChunk(chunk: string, retries = 3): Promise<any[]> {
+async function callAIMaterialChunk(ai: SesiAi, chunk: string, retries = 3): Promise<any[]> {
   const systemMsg = 'You are a JSON-only API. You MUST respond with ONLY a valid JSON array, no markdown, no explanation.';
   const userPrompt = buildMaterialPrompt(chunk);
   
@@ -80,7 +80,7 @@ async function callAIMaterialChunk(chunk: string, retries = 3): Promise<any[]> {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await panggilGemini(MODEL_UTAMA, body);
+      const res = await ai.panggil(MODEL_UTAMA, body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 8000;
@@ -152,9 +152,9 @@ export async function predictMaterialSchedule(
   // Gemini saja — lihat catatan yang sama di ai-parser.ts. Untuk penjadwalan
   // material yang bersandar pada penalaran AHSP, penyedia cadangan pun tak
   // pernah setara; kini keduanya bahkan tidak menjawab sama sekali.
-  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
-  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
-  // dengan kalimat yang jelas.
+  // Sama seperti RAB parser: dipecah per potongan, jadi anggarannya longgar —
+  // tetapi tetap ada, supaya perulangannya punya akhir.
+  const ai = mulaiSesiAi(240_000, 45_000)
 
   // Filter pekerjaan fisik (termasuk yang unitMaterialCost == 0 karena mungkin ada material quant)
   const validComponents = components.filter(c => 
@@ -180,7 +180,7 @@ export async function predictMaterialSchedule(
 
   for (let i = 0; i < rabChunks.length; i++) {
     console.log(`[Material AI] Memproses Part ${i + 1}/${rabChunks.length}`);
-    const items = await callAIMaterialChunk(rabChunks[i]);
+    const items = await callAIMaterialChunk(ai, rabChunks[i]);
     allMaterials.push(...items);
     
     if (i < rabChunks.length - 1) {

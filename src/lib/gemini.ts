@@ -18,7 +18,7 @@
 // menyebut sebab dan perbaikannya.
 // ============================================================
 
-import { galatWaktuHabis } from './anggaranWaktu.ts'
+import { buatAnggaran, pantasDicobaLagi, galatWaktuHabis } from './anggaranWaktu.ts'
 
 /** Alamat perantara. Bukan alamat Google — itulah inti perubahannya. */
 export const JALUR_AI = '/api/ai'
@@ -114,4 +114,41 @@ export async function panggilGemini(
 /** Katalog model yang boleh dipakai kunci di server. */
 export async function daftarModelGemini(): Promise<Response> {
   return kirim({ aksi: 'daftarModel' })
+}
+
+
+/**
+ * Satu sesi kerja AI, dengan anggaran waktu yang dipegang bersama.
+ *
+ * Batas waktu per panggilan tidak pernah cukup untuk fitur yang punya
+ * perulangan — dan hampir semuanya punya. RAB Excel mengulang tiap potongan
+ * sampai empat kali, AI Architect merender tiga sudut dikali tiga model,
+ * Marcom mencoba tiga model gambar. Dengan batas per panggilan, tiap
+ * percobaan mendapat jatah penuh LAGI, sehingga pengaman yang dipasang untuk
+ * menghentikan penungguan justru melipatgandakannya. Itu sudah terjadi sekali
+ * di Chat AI: 75 detik menjadi lebih dari seratus, dan masih berputar.
+ *
+ * Sesi ini memindahkan anggarannya ke satu tempat. Yang membuatnya tahan
+ * terhadap kelalaian: begitu anggarannya menipis, `panggil` MELEMPAR seketika
+ * tanpa menyentuh jaringan. Jadi perulangan yang menelan galat dan lanjut ke
+ * percobaan berikutnya pun akan habis dalam sekejap, bukan berjam-jam —
+ * pemanggilnya tidak perlu ingat memeriksa apa pun.
+ */
+export interface SesiAi {
+  /** Panggil satu model; melempar seketika bila anggarannya sudah menipis. */
+  panggil(model: string, badan: BadanGemini): Promise<Response>
+  sisaDetik(): number
+  habis(): boolean
+}
+
+export function mulaiSesiAi(totalMs = 70_000, wajarMs = 45_000): SesiAi {
+  const anggaran = buatAnggaran(totalMs)
+  return {
+    async panggil(model: string, badan: BadanGemini): Promise<Response> {
+      if (!pantasDicobaLagi(anggaran)) throw galatWaktuHabis(Math.round(totalMs / 1000))
+      return panggilGemini(model, badan, anggaran.jatah(wajarMs))
+    },
+    sisaDetik: () => Math.round(anggaran.sisa() / 1000),
+    habis: () => anggaran.habis(),
+  }
 }

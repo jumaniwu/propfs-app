@@ -12,7 +12,7 @@ import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
 import { renderIsometric } from '@/components/siteplan/render3d.ts'
 import { catatGambar } from '../store/usageStore'
 import { MODEL_GAMBAR } from './modelAi'
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi, type SesiAi } from './gemini'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
 export type RenderStyle = 'modern-minimalis' | 'tropis' | 'klasik' | 'industrial'
@@ -105,7 +105,7 @@ ${opts.sketchDataUrl ? '\nGAMBAR KEDUA adalah foto udara lokasi asli dengan core
 const MODEL_GAMBAR_UTAMA = 'gemini-2.5-flash-image'
 
 async function callGeminiImage(
-  prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
+  ai: SesiAi, prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
 ): Promise<string> {
   const parts: Array<Record<string, unknown>> = [
     { text: prompt },
@@ -119,7 +119,7 @@ async function callGeminiImage(
   const models = MODEL_GAMBAR
   let lastErr = ''
   for (const model of models) {
-    const res = await panggilGemini(model, body)
+    const res = await ai.panggil(model, body)
     if (!res.ok) {
       lastErr = `HTTP ${res.status}`
       continue
@@ -159,6 +159,10 @@ export async function renderMasterplanViews(
       }
     : null
 
+  // Tiap gambar BERBAYAR, jadi perulangan yang tak berujung bukan cuma
+  // membuang waktu — ia membuang uang. Anggarannya longgar karena membuat
+  // gambar memang lama, tetapi ia tetap punya akhir.
+  const ai = mulaiSesiAi(180_000, 60_000)
   const views: RenderedView[] = []
   for (let i = 0; i < opts.angles.length; i++) {
     const angle = opts.angles[i]
@@ -175,7 +179,7 @@ export async function renderMasterplanViews(
       try {
         const prompt = buildPrompt(result, opts)
         const dataUrl = await callGeminiImage(
-          prompt, schematicUrl.split(',')[1], sketch,
+          ai, prompt, schematicUrl.split(',')[1], sketch,
         )
         // Satu sudut = satu gambar berbayar. Merender tiga sudut sekaligus
         // adalah pemakaian biasa, jadi yang terasa "sekali tekan" sebenarnya
