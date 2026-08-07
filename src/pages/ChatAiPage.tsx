@@ -37,6 +37,7 @@ import { penerimaanApi } from '@/lib/penerimaanApi'
 import { totalDibayar, nomorDo, type DeliveryOrder, type PoPayment } from '@/lib/penerimaan'
 import type { PurchaseOrder } from '@/lib/procurement'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
+import { kecilkanFoto, ukuranTampil } from '@/lib/kompresFoto'
 
 const SAPAAN: ChatMessage = {
   id: 'salam',
@@ -140,25 +141,22 @@ export default function ChatAiPage() {
   }
   useEffect(() => { void muatProcurement() }, [])
 
-  const keBase64 = (f: File) => new Promise<{ base64Data: string; preview?: string }>((res, rej) => {
-    const r = new FileReader()
-    r.readAsDataURL(f)
-    r.onload = () => {
-      const hasil = r.result as string
-      res({ base64Data: hasil.split(',')[1], preview: f.type.startsWith('image/') ? hasil : undefined })
-    }
-    r.onerror = rej
-  })
-
   async function pilihBerkas(e: React.ChangeEvent<HTMLInputElement>) {
     const berkas = Array.from(e.target.files ?? [])
+    // Foto dikecilkan SEBELUM dikirim. Foto kamera 3–8 MB kini menempuh dua
+    // perjalanan — ponsel → server kami → Google — dan yang menanggung
+    // waktunya adalah orang di lapangan dengan sinyal seadanya. Untuk membaca
+    // tulisan pada nota, 1600 piksel sudah jauh melampaui yang dibutuhkan.
     const hasil = await Promise.all(berkas.map(async f => {
-      if (f.size > 8 * 1024 * 1024) {
-        toast({ title: `${f.name} terlalu besar (maks 8MB)`, variant: 'destructive' })
+      if (f.size > 25 * 1024 * 1024) {
+        toast({ title: `${f.name} terlalu besar (maks 25MB)`, variant: 'destructive' })
         return null
       }
-      const { base64Data, preview } = await keBase64(f)
-      return { name: f.name, mimeType: f.type, base64Data, preview }
+      const { base64Data, mimeType, byteAsal, byteAkhir } = await kecilkanFoto(f)
+      if (byteAkhir < byteAsal * 0.7) {
+        console.log(`[lampiran] ${f.name}: ${ukuranTampil(byteAsal)} → ${ukuranTampil(byteAkhir)}`)
+      }
+      return { name: f.name, mimeType, base64Data, preview: `data:${mimeType};base64,${base64Data}` }
     }))
     setLampiran(v => [...v, ...hasil.filter(Boolean) as never[]])
     e.target.value = ''

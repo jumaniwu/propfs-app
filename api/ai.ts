@@ -76,16 +76,44 @@ function bentukKunci(k: string): 'api_key' | 'oauth' | 'tidak_dikenali' {
  * isinya sendiri: membaca isi JWT tanpa memverifikasi tanda tangannya berarti
  * mempercayai apa pun yang dikirim pemanggil.
  */
+/**
+ * Ingatan singkat hasil pemeriksaan token.
+ *
+ * Tanpa ini, SETIAP panggilan AI menambah satu perjalanan bolak-balik ke
+ * Supabase sebelum permintaannya bahkan mulai berjalan — biaya tetap yang
+ * ditanggung di depan, pada tiap pesan. Umurnya sengaja pendek: sesi yang
+ * dicabut masih bisa dipakai paling lama satu menit, dan itu batas yang wajar
+ * untuk menghapus satu perjalanan dari setiap permintaan.
+ *
+ * Hidup di lingkup modul, jadi hanya bertahan selama instans fungsinya hangat.
+ * Itu memadai: yang ingin dihilangkan adalah pengulangan dalam satu sesi
+ * mengetik, bukan menyimpan keadaan jangka panjang.
+ */
+const ingatanToken = new Map<string, number>()
+const UMUR_INGATAN = 60_000
+
 async function penggunaSah(token: string): Promise<boolean> {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
   if (!url || !anon || !token) return false
 
+  const sampai = ingatanToken.get(token)
+  if (sampai && sampai > Date.now()) return true
+
   try {
     const res = await fetch(`${url}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: anon },
     })
-    return res.ok
+    if (!res.ok) return false
+
+    // Jangan biarkan ingatannya tumbuh tanpa batas pada instans yang berumur
+    // panjang; token yang sudah lewat waktunya dibuang saat ada yang baru masuk.
+    if (ingatanToken.size > 500) {
+      const kini = Date.now()
+      for (const [k, v] of ingatanToken) if (v <= kini) ingatanToken.delete(k)
+    }
+    ingatanToken.set(token, Date.now() + UMUR_INGATAN)
+    return true
   } catch {
     return false
   }

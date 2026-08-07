@@ -112,7 +112,7 @@ export default function PanelTesAi() {
                 </p>
               )}
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {hasil.model.slice(0, 24).map(m => (
+                {hasil.model.map(m => (
                   <span key={m.nama}
                     className={`text-[10px] font-mono rounded-md px-1.5 py-0.5 border ${
                       m.nama === hasil.modelDipakai ? 'bg-navy text-white border-navy'
