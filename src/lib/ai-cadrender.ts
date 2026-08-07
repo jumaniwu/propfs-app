@@ -8,7 +8,7 @@
 import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
 import { catatGambar } from '../store/usageStore'
 import { MODEL_TEKS, MODEL_GAMBAR } from './modelAi'
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi } from './gemini'
 
 export interface CadQuestion {
   id: string
@@ -43,13 +43,14 @@ const GEMINI_IMAGE_MODELS = MODEL_GAMBAR
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
 
 async function callGemini(models: readonly string[], parts: Part[], imageOut: boolean): Promise<{ text: string; image: string | null }> {
+  const ai = mulaiSesiAi(imageOut ? 180_000 : 70_000, 60_000)
   const body = {
     contents: [{ parts }],
     generationConfig: imageOut ? { responseModalities: ['TEXT', 'IMAGE'] } : { temperature: 0.3 },
   }
   let lastErr = ''
   for (const model of models) {
-    const res = await panggilGemini(model, body)
+    const res = await ai.panggil(model, body)
     if (!res.ok) { lastErr = `HTTP ${res.status}`; continue }
     const data = await res.json()
     const outParts: Array<{ text?: string; inlineData?: { data?: string }; inline_data?: { data?: string } }> =

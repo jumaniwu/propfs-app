@@ -1,6 +1,6 @@
 import { BudgetComponent, CostCategory } from '../types/cost.types';
 import { v4 as uuidv4 } from 'uuid';
-import { panggilGemini } from './gemini'
+import { mulaiSesiAi, type SesiAi } from './gemini'
 import { MODEL_UTAMA, MODEL_CADANGAN } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
@@ -105,7 +105,7 @@ function chunkText(text: string, maxChars = 4000): string[] {
   return chunks.filter(c => c.length > 20);
 }
 
-async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
+async function callAIChunk(ai: SesiAi, chunk: string, retries = 3): Promise<any[]> {
   const systemMsg = 'You are a JSON-only API. Respond ONLY with a valid JSON array. No markdown, no explanation, no code fences.';
   const userPrompt = buildPrompt(chunk);
   
@@ -119,7 +119,7 @@ async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await panggilGemini(MODEL_UTAMA, body);
+      const res = await ai.panggil(MODEL_UTAMA, body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 10000; // 10s, 20s, 30s
@@ -140,7 +140,7 @@ async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
         if (res.status === 404) {
           const errText = await res.text()
           console.warn(`[AI Chunk] Model 404 - response: ${errText.substring(0, 200)}. Trying fallback model gemini-2.0-flash...`)
-          const fallbackRes = await panggilGemini(MODEL_CADANGAN, body)
+          const fallbackRes = await ai.panggil(MODEL_CADANGAN, body)
           if (!fallbackRes.ok) {
             const fb404 = await fallbackRes.text()
             throw new Error(`Gagal memproses RAB: Model utama dan fallback gagal (${fallbackRes.status}). Detail: ${fb404.substring(0, 100)}`)
@@ -214,7 +214,7 @@ async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
   return [];
 }
 
-async function validateRABWithAI(components: BudgetComponent[]): Promise<BudgetComponent[]> {
+async function validateRABWithAI(ai: SesiAi, components: BudgetComponent[]): Promise<BudgetComponent[]> {
   console.log('[RAB Validator] Memulai proses validasi silang...');
   const systemMsg = 'You are a JSON-only API. Respond ONLY with a valid JSON array.';
   const userPrompt = `Saya punya hasil ekstraksi RAB berformat JSON kotor. Tolong bersihkan dengan aturan ketat:
@@ -232,11 +232,11 @@ ${JSON.stringify(components)}
   };
 
   try {
-    const res = await panggilGemini(MODEL_UTAMA, body);
+    const res = await ai.panggil(MODEL_UTAMA, body);
     if (!res.ok) {
       if (res.status === 404) {
         console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-2.0-flash...`)
-        const fallbackRes = await panggilGemini(MODEL_CADANGAN, body)
+        const fallbackRes = await ai.panggil(MODEL_CADANGAN, body)
         if (!fallbackRes.ok) return components;
         const fallbackData = await fallbackRes.json()
         const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -301,6 +301,12 @@ export async function parseRABwithGemini(
   // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
   // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
   // dengan kalimat yang jelas.
+  //
+  // Anggarannya paling longgar di antara semua fitur: RAB besar dipecah menjadi
+  // banyak potongan yang diproses berurutan, dan itu memang wajar memakan
+  // menit. Yang tidak wajar adalah menggantung tanpa akhir — dan tanpa anggaran
+  // menyeluruh, tiap potongan boleh mengulang empat kali dengan jatah penuh.
+  const ai = mulaiSesiAi(300_000, 45_000)
 
   if (!extractedText || extractedText.trim().length < 20) {
     throw new Error("File Excel kosong atau konten tidak bisa dibaca. Pastikan file berisi tabel RAB.");
@@ -321,7 +327,7 @@ export async function parseRABwithGemini(
     console.log(`[RAB Parser] Processing chunk ${i + 1}/${totalChunks}...`);
     
     // Pass retries=4 to ensure it tries properly
-    const items = await callAIChunk(chunks[i], 4);
+    const items = await callAIChunk(ai, chunks[i], 4);
     allItems.push(...items);
     onProgress?.(i + 1, totalChunks + 1);
 
@@ -345,7 +351,7 @@ export async function parseRABwithGemini(
   });
 
   // Lewati validasi AI agar tidak ada item yang hilang — validasi manual dilakukan user di UI
-  // components = await validateRABWithAI(components);
+  // components = await validateRABWithAI(ai, components);
   onProgress?.(totalChunks + 1, totalChunks + 1);
 
   console.log(`[RAB Parser] ✅ Total item bersih final: ${components.length}`);
