@@ -40,13 +40,44 @@
  * dengan sadar, dan tarifnya sudah terdaftar di biayaAi.ts.
  */
 export const MODEL_TEKS = [
-  'gemini-3-flash',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
 ] as const
 
-/** Model yang lebih pintar tetapi jauh lebih mahal — tidak dipakai otomatis. */
-export const MODEL_PREMIUM = ['gemini-3-pro-preview', 'gemini-2.5-pro'] as const
+/**
+ * Model yang DIKENAL lebih baik, tetapi tidak dipakai otomatis.
+ *
+ * Dua sebab, dan keduanya berlaku pada tiap panggilan.
+ *
+ * Nama yang belum tentu ada tidak boleh berada di jalur panas. Sempat
+ * `gemini-3-flash` ditaruh paling depan supaya aplikasi "naik sendiri" ketika
+ * Google merilisnya; akibatnya setiap panggilan mengetuk nama itu lebih dulu
+ * dan menunggu penolakan sebelum mencoba yang benar-benar ada — satu perjalanan
+ * sia-sia untuk setiap pesan, ditanggung pemakai yang sedang menunggu di
+ * lapangan dengan sinyal seadanya.
+ *
+ * Model Pro punya masalah kedua: tarif tokennya beberapa kali lipat. Menaikkan
+ * biaya adalah keputusan pemilik tagihan, bukan efek samping dari sebuah daftar.
+ *
+ * Daftar ini dipakai HANYA untuk membandingkan dengan katalog Google di halaman
+ * Tes Koneksi: bila salah satunya ternyata tersedia, panel menyebutkannya, dan
+ * pemindahannya ke MODEL_TEKS dilakukan dengan sadar.
+ */
+export const MODEL_LEBIH_BAIK = ['gemini-3-flash', 'gemini-3-pro-preview', 'gemini-2.5-pro'] as const
+
+/** Nama lama; disimpan supaya pemanggil yang sudah ada tidak putus. */
+export const MODEL_PREMIUM = MODEL_LEBIH_BAIK
+
+/**
+ * Model untuk panggilan tunggal yang tidak punya perulangan sendiri.
+ *
+ * Diberi nama, bukan diambil lewat MODEL_TEKS[0]/[1]. Indeks diam-diam
+ * berpindah makna ketika daftarnya diurutkan ulang — dan itu sudah terjadi
+ * sekali: mengeluarkan satu nama dari depan membuat setiap pemanggil
+ * `MODEL_TEKS[1]` mendadak memakai model cadangan tanpa ada yang mengubahnya.
+ */
+export const MODEL_UTAMA = MODEL_TEKS[0]
+export const MODEL_CADANGAN = MODEL_TEKS[MODEL_TEKS.length - 1]
 
 /** Urutan keinginan untuk model yang MENGHASILKAN gambar. */
 export const MODEL_GAMBAR = [
@@ -196,7 +227,7 @@ export function pilihModel(
 export function adaYangLebihBaik(
   tersedia: readonly ModelGemini[] | readonly string[],
   sedangDipakai: string,
-  keinginan: readonly string[] = MODEL_TEKS,
+  keinginan: readonly string[] = [...MODEL_LEBIH_BAIK, ...MODEL_TEKS],
 ): string | null {
   const terbaik = pilihModel(tersedia, keinginan)
   if (!terbaik || terbaik === sedangDipakai) return null

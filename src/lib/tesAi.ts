@@ -26,7 +26,7 @@ import { jenisGalat, type JenisGalat } from './galatAi.ts'
 import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
 import {
   saringModel, pilihModel, adaYangLebihBaik,
-  MODEL_TEKS, type ModelGemini,
+  MODEL_TEKS, MODEL_UTAMA, type ModelGemini,
 } from './modelAi.ts'
 import { panggilGemini, daftarModelGemini } from './gemini.ts'
 
@@ -86,7 +86,7 @@ export async function tesKunciAi(): Promise<HasilTes> {
   const mulai = Date.now()
 
   try {
-    const res = await batasWaktu(panggilGemini(MODEL_TEKS[1], {
+    const res = await batasWaktu(panggilGemini(MODEL_UTAMA, {
       contents: [{ parts: [{ text: 'ping' }] }],
       generationConfig: { maxOutputTokens: 1 },
     }), 25000, null)

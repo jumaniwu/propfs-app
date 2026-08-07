@@ -104,6 +104,33 @@ const d = (
  * kesalahan arah yang modul ini dibuat untuk menghentikannya.
  */
 const ATURAN: Aturan[] = [
+  // Galat perantara kami sendiri didahulukan: statusnya (500/401) kebetulan
+  // sama dengan status Google untuk hal yang sama sekali berbeda, jadi
+  // mencocokkan kode lebih dulu akan menyesatkan.
+  {
+    cocok: t => t.includes('no_server_key'),
+    jadi: d('kunci_salah',
+      'GEMINI_API_KEY belum terbaca di server.',
+      'Vercel → Settings → Environment Variables → tambahkan GEMINI_API_KEY (TANPA awalan '
+        + 'VITE_, supaya tidak ikut terbundel ke browser), centang Production, lalu REDEPLOY. '
+        + 'Menyimpan variabel saja tidak berlaku sampai di-deploy ulang.',
+      TAUTAN.studio),
+  },
+  {
+    cocok: t => t.includes('unauthenticated') && t.includes('masuk dulu'),
+    jadi: d('kunci_salah',
+      'Sesi Anda tidak terbaca, jadi permintaan AI ditolak di gerbangnya.',
+      'Keluar lalu masuk kembali. Perantara AI sengaja menolak pemanggil tanpa sesi — '
+        + 'tanpa pagar itu, siapa pun bisa memakainya atas tanggungan kita.',
+      undefined, false),
+  },
+  {
+    cocok: t => t.includes('model_not_allowed'),
+    jadi: d('model_tak_ada',
+      'Model yang diminta tidak ada di daftar yang diizinkan perantara.',
+      'Tambahkan namanya di MODEL_BOLEH pada api/ai.ts — daftar itu sengaja ada supaya '
+        + 'perantara tidak berubah menjadi pintu ke seluruh katalog Google atas tanggungan kita.'),
+  },
   {
     cocok: t => t.includes('referer') || t.includes('referrer') || t.includes('http_referrer'),
     jadi: d('kunci_dibatasi',

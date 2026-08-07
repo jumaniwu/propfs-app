@@ -1,6 +1,6 @@
 // Test pemeriksaan bentuk kunci & pemilihan model Gemini.
 import {
-  MODEL_TEKS, MODEL_GAMBAR, MODEL_PREMIUM, periksaKunci, saringModel, pilihModel, adaYangLebihBaik,
+  MODEL_TEKS, MODEL_GAMBAR, MODEL_LEBIH_BAIK, periksaKunci, saringModel, pilihModel, adaYangLebihBaik,
 } from '../src/lib/modelAi.ts'
 
 let ok = 0
@@ -102,7 +102,15 @@ assert(saringModel({ models: 'bukan array' }).length === 0, 'bentuk tak terduga 
   // tagihan — bukan efek samping dari sebuah daftar.
   assert(tersedia.some(m => m.nama === 'gemini-2.5-pro'), 'prasyarat: Pro memang ada di katalog')
   assert(!MODEL_TEKS.includes('gemini-2.5-pro'), 'Pro tidak masuk daftar pemakaian otomatis')
-  assert(MODEL_PREMIUM.includes('gemini-2.5-pro'), 'ia terdaftar terpisah, untuk dipilih dengan sadar')
+  assert(MODEL_LEBIH_BAIK.includes('gemini-2.5-pro'), 'ia terdaftar terpisah, untuk dipilih dengan sadar')
+
+  // Nama yang belum tentu ada tidak boleh berada di jalur panas: ia diketuk
+  // lebih dulu pada SETIAP pesan dan menunggu penolakan sebelum mencoba yang
+  // benar-benar ada — satu perjalanan sia-sia untuk setiap panggilan.
+  assert(MODEL_TEKS.every(m => /^gemini-2\./.test(m)),
+    `jalur panas hanya berisi nama yang sudah pasti ada: ${MODEL_TEKS.join(', ')}`)
+  assert(MODEL_LEBIH_BAIK.includes('gemini-3-flash'),
+    'nama yang belum tentu ada dipindah ke daftar saran, bukan dihapus')
 }
 {
   // Nama yang sudah dihentikan tidak menggagalkan apa pun: ia cuma tidak terpilih.
@@ -118,10 +126,12 @@ assert(pilihModel(['sesuatu-yang-lain'], MODEL_TEKS) === null, 'nama asing tidak
 // ── "Bisa tidak naik ke model yang lebih pintar" ─────────────────────────
 {
   const tersedia = saringModel(MENTAH)
-  assert(adaYangLebihBaik(tersedia, 'gemini-2.5-flash') === null,
-    'sudah memakai Flash terbaru yang tersedia = tidak ada saran kenaikan')
-  assert(adaYangLebihBaik(tersedia, 'gemini-2.0-flash') === 'gemini-2.5-flash',
-    'dari Flash lama ke Flash baru memang kenaikan, dan namanya disebut')
+  assert(adaYangLebihBaik(tersedia, 'gemini-2.5-flash') === 'gemini-2.5-pro',
+    'Pro tersedia di katalog, jadi disebut sebagai saran — tetapi tetap tidak dipakai sendiri')
+  assert(adaYangLebihBaik(['gemini-2.5-flash'], 'gemini-2.5-flash') === null,
+    'kalau memang tidak ada yang lebih baik, tidak mengarang saran')
+  assert(adaYangLebihBaik(tersedia, 'gemini-2.0-flash', MODEL_TEKS) === 'gemini-2.5-flash',
+    'dibatasi ke jalur Flash, kenaikannya adalah Flash yang lebih baru')
   assert(adaYangLebihBaik(['gemini-2.0-flash'], 'gemini-2.0-flash') === null,
     'satu-satunya yang tersedia bukan kenaikan')
   assert(adaYangLebihBaik([], 'gemini-2.5-flash') === null, 'daftar kosong tidak mengarang saran')

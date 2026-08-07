@@ -38,6 +38,17 @@ export function jenisGalat(pesan: unknown): JenisGalat {
   ).toLowerCase()
   if (!t.trim()) return 'lain'
 
+  // Galat dari perantara /api/ai — bukan dari Google.
+  //
+  // Diperiksa PALING DULU dan berdasarkan namanya, bukan kode statusnya.
+  // NO_SERVER_KEY memakai status 500, dan 500 masuk keranjang "sedang padat" —
+  // sehingga kunci server yang belum dipasang dilaporkan sebagai kepadatan
+  // Google, lalu diulang berkali-kali menunggu sesuatu yang tidak akan datang.
+  // Persis kesalahan yang modul ini dibuat untuk menghentikannya, terulang
+  // lewat kode status milik kami sendiri.
+  if (t.includes('no_server_key')) return 'kunci'
+  if (t.includes('model_not_allowed')) return 'lain'
+
   // Kunci/izin — tidak akan membaik dengan menunggu.
   if (/\b(401|403)\b/.test(t)
     || t.includes('permission denied') || t.includes('permission_denied')

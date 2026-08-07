@@ -105,8 +105,10 @@ export default function PanelTesAi() {
               )}
               {hasil.modelLebihBaik && (
                 <p className="text-xs bg-gold/10 border border-gold/30 rounded-lg p-2">
-                  Ada yang lebih baik daripada yang biasa dipakai:{' '}
-                  <b>{hasil.modelLebihBaik}</b>. Aplikasi otomatis memilihnya.
+                  Tersedia model yang lebih baik: <b>{hasil.modelLebihBaik}</b>. Aplikasi
+                  belum memakainya — menaikkannya mengubah biaya dan/atau menambah satu
+                  panggilan gagal pada tiap pesan bila namanya keliru, jadi itu keputusan
+                  Anda. Beri tahu saya bila ingin dipindah.
                 </p>
               )}
               <div className="flex flex-wrap gap-1.5 pt-1">
