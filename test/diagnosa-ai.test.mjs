@@ -1,5 +1,5 @@
 // Test penerjemahan penolakan Gemini menjadi langkah perbaikan.
-import { diagnosaAi, pesanPenyedia, ceritaDiagnosa } from '../src/lib/diagnosaAi.ts'
+import { diagnosaAi, pesanPenyedia, ceritaDiagnosa, petunjukVariabel } from '../src/lib/diagnosaAi.ts'
 
 let ok = 0
 const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
@@ -162,6 +162,84 @@ assert(pesanPenyedia(null) === '', 'null aman')
   // 500 yang memang dari Google tidak boleh ikut terbaca sebagai kunci server.
   const dg = diagnosaAi(500, JSON.stringify({ error: { code: 500, status: 'INTERNAL' } }))
   assert(dg.sebab === 'padat', '500 biasa tetap kepadatan')
+}
+
+// ── "Belum terbaca" itu tiga keadaan, bukan satu ─────────────────────────
+//
+// Belum ditambahkan sama sekali, salah nama, atau tercentang untuk Preview
+// saja. Membedakannya dengan menebak berarti satu siklus deploy per tebakan —
+// dan itu sudah beberapa kali terjadi. Server melaporkan NAMA variabel yang
+// benar-benar ia lihat; nilainya tidak pernah ikut.
+const badanTanpaKunci = (mirip) => JSON.stringify({
+  error: { code: 500, status: 'NO_SERVER_KEY', message: 'GEMINI_API_KEY belum dipasang di server.',
+    ...(mirip ? { variabelMirip: mirip } : {}) },
+})
+{
+  const p = petunjukVariabel(badanTanpaKunci([]))
+  assert(/SATU PUN/.test(p), 'tidak ada variabel mirip = dikatakan apa adanya')
+  assert(/REDEPLOY|deploy ulang/i.test(p), 'dan tetap mengingatkan deploy ulang')
+}
+{
+  // Keadaan yang paling mungkin: variabel lama masih ada, yang baru belum.
+  const p = petunjukVariabel(badanTanpaKunci(['VITE_GEMINI_API_KEY']))
+  assert(/VITE_GEMINI_API_KEY/.test(p), 'menyebut nama yang benar-benar dilihat server')
+  assert(/Hapus yang VITE_/.test(p), 'dan bahwa yang berawalan VITE_ harus dihapus, bukan dibiarkan')
+  assert(/membocorkan/.test(p), 'beserta alasannya — supaya tidak dipasang lagi kelak')
+}
+{
+  const p = petunjukVariabel(badanTanpaKunci(['GEMINI_APIKEY']))
+  assert(/GEMINI_APIKEY/.test(p), 'salah nama disebutkan apa adanya')
+  assert(/huruf besar-kecil|spasi/i.test(p), 'dan diarahkan memeriksa ejaannya')
+  assert(!/Hapus yang VITE_/.test(p), 'tanpa menyuruh menghapus sesuatu yang tidak perlu dihapus')
+}
+{
+  // Server ikut melaporkan nama lain yang mengandung API_KEY supaya salah ketik
+  // terlihat. Tetapi VITE_SUPABASE_ANON_KEY yang kebetulan ikut TIDAK boleh
+  // membuat pesannya berbunyi "masih berawalan VITE_" — kunci Supabase memang
+  // seharusnya begitu, dan menyuruh menghapusnya akan mematikan aplikasinya.
+  const p = petunjukVariabel(badanTanpaKunci(['GEMNI_API_KEY', 'VITE_SUPABASE_ANON_KEY']))
+  assert(/GEMNI_API_KEY/.test(p), 'salah ketiknya yang disorot')
+  assert(!/Hapus yang VITE_/.test(p), 'dan TIDAK menyuruh menghapus kunci Supabase')
+  assert(!/VITE_SUPABASE/.test(p), 'nama yang tak berkaitan tidak ikut membingungkan')
+}
+{
+  // Tidak ada satu pun yang berkaitan Gemini, tetapi ada nama lain: sebutkan
+  // apa yang terlihat supaya jelas fungsinya memang jalan dan env-nya terbaca.
+  const p = petunjukVariabel(badanTanpaKunci(['VITE_SUPABASE_ANON_KEY']))
+  assert(/SATU PUN/.test(p), 'tetap dikatakan tidak ada yang berkaitan Gemini')
+  assert(/VITE_SUPABASE_ANON_KEY/.test(p),
+    'tetapi yang terlihat disebutkan sebagai bukti bahwa env-nya memang terbaca')
+  assert(!/Hapus/.test(p), 'dan tidak menyuruh menghapus kunci layanan lain')
+}
+{
+  // Server versi lama belum mengirim daftarnya — jangan meledak.
+  const p = petunjukVariabel(badanTanpaKunci(null))
+  assert(p.length > 0, 'server lama tetap menghasilkan petunjuk')
+  assert(petunjukVariabel('bukan json').length > 0, 'badan bukan JSON aman')
+  assert(petunjukVariabel('').length > 0, 'badan kosong aman')
+}
+
+
+// Dan yang paling penting: petunjuk itu harus sampai lewat diagnosaAi juga,
+// bukan cuma lewat halaman Tes Koneksi. Chat AI-lah yang dipakai sehari-hari,
+// dan di sanalah pesannya sempat tetap generik.
+{
+  const dg = diagnosaAi(500, badanTanpaKunci(['VITE_GEMINI_API_KEY']))
+  assert(dg.sebab === 'kunci_salah', 'tetap dikenali sebagai masalah kunci')
+  assert(/VITE_GEMINI_API_KEY/.test(dg.perbaikan),
+    'nama yang dilihat server ikut sampai ke jalur chat, bukan hanya ke panel admin')
+  assert(dg.sumber === 'kami', 'dan tidak dinisbahkan kepada Google')
+}
+{
+  const dg = diagnosaAi(500, badanTanpaKunci([]))
+  assert(/SATU PUN/.test(dg.perbaikan), 'daftar kosong pun menyampaikan artinya')
+}
+{
+  // Server versi lama tidak mengirim daftarnya — jangan sampai kehilangan
+  // langkah dasarnya.
+  const dg = diagnosaAi(500, badanTanpaKunci(null))
+  assert(/GEMINI_API_KEY/.test(dg.perbaikan) && /REDEPLOY/.test(dg.perbaikan),
+    'tanpa daftar, langkah dasarnya tetap lengkap')
 }
 
 console.log(`diagnosa-ai: ${ok} assert lulus`)
