@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { Stethoscope, CheckCircle2, XCircle, MinusCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { tesKunciAi, kesimpulanTes, type HasilTes } from '@/lib/tesAi'
+import {
+  flashTerbaik, lebihBaru, modelPilihan, simpanModelPilihan,
+} from '@/lib/pilihanModel'
+import { MODEL_UTAMA } from '@/lib/modelAi'
 
 /**
  * Memeriksa kunci AI, sekarang juga.
@@ -16,6 +20,7 @@ export default function PanelTesAi() {
   const [jalan, setJalan] = useState(false)
   const [hasil, setHasil] = useState<HasilTes | null>(null)
   const [waktu, setWaktu] = useState<string>('')
+  const [dipakai, setDipakai] = useState<string | null>(modelPilihan())
 
   async function jalankan() {
     setJalan(true)
@@ -97,25 +102,62 @@ export default function PanelTesAi() {
               <p className="text-sm font-bold text-navy">
                 {hasil.model.length} model tersedia untuk kunci ini
               </p>
-              {hasil.modelDipakai && (
-                <p className="text-xs text-muted-foreground">
-                  Aplikasi akan memakai <b className="text-navy">{hasil.modelDipakai}</b> —
-                  yang terpintar di antara yang tersedia.
-                </p>
-              )}
-              {hasil.modelLebihBaik && (
-                <p className="text-xs bg-gold/10 border border-gold/30 rounded-lg p-2">
-                  Tersedia model yang lebih baik: <b>{hasil.modelLebihBaik}</b>. Aplikasi
-                  belum memakainya — menaikkannya mengubah biaya dan/atau menambah satu
-                  panggilan gagal pada tiap pesan bila namanya keliru, jadi itu keputusan
-                  Anda. Beri tahu saya bila ingin dipindah.
+              <p className="text-xs text-muted-foreground">
+                Aplikasi memakai <b className="text-navy">{dipakai ?? MODEL_UTAMA}</b> untuk
+                percakapan dan membaca foto nota.
+              </p>
+              {/* Naik ke model terbaru TANPA menebak namanya.
+                  Nama model tidak boleh ditebak — sudah dua kali tebakan itu
+                  merugikan. Yang ditawarkan di sini hanya nama yang BARUSAN
+                  dijawab Google untuk kunci ini, jadi memilihnya tidak pernah
+                  menambah panggilan yang dijamin gagal. */}
+              {(() => {
+                const tersedia = hasil.model.map(m => m.nama)
+                const terbaik = flashTerbaik(tersedia)
+                const sekarang = dipakai ?? MODEL_UTAMA
+                if (!terbaik) return null
+                if (!lebihBaru(terbaik, sekarang)) {
+                  return (
+                    <p data-model-mutakhir className="text-xs text-emerald-700 bg-emerald-50
+                      border border-emerald-200 rounded-lg p-2">
+                      Sudah memakai Flash terbaru yang tersedia: <b>{sekarang}</b>.
+                    </p>
+                  )
+                }
+                return (
+                  <div data-model-naik className="text-xs bg-gold/10 border border-gold/30
+                    rounded-lg p-2 space-y-2">
+                    <p>
+                      Tersedia Flash yang lebih baru: <b>{terbaik}</b> (sekarang{' '}
+                      <b>{sekarang}</b>). Nama ini barusan dijawab Google untuk kunci Anda,
+                      jadi ia sudah pasti ada — bukan tebakan.
+                    </p>
+                    <Button
+                      data-pakai-model
+                      onClick={() => { simpanModelPilihan(terbaik); setDipakai(terbaik) }}
+                      variant="gold" className="h-8 text-xs font-bold"
+                    >
+                      Pakai {terbaik}
+                    </Button>
+                  </div>
+                )
+              })()}
+              {dipakai && dipakai !== MODEL_UTAMA && (
+                <p className="text-[11px] text-muted-foreground">
+                  Pilihan tersimpan di perangkat ini.{' '}
+                  <button
+                    onClick={() => { simpanModelPilihan(''); setDipakai(null) }}
+                    className="underline font-bold"
+                  >
+                    Kembalikan ke {MODEL_UTAMA}
+                  </button>
                 </p>
               )}
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {hasil.model.map(m => (
                   <span key={m.nama}
                     className={`text-[10px] font-mono rounded-md px-1.5 py-0.5 border ${
-                      m.nama === hasil.modelDipakai ? 'bg-navy text-white border-navy'
+                      m.nama === (dipakai ?? MODEL_UTAMA) ? 'bg-navy text-white border-navy'
                         : m.gambar ? 'bg-gold/15 text-navy border-gold/40'
                         : 'bg-background text-muted-foreground border-border'}`}>
                     {m.nama}

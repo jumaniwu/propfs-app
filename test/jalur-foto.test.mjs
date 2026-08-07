@@ -166,4 +166,34 @@ const badanDenganFoto = () => ({
   assert(/foto/i.test(dg.perbaikan), 'dan diberi langkah yang masuk akal')
 }
 
+// ── 6. Perantara menerima nama model BARU tanpa perlu deploy ───────────
+//
+// Daftar tetap tidak bisa mengikuti Google: nama baru muncul kapan saja, dan
+// menunggu deploy untuk tiap rilis berarti fiturnya tertinggal berminggu-minggu.
+// Tetapi membuka pintu sepenuhnya mengubah perantara menjadi akses ke seluruh
+// katalog atas tanggungan kami — termasuk model termahal.
+{
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/auth/v1/user')) return { ok: true, status: 200 }
+    return jawaban(200, { candidates: [{ content: { parts: [{ text: 'ok' }] } }] })
+  }
+  const coba = async m => {
+    const r = buatRes()
+    await handler({ method: 'POST', headers: { authorization: 'Bearer t' },
+      body: { model: m, contents: [] } }, r)
+    return r.kode
+  }
+
+  assert(await coba('gemini-3-flash-preview') === 200,
+    'Flash versi baru diterima meski belum ada di daftar tetap')
+  assert(await coba('gemini-4-flash') === 200, 'begitu pula rilis berikutnya')
+  assert(await coba('gemini-3-pro') === 200, 'Pro pun diterima bila memang dipilih dengan sadar')
+
+  // Yang mahal tetap harus disebut satu per satu — di situlah tarifnya melonjak.
+  assert(await coba('gemini-4-flash-image') === 400, 'model GAMBAR baru tidak dibuka begitu saja')
+  assert(await coba('gemini-4-flash-preview-tts') === 400, 'model suara juga tidak')
+  assert(await coba('gemma-9-ultra') === 400, 'yang bukan Gemini tetap ditolak')
+  assert(await coba('') === 400, 'nama kosong ditolak')
+}
+
 console.log(`jalur-foto: ${ok} assert lulus`)
