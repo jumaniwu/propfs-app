@@ -8,6 +8,7 @@ import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 import { MODEL_TEKS } from './modelAi'
 import { panggilGemini } from './gemini'
+import { riwayatUntukModel } from './riwayatChat'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
 
@@ -59,6 +60,12 @@ export interface ChatMessage {
   newEntries?: RealisasiEntry[]
   updatedEntries?: { id: string; data: Partial<RealisasiEntry> }[]
   deletedEntryIds?: string[]
+  /**
+   * Gelembung ini lahir dari sebuah galat, bukan dari jawaban AI.
+   *
+   * Dipakai untuk menahannya keluar dari riwayat yang dikirim balik ke model.
+   */
+  galat?: boolean
 }
 
 /**
@@ -334,8 +341,11 @@ async function callGemini(
   // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
   // dengan kalimat yang jelas.
 
-  const contents = history
-    .filter(h => !(h.role === 'assistant' && h.id === 'system-start'))
+  // Gelembung galat TIDAK ikut dikirim. Ia tampilan, bukan percakapan — dan
+  // bila ikut, model membacanya sebagai ucapannya sendiri lalu meneruskan
+  // peran itu: menolak membaca foto sambil menyebut kuota, meski permintaan
+  // barusan berhasil.
+  const contents = riwayatUntukModel(history)
     .map(msg => {
       const textContent = msg.text?.trim() || (msg.files?.length ? '(Mengirim lampiran)' : '(Pesan kosong)')
       return { role: msg.role === 'user' ? 'user' : 'model', parts: [{ text: textContent }] }

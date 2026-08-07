@@ -340,6 +340,7 @@ export default function TabRealisasiBiaya() {
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
+        galat: true,
         text: `⚠️ ${err.message}`
       }])
     } finally {
