@@ -21,6 +21,45 @@
 /** Alamat perantara. Bukan alamat Google — itulah inti perubahannya. */
 export const JALUR_AI = '/api/ai'
 
+/**
+ * Batas waktu satu panggilan.
+ *
+ * Tanpa ini, permintaan yang menggantung tidak pernah selesai DAN tidak pernah
+ * gagal: gelembung "AI sedang membaca…" berputar tanpa akhir, dan pemakainya
+ * tidak diberi apa pun untuk ditindak — tidak pesan galat, tidak saran, tidak
+ * kesempatan mencoba ulang. Diam selamanya lebih buruk daripada kabar buruk.
+ *
+ * Lebih panjang daripada batas fungsi serverless (60 detik) supaya galat dari
+ * server sempat sampai lebih dulu; angka ini hanya jaring pengaman untuk
+ * jaringan yang menggantung di tengah jalan, bukan untuk permintaan yang lambat.
+ */
+export const BATAS_MS = 75_000
+
+/**
+ * Jalankan permintaan dengan batas waktu.
+ *
+ * Memakai AbortController supaya sambungannya benar-benar diputus — janji yang
+ * ditinggalkan tanpa memutus sambungan tetap menahan unggahan foto berjalan di
+ * latar, dan pada sinyal lemah itu memperlambat percobaan berikutnya.
+ */
+async function kirim(badan: unknown): Promise<Response> {
+  const pemutus = new AbortController()
+  const jam = setTimeout(() => pemutus.abort(), BATAS_MS)
+  try {
+    return await fetch(JALUR_AI, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await token()}`,
+      },
+      body: JSON.stringify(badan),
+      signal: pemutus.signal,
+    })
+  } finally {
+    clearTimeout(jam)
+  }
+}
+
 export interface BadanGemini {
   contents: unknown
   systemInstruction?: unknown
@@ -57,24 +96,10 @@ async function token(): Promise<string> {
  * dan supaya badan galat Google sampai utuh ke pengklasifikasi galat.
  */
 export async function panggilGemini(model: string, badan: BadanGemini): Promise<Response> {
-  return fetch(JALUR_AI, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${await token()}`,
-    },
-    body: JSON.stringify({ model, ...badan }),
-  })
+  return kirim({ model, ...badan })
 }
 
 /** Katalog model yang boleh dipakai kunci di server. */
 export async function daftarModelGemini(): Promise<Response> {
-  return fetch(JALUR_AI, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${await token()}`,
-    },
-    body: JSON.stringify({ aksi: 'daftarModel' }),
-  })
+  return kirim({ aksi: 'daftarModel' })
 }

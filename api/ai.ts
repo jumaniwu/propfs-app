@@ -29,6 +29,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 /**
+ * Batas waktu fungsi, dinyatakan terang-terangan.
+ *
+ * Membaca foto nota bisa memakan puluhan detik — apalagi karena permintaannya
+ * kini melewati dua perjalanan. Batas bawaan yang pendek akan memutusnya di
+ * tengah jalan dan mengembalikan 504 tanpa keterangan apa pun, yang di layar
+ * tampak seperti "tidak selesai-selesai". Disebutkan di sini supaya tidak
+ * bergantung pada nilai bawaan yang bisa berubah.
+ */
+export const config = { maxDuration: 60 }
+
+/**
  * Model yang boleh diminta lewat perantara ini.
  *
  * Tanpa daftar ini, perantara berubah menjadi pintu ke seluruh katalog Google
