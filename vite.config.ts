@@ -19,7 +19,16 @@ import { HALAMAN_BAGIKAN, terapkanMeta } from './src/lib/ogShare'
  * sekali itu terjadi, Vite menyalin seluruh isinya, termasuk yang tidak
  * diminta. Tidak menyebut namanya saja tidak cukup.
  */
-const KUNCI_TERLARANG = ['VITE_GEMINI_API_KEY', 'VITE_GROQ_API_KEY', 'VITE_OPENROUTER_API_KEY']
+const KUNCI_TERLARANG = [
+  'VITE_GEMINI_API_KEY', 'VITE_GROQ_API_KEY', 'VITE_OPENROUTER_API_KEY',
+  // Kunci SERVER Midtrans bisa menarik dan mengembalikan uang; kunci Resend
+  // bisa mengirim email atas nama domain kami. Keduanya sempat punya jalan
+  // mundur berawalan VITE_ di fungsi serverless, sehingga nama berbahaya itu
+  // tampak sah — dan sekali dipakai, keduanya ikut ke bundel publik. Diuji:
+  // memang tercetak apa adanya di dist/assets/index-*.js.
+  'VITE_MIDTRANS_SERVER_KEY', 'VITE_RESEND_API_KEY',
+  'VITE_SUPABASE_SERVICE_ROLE_KEY', 'VITE_CRON_SECRET',
+]
 for (const k of KUNCI_TERLARANG) delete process.env[k]
 
 /**
@@ -38,19 +47,34 @@ function pagarKunciPlugin(): Plugin {
       let berkas: string[]
       try { berkas = readdirSync(aset).filter(f => f.endsWith('.js')) } catch { return }
 
-      const pola = /AIza[0-9A-Za-z_-]{35}/
+      // Pagar yang hanya mengenali satu bentuk rahasia memberi rasa aman yang
+      // keliru. Versi pertamanya cuma mencari "AIza…", lalu lolos begitu saja
+      // ketika kunci SERVER Midtrans dan kunci Resend ikut terbundel — dua
+      // rahasia yang justru lebih berbahaya, sebab yang satu memindahkan uang
+      // dan yang lain mengirim email atas nama domain kami.
+      const POLA: Array<[string, RegExp]> = [
+        ['Google/Gemini', /AIza[0-9A-Za-z_-]{35}/],
+        ['Midtrans server', /(SB-)?Mid-server-[0-9A-Za-z_-]{10,}/],
+        ['Resend', /\bre_[0-9A-Za-z]{8,}/],
+        // JWT berperan service_role melewati SELURUH pagar RLS Supabase.
+        ['Supabase service role', /service_role/],
+        ['OpenAI/kompatibel', /\bsk-[A-Za-z0-9_-]{20,}/],
+      ]
       const tertangkap: string[] = []
       for (const f of berkas) {
-        if (pola.test(readFileSync(path.join(aset, f), 'utf8'))) tertangkap.push(f)
+        const isi = readFileSync(path.join(aset, f), 'utf8')
+        for (const [nama, pola] of POLA) {
+          if (pola.test(isi)) tertangkap.push(`${f} (${nama})`)
+        }
       }
       if (tertangkap.length) {
         throw new Error(
-          `[pagar-kunci] Kunci API ikut terbundel di: ${tertangkap.join(', ')}.\n`
-          + 'Kunci tidak boleh sampai ke browser. Pakai variabel TANPA awalan VITE_ '
-          + 'dan panggil lewat /api/ai.',
+          `[pagar-kunci] Rahasia ikut terbundel di: ${tertangkap.join(', ')}.\n`
+          + 'Rahasia tidak boleh sampai ke browser. Pakai variabel TANPA awalan VITE_ '
+          + 'dan panggil lewat fungsi di api/.',
         )
       }
-      console.log(`[pagar-kunci] ${berkas.length} berkas diperiksa, tidak ada kunci yang terbawa.`)
+      console.log(`[pagar-kunci] ${berkas.length} berkas diperiksa terhadap ${POLA.length} bentuk rahasia — bersih.`)
     },
   }
 }

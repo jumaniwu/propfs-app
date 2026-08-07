@@ -1,3 +1,10 @@
+// Sengaja TIDAK ada jalan mundur ke nama berawalan VITE_.
+//
+// Setiap variabel berawalan VITE_ disisipkan Vite ke dalam bundel yang diunduh
+// setiap pengunjung. Menerimanya di sini membuat nama yang berbahaya itu
+// tampak sah — dan begitu seseorang memakainya, rahasianya langsung terbaca
+// publik tanpa satu pun tanda. Kunci Gemini sudah pernah bocor persis begitu.
+
 export const config = {
   runtime: 'edge',
 };
@@ -9,7 +16,7 @@ export default async function handler(req: Request) {
 
   try {
     const { email, code, name } = await req.json();
-    const apiKey = process.env.VITE_RESEND_API_KEY;
+    const apiKey = process.env.RESEND_API_KEY;
 
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'API Key Resend tidak ditemukan di Environment Variables' }), { status: 500 });

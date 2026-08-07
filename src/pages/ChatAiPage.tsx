@@ -87,9 +87,23 @@ export default function ChatAiPage() {
   const [pesan, setPesan] = useState<ChatMessage[]>([SAPAAN])
   const [teks, setTeks] = useState('')
   const [lampiran, setLampiran] = useState<Array<{
-    name: string; mimeType: string; base64Data: string; preview?: string
+    name: string; mimeType: string; base64Data: string; preview?: string; ukuran?: string
   }>>([])
   const [sibuk, setSibuk] = useState(false)
+  /**
+   * Detik yang sudah berjalan sejak pesan dikirim.
+   *
+   * "AI sedang membaca…" tanpa angka tidak membedakan proses yang berjalan
+   * lambat dari yang sudah mati — dan pemakainya hanya bisa menunggu tanpa
+   * tahu sampai kapan. Angka yang bergerak sudah cukup: ia membuktikan
+   * prosesnya hidup, dan membuat "lambat" bisa dilaporkan sebagai fakta.
+   */
+  const [detik, setDetik] = useState(0)
+  useEffect(() => {
+    if (!sibuk) { setDetik(0); return }
+    const jam = setInterval(() => setDetik(d => d + 1), 1000)
+    return () => clearInterval(jam)
+  }, [sibuk])
   const [rencana, setRencana] = useState<Rencana | null>(null)
   const [pilihPo, setPilihPo] = useState(0)
   const [pilihBayar, setPilihBayar] = useState<number[]>([])
@@ -156,7 +170,12 @@ export default function ChatAiPage() {
       if (byteAkhir < byteAsal * 0.7) {
         console.log(`[lampiran] ${f.name}: ${ukuranTampil(byteAsal)} → ${ukuranTampil(byteAkhir)}`)
       }
-      return { name: f.name, mimeType, base64Data, preview: `data:${mimeType};base64,${base64Data}` }
+      // Ukurannya ikut ditampilkan. Tanpa itu, "lambat" tidak bisa ditelusuri
+      // siapa pun: 250 KB dan 5 MB terlihat sama persis di layar.
+      return {
+        name: f.name, mimeType, base64Data, ukuran: ukuranTampil(byteAkhir),
+        preview: `data:${mimeType};base64,${base64Data}`,
+      }
     }))
     setLampiran(v => [...v, ...hasil.filter(Boolean) as never[]])
     e.target.value = ''
@@ -354,7 +373,15 @@ export default function ChatAiPage() {
 
                 {sibuk && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> AI sedang membaca…
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      AI sedang membaca… {detik > 2 && <b className="font-mono">{detik}s</b>}
+                      {detik > 25 && (
+                        <span className="block text-[11px] opacity-80">
+                          Foto besar memang lebih lama. Menyerah otomatis di 75 detik.
+                        </span>
+                      )}
+                    </span>
                   </div>
                 )}
                 <div ref={akhirRef} />
@@ -388,6 +415,13 @@ export default function ChatAiPage() {
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-navy text-white flex items-center justify-center">
                           <X className="w-3 h-3" />
                         </button>
+                        {f.ukuran && (
+                          <span data-ukuran-lampiran
+                            className="absolute bottom-0 inset-x-0 text-[9px] font-mono text-center
+                                       bg-navy/75 text-white rounded-b-xl leading-tight py-0.5">
+                            {f.ukuran}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
