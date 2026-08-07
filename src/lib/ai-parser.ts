@@ -1,5 +1,7 @@
 import { BudgetComponent, CostCategory } from '../types/cost.types';
 import { v4 as uuidv4 } from 'uuid';
+import { panggilGemini } from './gemini'
+import { MODEL_TEKS } from './modelAi'
 
 // ── GROQ API (FREE & FAST) ────────────────────────────────────────────────
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -103,46 +105,27 @@ function chunkText(text: string, maxChars = 4000): string[] {
   return chunks.filter(c => c.length > 20);
 }
 
-async function callAIChunk(provider: string, apiKey: string, chunk: string, retries = 3): Promise<any[]> {
+async function callAIChunk(chunk: string, retries = 3): Promise<any[]> {
   const systemMsg = 'You are a JSON-only API. Respond ONLY with a valid JSON array. No markdown, no explanation, no code fences.';
   const userPrompt = buildPrompt(chunk);
   
-  let url = '';
-  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  let body: any = {};
-
-  if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    body = {
-      contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
-      generationConfig: { 
-        temperature: 0.1, 
-        responseMimeType: 'application/json'
-      }
-    };
-  } else {
-    url = provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
-    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
-    body = {
-      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama3-70b-8192',
-      messages: [
-        { role: 'system', content: systemMsg },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.05,
-      response_format: { type: 'json_object' }
-    };
-  }
+  // Kunci tidak lagi ada di sisi klien: panggilannya lewat /api/ai, dan
+  // servernyalah yang menyimpan kunci. Cabang OpenRouter/Groq ikut hilang
+  // karena keduanya sudah dihapus dari aplikasi.
+  const body: any = {
+    contents: [{ parts: [{ text: `${systemMsg}\n\n${userPrompt}` }] }],
+    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+  };
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      const res = await panggilGemini(MODEL_TEKS[1], body);
 
       if (res.status === 429 || res.status === 503) {
         const waitMs = attempt * 10000; // 10s, 20s, 30s
         console.warn(`[AI Chunk] Rate limit/Busy 429/503. Waiting ${waitMs}ms (attempt ${attempt}/${retries})...`);
         if (attempt === retries) {
-          throw new Error(`Gagal memproses bagian RAB tipe ${provider} setelah ${retries} percobaan (Rate Limit).`);
+          throw new Error(`Gagal memproses bagian RAB setelah ${retries} percobaan (Rate Limit).`);
         }
         await new Promise(r => setTimeout(r, waitMs));
         continue;
@@ -157,8 +140,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
         if (res.status === 404) {
           const errText = await res.text()
           console.warn(`[AI Chunk] Model 404 - response: ${errText.substring(0, 200)}. Trying fallback model gemini-2.0-flash...`)
-          const fallbackUrl = url.replace('gemini-2.5-flash', 'gemini-2.0-flash')
-          const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
+          const fallbackRes = await panggilGemini(MODEL_TEKS[2], body)
           if (!fallbackRes.ok) {
             const fb404 = await fallbackRes.text()
             throw new Error(`Gagal memproses RAB: Model utama dan fallback gagal (${fallbackRes.status}). Detail: ${fb404.substring(0, 100)}`)
@@ -188,12 +170,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
       }
 
       const data = await res.json();
-      let responseText = '';
-      if (provider === 'gemini') {
-        responseText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      } else {
-        responseText = data.choices?.[0]?.message?.content ?? '';
-      }
+      const responseText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
       
       console.log(`[AI Chunk] attempt:${attempt} len:${responseText.length} preview: ${responseText.substring(0, 120)}`);
 
@@ -237,11 +214,7 @@ async function callAIChunk(provider: string, apiKey: string, chunk: string, retr
   return [];
 }
 
-async function validateRABWithAI(
-  components: BudgetComponent[],
-  provider: string,
-  apiKey: string
-): Promise<BudgetComponent[]> {
+async function validateRABWithAI(components: BudgetComponent[]): Promise<BudgetComponent[]> {
   console.log('[RAB Validator] Memulai proses validasi silang...');
   const systemMsg = 'You are a JSON-only API. Respond ONLY with a valid JSON array.';
   const userPrompt = `Saya punya hasil ekstraksi RAB berformat JSON kotor. Tolong bersihkan dengan aturan ketat:
@@ -253,37 +226,17 @@ JSON KOTOR:
 ${JSON.stringify(components)}
 `;
 
-  let url = '';
-  let headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  let body: any = {};
-
-  if (provider === 'gemini') {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-    body = {
-      contents: [{ parts: [{ text: systemMsg + '\n\n' + userPrompt }] }],
-      generationConfig: { temperature: 0.05, responseMimeType: 'application/json' }
-    };
-  } else {
-    url = provider === 'openrouter' ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
-    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
-    body = {
-      model: provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct' : 'llama3-70b-8192',
-      messages: [
-        { role: 'system', content: systemMsg },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.05,
-      response_format: { type: 'json_object' }
-    };
-  }
+  const body = {
+    contents: [{ parts: [{ text: `${systemMsg}\n\n${userPrompt}` }] }],
+    generationConfig: { temperature: 0.05, responseMimeType: 'application/json' },
+  };
 
   try {
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const res = await panggilGemini(MODEL_TEKS[1], body);
     if (!res.ok) {
       if (res.status === 404) {
         console.warn(`[RAB Validator] Model 404 - trying fallback model gemini-2.0-flash...`)
-        const fallbackUrl = url.replace('gemini-2.5-flash', 'gemini-2.0-flash')
-        const fallbackRes = await fetch(fallbackUrl, { method: 'POST', headers, body: JSON.stringify(body) })
+        const fallbackRes = await panggilGemini(MODEL_TEKS[2], body)
         if (!fallbackRes.ok) return components;
         const fallbackData = await fallbackRes.json()
         const fallbackText = fallbackData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
@@ -307,9 +260,7 @@ ${JSON.stringify(components)}
     }
     const data = await res.json();
     
-    let responseText = '';
-    if (provider === 'gemini') responseText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    else responseText = data.choices?.[0]?.message?.content ?? '';
+    const responseText: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 
     if (!responseText) return components;
 
@@ -347,19 +298,16 @@ export async function parseRABwithGemini(
   // panggilan (model gratis OpenRouter tertutup kebijakan data, model Groq yang
   // terdaftar sudah dihentikan). Menyimpannya cuma menukar pesan "kunci Gemini
   // belum dipasang" yang jelas dengan kegagalan yang membingungkan.
-  const provider = 'gemini';
-  const activeKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
-
-  if (!activeKey) {
-    throw new Error('Kunci Gemini belum dipasang. Isi VITE_GEMINI_API_KEY, lalu deploy ulang.');
-  }
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   if (!extractedText || extractedText.trim().length < 20) {
     throw new Error("File Excel kosong atau konten tidak bisa dibaca. Pastikan file berisi tabel RAB.");
   }
 
   // Gemini 2.0 Flash punya context window besar, chunk lebih besar = lebih sedikit request = lebih akurat
-  const chunkSize = provider === 'gemini' ? 12000 : 5000;
+  const chunkSize = 12000;
   const chunks = chunkText(extractedText, chunkSize);
   const totalChunks = chunks.length;
   console.log(`[RAB Parser] Total: ${extractedText.length} chars → ${totalChunks} chunks`);
@@ -373,14 +321,14 @@ export async function parseRABwithGemini(
     console.log(`[RAB Parser] Processing chunk ${i + 1}/${totalChunks}...`);
     
     // Pass retries=4 to ensure it tries properly
-    const items = await callAIChunk(provider, activeKey, chunks[i], 4);
+    const items = await callAIChunk(chunks[i], 4);
     allItems.push(...items);
     onProgress?.(i + 1, totalChunks + 1);
 
     if (i < chunks.length - 1) {
       // Delay for rate limits (Gemini punya 15 RPM = max 1 req tiap 4 detik)
       // Karena proses parsing + fetch sudah memakan 2-3 detik, kita tambah 2 detik lagi aman
-      await new Promise(r => setTimeout(r, provider === 'gemini' ? 2500 : 2000));
+      await new Promise(r => setTimeout(r, 2500));
     }
   }
 
@@ -397,7 +345,7 @@ export async function parseRABwithGemini(
   });
 
   // Lewati validasi AI agar tidak ada item yang hilang — validasi manual dilakukan user di UI
-  // components = await validateRABWithAI(components, provider, activeKey);
+  // components = await validateRABWithAI(components);
   onProgress?.(totalChunks + 1, totalChunks + 1);
 
   console.log(`[RAB Parser] ✅ Total item bersih final: ${components.length}`);

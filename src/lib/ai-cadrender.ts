@@ -8,6 +8,7 @@
 import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
 import { catatGambar } from '../store/usageStore'
 import { MODEL_TEKS, MODEL_GAMBAR } from './modelAi'
+import { panggilGemini } from './gemini'
 
 export interface CadQuestion {
   id: string
@@ -41,24 +42,14 @@ const GEMINI_IMAGE_MODELS = MODEL_GAMBAR
 
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
 
-function getKey(): string {
-  const key = (import.meta as unknown as { env: Record<string, string | undefined> }).env.VITE_GEMINI_API_KEY
-  if (!key) throw new Error('Fitur AI membutuhkan VITE_GEMINI_API_KEY. Hubungi admin untuk mengaktifkannya.')
-  return key
-}
-
 async function callGemini(models: readonly string[], parts: Part[], imageOut: boolean): Promise<{ text: string; image: string | null }> {
-  const key = getKey()
   const body = {
     contents: [{ parts }],
     generationConfig: imageOut ? { responseModalities: ['TEXT', 'IMAGE'] } : { temperature: 0.3 },
   }
   let lastErr = ''
   for (const model of models) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    )
+    const res = await panggilGemini(model, body)
     if (!res.ok) { lastErr = `HTTP ${res.status}`; continue }
     const data = await res.json()
     const outParts: Array<{ text?: string; inlineData?: { data?: string }; inline_data?: { data?: string } }> =

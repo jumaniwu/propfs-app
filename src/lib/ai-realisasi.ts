@@ -7,6 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 import { MODEL_TEKS } from './modelAi'
+import { panggilGemini } from './gemini'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
 
@@ -329,8 +330,9 @@ async function callGemini(
   newMessage: ChatMessage,
   model: string
 ): Promise<string> {
-  const key = (import.meta as any).env.VITE_GEMINI_API_KEY
-  if (!key) throw new Error('No Gemini key')
+  // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
+  // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
+  // dengan kalimat yang jelas.
 
   const contents = history
     .filter(h => !(h.role === 'assistant' && h.id === 'system-start'))
@@ -345,18 +347,11 @@ async function callGemini(
   }
   contents.push({ role: 'user', parts: newParts })
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sysInstruction }] },
-        contents,
-        generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
-      })
-    }
-  )
+  const res = await panggilGemini(model, {
+    systemInstruction: { parts: [{ text: sysInstruction }] },
+    contents,
+    generationConfig: { temperature: 0.15, maxOutputTokens: 8192 },
+  })
 
   // Badan respons TIDAK dipangkas di sini. Di dalamnya persis terletak kalimat
   // yang menyebutkan perbaikannya; yang menyaring apa yang boleh sampai ke

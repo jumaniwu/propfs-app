@@ -152,8 +152,9 @@ const ATURAN: Aturan[] = [
       || t.includes('invalid api key') || t.includes('api key expired'),
     jadi: d('kunci_salah',
       'Kunci Gemini yang terpasang tidak dikenali Google.',
-      'Terbitkan kunci baru di Google AI Studio, perbarui VITE_GEMINI_API_KEY di Vercel, lalu '
-        + 'REDEPLOY — mengubah environment variable saja tidak berlaku sampai di-deploy ulang.',
+      'Terbitkan kunci baru di Google AI Studio, perbarui GEMINI_API_KEY di Vercel (TANPA '
+        + 'awalan VITE_, supaya tidak ikut terbundel ke browser), lalu REDEPLOY — mengubah '
+        + 'environment variable saja tidak berlaku sampai di-deploy ulang.',
       TAUTAN.studio),
   },
   {
@@ -161,8 +162,8 @@ const ATURAN: Aturan[] = [
       || t.includes('no gemini key'),
     jadi: d('kunci_salah',
       'Permintaan sampai ke Google tanpa membawa kunci sama sekali.',
-      'VITE_GEMINI_API_KEY kosong pada build yang sedang berjalan. Periksa isinya di Vercel → '
-        + 'Settings → Environment Variables, pastikan tercentang untuk Production, lalu redeploy.',
+      'GEMINI_API_KEY kosong di server. Periksa isinya di Vercel → Settings → Environment '
+        + 'Variables, pastikan tercentang untuk Production, lalu redeploy.',
       TAUTAN.studio),
   },
   {

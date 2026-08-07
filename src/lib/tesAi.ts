@@ -14,27 +14,25 @@
 //
 // Sengaja TIDAK memakai model mahal maupun mengirim gambar: yang sedang
 // ditanyakan adalah izin kuncinya, bukan kemampuan modelnya.
+//
+// Sejak kuncinya dipindah ke server, halaman ini tidak lagi memegang kunci apa
+// pun — ia mengetuk /api/ai persis seperti fitur yang sesungguhnya. Itu justru
+// membuat jawabannya lebih dapat dipercaya: yang diuji adalah jalur yang benar-
+// benar dipakai, bukan tiruannya.
 // ============================================================
 
 import { batasWaktu } from './batasWaktu.ts'
 import { jenisGalat, type JenisGalat } from './galatAi.ts'
 import { diagnosaAi, type Diagnosa } from './diagnosaAi.ts'
 import {
-  periksaKunci, saringModel, pilihModel, adaYangLebihBaik,
-  MODEL_TEKS, type ModelGemini, type PeriksaKunci,
+  saringModel, pilihModel, adaYangLebihBaik,
+  MODEL_TEKS, type ModelGemini,
 } from './modelAi.ts'
+import { panggilGemini, daftarModelGemini } from './gemini.ts'
 
 export interface HasilTes {
-  /** Kuncinya terpasang di lingkungan aplikasi. */
+  /** Server punya kunci Gemini. */
   adaKunci: boolean
-  /** Kunci mana yang barusan diuji. */
-  sumberKunci: 'aplikasi' | 'manual'
-  /**
-   * Sidik kunci yang diuji — cukup untuk MENCOCOKKAN dengan kunci di Google
-   * Console, tidak cukup untuk dipakai. Tanpa ini tidak ada cara memastikan
-   * bahwa kunci yang benar-benar dipakai aplikasi adalah kunci yang dikira.
-   */
-  sidik: string
   ok: boolean
   /** Jenis kegagalan; null bila berhasil atau kuncinya memang belum dipasang. */
   jenis: JenisGalat | null
@@ -47,8 +45,6 @@ export interface HasilTes {
   diagnosa: Diagnosa | null
   /** Lama menunggu, milidetik. */
   ms: number
-  /** Bentuk kuncinya benar sebelum dikirim. */
-  periksa: PeriksaKunci
   /**
    * Model yang BOLEH dipakai kunci ini, langsung dari katalog Google.
    * Kosong bila pengujiannya gagal — pertanyaannya belum sempat diajukan.
@@ -63,24 +59,10 @@ export interface HasilTes {
 const env = (): Record<string, string | undefined> =>
   (import.meta as unknown as { env: Record<string, string | undefined> }).env ?? {}
 
-/** Kunci yang benar-benar terpasang di build yang sedang berjalan. */
-export const kunciTerpasang = (): string => (env().VITE_GEMINI_API_KEY ?? '').trim()
-
-/**
- * Sidik kunci: awal, akhir, dan panjangnya.
- *
- * Setelah membayar, sebab 403 yang paling sering adalah kunci yang berasal dari
- * project LAIN — bukan project yang dibayar. Menyamakan kunci di aplikasi
- * dengan kunci di Google Console adalah cara tercepat membuktikannya, dan itu
- * mustahil bila kuncinya tak terlihat sama sekali. Yang ditampilkan sengaja
- * tidak cukup untuk dipakai orang lain.
- */
-export function sidikKunci(kunci: unknown): string {
-  const k = String(kunci ?? '').trim()
-  if (!k) return '(kosong)'
-  if (k.length <= 12) return `${'•'.repeat(k.length)} · ${k.length} karakter`
-  return `${k.slice(0, 6)}…${k.slice(-4)} · ${k.length} karakter`
-}
+// `kunciTerpasang()` dan `sidikKunci()` dihapus bersama kuncinya. Selama kunci
+// masih ikut terbundel, menampilkan sidiknya berguna untuk mencocokkan dengan
+// Google Console. Sekarang browser memang tidak memegang apa pun untuk
+// dicocokkan — dan itulah perbaikannya, bukan kehilangan.
 
 const PESAN: Record<JenisGalat, string> = {
   kunci: 'Ditolak — izin/kunci belum berlaku',
@@ -96,93 +78,63 @@ const PESAN: Record<JenisGalat, string> = {
  * Tidak pernah melempar: yang ditanyakan adalah keadaan, dan "gagal" pun
  * merupakan jawaban yang harus sampai utuh ke layar.
  */
-export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
-  const tiruan = (globalThis as {
-    __tesAiMock?: (k?: string) => Promise<HasilTes>
-  }).__tesAiMock
-  if (tiruan) return tiruan(kunciManual)
+export async function tesKunciAi(): Promise<HasilTes> {
+  const tiruan = (globalThis as { __tesAiMock?: () => Promise<HasilTes> }).__tesAiMock
+  if (tiruan) return tiruan()
 
-  // Kunci yang diketik manual TIDAK disimpan di mana pun: ia hidup selama satu
-  // panggilan lalu hilang. Gunanya menghapus siklus deploy dari proses
-  // coba-coba — kunci baru bisa dibuktikan dalam hitungan detik, bukan setelah
-  // mengubah environment variable dan menunggu build.
-  const manual = (kunciManual ?? '').trim()
-  const sumberKunci: 'aplikasi' | 'manual' = manual ? 'manual' : 'aplikasi'
-  const kunci = manual || kunciTerpasang()
-  const sidik = sidikKunci(kunci)
-  const periksa = periksaKunci(kunci)
   const kosong = { model: [] as ModelGemini[], modelDipakai: null, modelLebihBaik: null }
-
-  if (!kunci) {
-    return {
-      adaKunci: false, ok: false, jenis: null, ms: 0, sumberKunci, sidik, periksa, ...kosong,
-      pesan: 'Kunci belum dipasang',
-      diagnosa: diagnosaAi(undefined, 'No Gemini key'),
-    }
-  }
-
-  // Kredensial yang salah jenis dihentikan di sini. Mengirimnya hanya
-  // menghasilkan 401/403 yang bunyinya sama dengan kunci sah yang belum
-  // diizinkan — dan sebab yang sebenarnya jadi tertutup lagi.
-  if (!periksa.layak) {
-    return {
-      adaKunci: true, ok: false, jenis: 'kunci', ms: 0, sumberKunci, sidik, periksa, ...kosong,
-      pesan: 'Bentuk kuncinya tidak benar',
-      diagnosa: {
-        sebab: 'kunci_salah', apa: periksa.pesan,
-        perbaikan: 'Ambil API key di Google AI Studio, lalu uji ulang di sini.',
-        tautan: 'https://aistudio.google.com/apikey', asli: '', sisiKami: true,
-      },
-    }
-  }
-
   const mulai = Date.now()
+
   try {
-    const res = await batasWaktu(fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${kunci}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: 'ping' }] }],
-          generationConfig: { maxOutputTokens: 1 },
-        }),
-      },
-    ), 20000, null)
+    const res = await batasWaktu(panggilGemini(MODEL_TEKS[1], {
+      contents: [{ parts: [{ text: 'ping' }] }],
+      generationConfig: { maxOutputTokens: 1 },
+    }), 25000, null)
     const ms = Date.now() - mulai
 
     if (!res) {
       return {
-        adaKunci: true, ok: false, jenis: 'jaringan', ms, sumberKunci, sidik, periksa, ...kosong,
-        pesan: 'Tidak menjawab dalam 20 detik',
+        adaKunci: true, ok: false, jenis: 'jaringan', ms, ...kosong,
+        pesan: 'Tidak menjawab dalam 25 detik',
         diagnosa: diagnosaAi(undefined, 'timeout'),
       }
     }
+
+    const badan = await res.text().catch(() => '')
+
     if (res.ok) {
       // Kuncinya jalan; sekarang tanyakan model apa saja yang BOLEH dipakainya.
       // Menanyakan lebih murah dan lebih jujur daripada menebak nama lalu
       // menunggu 404 — dan jawabannya tidak pernah basi.
-      const model = await daftarModelAi(kunci)
-      const modelDipakai = pilihModel(model, MODEL_TEKS)
+      const model = await daftarModelAi()
       return {
-        adaKunci: true, ok: true, jenis: null, ms, sumberKunci, sidik, periksa,
-        model, modelDipakai,
+        adaKunci: true, ok: true, jenis: null, ms,
+        model, modelDipakai: pilihModel(model, MODEL_TEKS),
         modelLebihBaik: adaYangLebihBaik(model, MODEL_DIPAKAI_SEKARANG),
         pesan: 'Berhasil', diagnosa: null,
       }
     }
 
-    const badan = await res.text().catch(() => '')
+    // Perantara menjawab dengan kalimatnya sendiri hanya untuk dua hal yang
+    // memang urusannya: kunci server belum dipasang, dan pemanggil belum masuk.
+    // Selain itu badan yang diteruskan adalah kalimat Google apa adanya.
+    const adaKunci = !badan.includes('NO_SERVER_KEY')
     const jenis = jenisGalat(`${res.status} ${badan}`)
     return {
-      adaKunci: true, ok: false, jenis, ms, sumberKunci, sidik, periksa, ...kosong,
-      pesan: `${PESAN[jenis]} (${res.status})`,
-      diagnosa: diagnosaAi(res.status, badan),
+      adaKunci, ok: false, jenis, ms, ...kosong,
+      pesan: adaKunci ? `${PESAN[jenis]} (${res.status})` : 'Kunci server belum dipasang',
+      diagnosa: adaKunci ? diagnosaAi(res.status, badan) : {
+        sebab: 'kunci_salah',
+        apa: 'GEMINI_API_KEY belum dipasang di server.',
+        perbaikan: 'Vercel → Settings → Environment Variables → tambahkan GEMINI_API_KEY '
+          + '(TANPA awalan VITE_, supaya tidak ikut terbundel ke browser), lalu deploy ulang.',
+        tautan: 'https://aistudio.google.com/apikey', asli: '', sisiKami: true,
+      },
     }
   } catch (e) {
     const jenis = jenisGalat(e)
     return {
-      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai, sumberKunci, sidik, periksa, ...kosong,
+      adaKunci: true, ok: false, jenis, ms: Date.now() - mulai, ...kosong,
       pesan: PESAN[jenis],
       diagnosa: diagnosaAi(undefined, e instanceof Error ? e.message : e),
     }
@@ -195,12 +147,9 @@ export async function tesKunciAi(kunciManual?: string): Promise<HasilTes> {
  * Tidak pernah melempar: daftar kosong berarti pertanyaannya tidak terjawab,
  * dan itu tidak boleh menggagalkan pengujian kunci yang sudah berhasil.
  */
-export async function daftarModelAi(kunci: string): Promise<ModelGemini[]> {
+export async function daftarModelAi(): Promise<ModelGemini[]> {
   try {
-    const res = await batasWaktu(
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${kunci}&pageSize=200`),
-      15000, null,
-    )
+    const res = await batasWaktu(daftarModelGemini(), 15000, null)
     if (!res || !res.ok) return []
     return saringModel(await res.json())
   } catch { return [] }
@@ -217,13 +166,7 @@ const MODEL_DIPAKAI_SEKARANG = 'gemini-2.5-flash'
 
 export function kesimpulanTes(hasil: HasilTes | null): { siap: boolean; pesan: string } {
   if (!hasil) return { siap: false, pesan: 'Belum diuji.' }
-  if (hasil.ok) {
-    // Kunci manual yang berhasil sementara kunci aplikasi gagal adalah temuan,
-    // bukan keberhasilan: artinya kuncinya sudah benar tetapi belum terpasang.
-    return hasil.sumberKunci === 'manual'
-      ? { siap: false, pesan: 'Kunci yang Anda ketik BERHASIL. Pasang kunci ini di Vercel sebagai VITE_GEMINI_API_KEY, lalu deploy ulang.' }
-      : { siap: true, pesan: 'Gemini siap — Chat AI dan baca nota dari foto bisa dipakai.' }
-  }
-  if (!hasil.adaKunci) return { siap: false, pesan: 'Kunci Gemini belum terpasang di aplikasi.' }
+  if (hasil.ok) return { siap: true, pesan: 'Gemini siap — Chat AI dan baca nota dari foto bisa dipakai.' }
+  if (!hasil.adaKunci) return { siap: false, pesan: 'GEMINI_API_KEY belum dipasang di server.' }
   return { siap: false, pesan: hasil.diagnosa?.apa ?? 'Gemini belum bisa dipakai.' }
 }
