@@ -18,6 +18,8 @@
 // menyebut sebab dan perbaikannya.
 // ============================================================
 
+import { galatWaktuHabis } from './anggaranWaktu.ts'
+
 /** Alamat perantara. Bukan alamat Google — itulah inti perubahannya. */
 export const JALUR_AI = '/api/ai'
 
@@ -42,9 +44,10 @@ export const BATAS_MS = 75_000
  * ditinggalkan tanpa memutus sambungan tetap menahan unggahan foto berjalan di
  * latar, dan pada sinyal lemah itu memperlambat percobaan berikutnya.
  */
-async function kirim(badan: unknown): Promise<Response> {
+async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
   const pemutus = new AbortController()
-  const jam = setTimeout(() => pemutus.abort(), BATAS_MS)
+  let diputusKami = false
+  const jam = setTimeout(() => { diputusKami = true; pemutus.abort() }, Math.max(1000, batasMs))
   try {
     return await fetch(JALUR_AI, {
       method: 'POST',
@@ -55,6 +58,13 @@ async function kirim(badan: unknown): Promise<Response> {
       body: JSON.stringify(badan),
       signal: pemutus.signal,
     })
+  } catch (e) {
+    // Pemutusan OLEH KITA harus bisa dibedakan dari jaringan yang putus
+    // sendiri. Keduanya melempar AbortError yang sama persis, dan menyamakannya
+    // membuat tenggat yang terlampaui dibaca sebagai gangguan sementara —
+    // lalu diulang, tepat pada keadaan yang sudah pasti terlalu lambat.
+    if (diputusKami) throw galatWaktuHabis(Math.round(batasMs / 1000))
+    throw e
   } finally {
     clearTimeout(jam)
   }
@@ -95,8 +105,10 @@ async function token(): Promise<string> {
  * pemanggilnya tetap bisa membedakan 403, 429, dan 503 seperti sebelumnya,
  * dan supaya badan galat Google sampai utuh ke pengklasifikasi galat.
  */
-export async function panggilGemini(model: string, badan: BadanGemini): Promise<Response> {
-  return kirim({ model, ...badan })
+export async function panggilGemini(
+  model: string, badan: BadanGemini, batasMs = BATAS_MS,
+): Promise<Response> {
+  return kirim({ model, ...badan }, batasMs)
 }
 
 /** Katalog model yang boleh dipakai kunci di server. */

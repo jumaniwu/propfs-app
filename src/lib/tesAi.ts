@@ -69,6 +69,7 @@ const PESAN: Record<JenisGalat, string> = {
   kuota: 'Kuota habis',
   sibuk: 'Layanan sedang padat',
   jaringan: 'Tidak tersambung',
+  waktu: 'Terlalu lama, dihentikan',
   lain: 'Ditolak dengan alasan yang tidak dikenali',
 }
 

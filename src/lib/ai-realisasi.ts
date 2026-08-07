@@ -8,6 +8,7 @@ import { pengelompokNama } from './namaMaterial'
 import { useUsageStore, estimateTokens } from '../store/usageStore'
 import { MODEL_TEKS } from './modelAi'
 import { panggilGemini } from './gemini'
+import { buatAnggaran, pantasDicobaLagi, WAKTU_HABIS } from './anggaranWaktu'
 import { riwayatUntukModel } from './riwayatChat'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
@@ -335,7 +336,8 @@ async function callGemini(
   sysInstruction: string,
   history: ChatMessage[],
   newMessage: ChatMessage,
-  model: string
+  model: string,
+  batasMs: number,
 ): Promise<string> {
   // Tidak ada lagi kunci yang bisa diperiksa dari sini — dan itulah
   // perbaikannya. Bila kunci server belum dipasang, /api/ai menjawabnya sendiri
@@ -361,7 +363,7 @@ async function callGemini(
     systemInstruction: { parts: [{ text: sysInstruction }] },
     contents,
     generationConfig: { temperature: 0.15, maxOutputTokens: 8192 },
-  })
+  }, batasMs)
 
   // Badan respons TIDAK dipangkas di sini. Di dalamnya persis terletak kalimat
   // yang menyebutkan perbaikannya; yang menyaring apa yang boleh sampai ke
@@ -400,6 +402,16 @@ function trackUsage(model: string, inputText: string, outputText: string) {
     })
   } catch { /* tracking failure should never break the main flow */ }
 }
+
+/**
+ * Anggaran untuk SELURUH pembacaan satu pesan, dan jatah untuk satu percobaan.
+ *
+ * Totalnya sengaja di bawah dua kali jatah tunggal: dengan begitu percobaan
+ * kedua hanya berjalan bila yang pertama gagal cepat, bukan bila ia berjalan
+ * lambat sampai habis. Yang lambat tidak menjadi cepat karena diulang.
+ */
+const BATAS_TOTAL_MS = 70_000
+const BATAS_SATU_MS = 45_000
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 export async function chatRealisasiWithGemini(
@@ -444,6 +456,14 @@ export async function chatRealisasiWithGemini(
   // Kegagalan yang tidak akan membaik — kunci ditolak, kuota habis — membatalkan
   // seluruh sisa upaya. Mengulanginya empat kali dengan jeda hanya menghabiskan
   // delapan detik untuk menunggu jawaban yang sudah pasti sama.
+  // SATU anggaran untuk seluruh pekerjaan, bukan satu batas per panggilan.
+  //
+  // Batas per panggilan tidak menghentikan apa pun ketika pemanggilnya punya
+  // perulangan: tiap pemutusan dibaca sebagai gangguan jaringan, lalu diulang,
+  // masing-masing dengan batas penuh lagi. Empat percobaan × 75 detik menjadi
+  // lima menit menunggu — pengaman yang justru melipatgandakan penungguan.
+  const anggaran = buatAnggaran(BATAS_TOTAL_MS)
+
   let berhenti = false
   // Penolakan terakhir disimpan utuh — dialah satu-satunya yang masih membawa
   // kalimat Google, dan kalimat itulah yang menyebutkan perbaikannya.
@@ -451,8 +471,14 @@ export async function chatRealisasiWithGemini(
 
   for (const model of geminiModels) {
     for (let attempt = 1; attempt <= 2; attempt++) {
+      // Percobaan yang tidak muat lagi dalam anggaran tidak dijalankan: ia
+      // sudah pasti terputus di tengah jalan, dan hanya menambah waktu tunggu
+      // sebelum pesan gagal yang sama.
+      if (!pantasDicobaLagi(anggaran)) { berhenti = true; break }
       try {
-        const raw = await callGemini(sysInstruction, history, newMessage, model)
+        const raw = await callGemini(
+          sysInstruction, history, newMessage, model, anggaran.jatah(BATAS_SATU_MS),
+        )
         trackUsage(model, inputContext, raw) // ← record usage
         const parsedResult = extractEntriesFromText(raw)
         return { textResponse: parsedResult.clean, parsedResult }
@@ -460,12 +486,18 @@ export async function chatRealisasiWithGemini(
         errors.push(`${model}[${attempt}]: ${e?.message ?? e}`)
         if (e instanceof GalatGemini) terakhir = e
         const jenis = jenisGalat(e)
-        if (!bisaDiulang(jenis)) { berhenti = true; break }
+        if (!bisaDiulang(jenis) || jenis === 'waktu') { berhenti = true; break }
         if (attempt < 2) await sleep(jenis === 'sibuk' ? 3000 : 2000)
       }
     }
-    if (berhenti) break
+    if (berhenti || !pantasDicobaLagi(anggaran)) break
     if (model !== geminiModels[geminiModels.length - 1]) await sleep(2000)
+  }
+
+  // Anggaran habis tanpa satu pun jawaban: katakan apa adanya, dengan angka
+  // yang bisa dibandingkan pemakainya dengan penghitung di layarnya.
+  if (anggaran.habis() && !errors.some(e => /waktu_habis/i.test(String(e)))) {
+    errors.push(`anggaran: ${WAKTU_HABIS} setelah ${BATAS_TOTAL_MS / 1000} detik`)
   }
 
   // Satu tempat menyusun pesan kegagalan, supaya penyebab yang berbeda tidak
