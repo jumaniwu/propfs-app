@@ -57,6 +57,25 @@ const MODEL_BOLEH = new Set([
   'gemini-2.0-flash-preview-image-generation',
 ])
 
+/**
+ * Nama model yang belum ada di daftar tetap, tetapi jelas milik keluarga yang
+ * sama dan bukan model mahal.
+ *
+ * Daftar tetap di atas tidak bisa mengikuti Google: nama baru muncul kapan saja,
+ * dan menunggu deploy untuk tiap rilis berarti fiturnya tertinggal berminggu-
+ * minggu. Tetapi membuka pintu sepenuhnya mengubah perantara ini menjadi akses
+ * ke seluruh katalog atas tanggungan kami — termasuk model termahal.
+ *
+ * Jalan tengahnya: terima nama Gemini apa pun KECUALI yang menghasilkan gambar
+ * atau suara, sebab di situlah tarifnya melonjak. Model gambar tetap harus
+ * disebut satu per satu di daftar tetap.
+ */
+const POLA_AMAN = /^gemini-[0-9][0-9.]*-(flash|pro)(-[a-z0-9-]+)?$/i
+const POLA_MAHAL = /-(image|tts|audio|live|native-audio)|image-generation/i
+
+const bolehDipakai = (m: string): boolean =>
+  MODEL_BOLEH.has(m) || (POLA_AMAN.test(m) && !POLA_MAHAL.test(m))
+
 const GOOGLE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
@@ -188,7 +207,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const m = String(model ?? '')
-  if (!MODEL_BOLEH.has(m)) {
+  if (!bolehDipakai(m)) {
     return res.status(400).json({
       error: { code: 400, status: 'MODEL_NOT_ALLOWED', message: `Model "${m}" tidak diizinkan.` },
     })
