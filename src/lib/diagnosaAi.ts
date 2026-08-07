@@ -43,8 +43,17 @@ export interface Diagnosa {
   perbaikan: string
   /** Halaman tempat mengerjakannya. */
   tautan?: string
-  /** Kalimat asli dari Google. Inilah yang selama ini dibuang. */
+  /** Kalimat asli dari penyedia. Inilah yang selama ini dibuang. */
   asli: string
+  /**
+   * Siapa yang mengucapkan `asli`.
+   *
+   * Perantara /api/ai memakai bentuk galat yang sama dengan Google, dan
+   * kalimatnya sempat ditampilkan sebagai "Kata Google" — padahal Google tidak
+   * pernah mengatakannya. Menisbahkan kalimat kepada pihak yang tidak
+   * mengucapkannya membuat orang mencari perbaikannya di tempat yang salah.
+   */
+  sumber: 'google' | 'kami'
   /** Perbaikannya ada di setelan kami, bukan pada pemakai. */
   sisiKami: boolean
 }
@@ -93,7 +102,8 @@ interface Aturan {
 
 const d = (
   sebab: SebabAi, apa: string, perbaikan: string, tautan?: string, sisiKami = true,
-): Omit<Diagnosa, 'asli'> => ({ sebab, apa, perbaikan, tautan, sisiKami })
+  sumber: 'google' | 'kami' = 'google',
+): Omit<Diagnosa, 'asli'> => ({ sebab, apa, perbaikan, tautan, sisiKami, sumber })
 
 /**
  * Aturan diperiksa berurutan; yang paling khas didahulukan.
@@ -114,7 +124,7 @@ const ATURAN: Aturan[] = [
       'Vercel → Settings → Environment Variables → tambahkan GEMINI_API_KEY (TANPA awalan '
         + 'VITE_, supaya tidak ikut terbundel ke browser), centang Production, lalu REDEPLOY. '
         + 'Menyimpan variabel saja tidak berlaku sampai di-deploy ulang.',
-      TAUTAN.studio),
+      TAUTAN.studio, true, 'kami'),
   },
   {
     cocok: t => t.includes('unauthenticated') && t.includes('masuk dulu'),
@@ -122,14 +132,15 @@ const ATURAN: Aturan[] = [
       'Sesi Anda tidak terbaca, jadi permintaan AI ditolak di gerbangnya.',
       'Keluar lalu masuk kembali. Perantara AI sengaja menolak pemanggil tanpa sesi — '
         + 'tanpa pagar itu, siapa pun bisa memakainya atas tanggungan kita.',
-      undefined, false),
+      undefined, false, 'kami'),
   },
   {
     cocok: t => t.includes('model_not_allowed'),
     jadi: d('model_tak_ada',
       'Model yang diminta tidak ada di daftar yang diizinkan perantara.',
       'Tambahkan namanya di MODEL_BOLEH pada api/ai.ts — daftar itu sengaja ada supaya '
-        + 'perantara tidak berubah menjadi pintu ke seluruh katalog Google atas tanggungan kita.'),
+        + 'perantara tidak berubah menjadi pintu ke seluruh katalog Google atas tanggungan kita.',
+      undefined, true, 'kami'),
   },
   {
     cocok: t => t.includes('referer') || t.includes('referrer') || t.includes('http_referrer'),
@@ -243,6 +254,7 @@ export function diagnosaAi(status: number | undefined, badan: unknown): Diagnosa
       : 'Google tidak menyertakan penjelasan. Coba lagi; bila berulang, periksa status layanannya.',
     asli,
     sisiKami: false,
+    sumber: 'google',
   }
 }
 
@@ -256,7 +268,13 @@ export function diagnosaAi(status: number | undefined, badan: unknown): Diagnosa
 export function ceritaDiagnosa(dg: Diagnosa): string {
   const baris = [dg.apa, '', `Perbaikan: ${dg.perbaikan}`]
   if (dg.tautan) baris.push(dg.tautan)
-  if (dg.asli) baris.push('', `Kata Google: "${potong(dg.asli, 240)}"`)
+  if (dg.asli) {
+    // Menyebut "Kata Google" untuk kalimat yang ditulis server kami sendiri
+    // mengirim orang mencari perbaikannya di Google Console — tempat yang sama
+    // sekali tidak ada hubungannya.
+    const siapa = dg.sumber === 'kami' ? 'Kata server kami' : 'Kata Google'
+    baris.push('', `${siapa}: "${potong(dg.asli, 240)}"`)
+  }
   return baris.join('\n')
 }
 

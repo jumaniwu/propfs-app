@@ -101,6 +101,7 @@ export async function tesKunciAi(): Promise<HasilTes> {
     }
 
     const badan = await res.text().catch(() => '')
+    const bentuk = res.headers.get('X-PropFS-Bentuk-Kunci') ?? ''
 
     if (res.ok) {
       // Kuncinya jalan; sekarang tanyakan model apa saja yang BOLEH dipakainya.
@@ -123,12 +124,11 @@ export async function tesKunciAi(): Promise<HasilTes> {
     return {
       adaKunci, ok: false, jenis, ms, ...kosong,
       pesan: adaKunci ? `${PESAN[jenis]} (${res.status})` : 'Kunci server belum dipasang',
-      diagnosa: adaKunci ? diagnosaAi(res.status, badan) : {
+      diagnosa: adaKunci ? bubuhiBentuk(diagnosaAi(res.status, badan), bentuk) : {
         sebab: 'kunci_salah',
-        apa: 'GEMINI_API_KEY belum dipasang di server.',
-        perbaikan: 'Vercel → Settings → Environment Variables → tambahkan GEMINI_API_KEY '
-          + '(TANPA awalan VITE_, supaya tidak ikut terbundel ke browser), lalu deploy ulang.',
-        tautan: 'https://aistudio.google.com/apikey', asli: '', sisiKami: true,
+        apa: 'GEMINI_API_KEY belum terbaca di server.',
+        perbaikan: petunjukVariabel(badan),
+        tautan: 'https://vercel.com/dashboard', asli: '', sisiKami: true, sumber: 'kami',
       },
     }
   } catch (e) {
@@ -139,6 +139,63 @@ export async function tesKunciAi(): Promise<HasilTes> {
       diagnosa: diagnosaAi(undefined, e instanceof Error ? e.message : e),
     }
   }
+}
+
+/**
+ * Tempelkan keterangan bentuk kunci pada diagnosis yang sudah ada.
+ *
+ * Ini menjawab kebingungan yang nyata: kunci baru yang diambil dari halaman
+ * yang keliru berbentuk `AQ.…`, ditolak Google dengan 403, dan 403 itu terbaca
+ * seperti masalah izin — sehingga yang diperiksa adalah domain, penagihan, dan
+ * pengaktifan API, padahal kuncinya memang bukan API key.
+ */
+function bubuhiBentuk(dg: Diagnosa, bentuk: string): Diagnosa {
+  if (bentuk !== 'oauth' && bentuk !== 'tidak_dikenali') return dg
+  const catatan = bentuk === 'oauth'
+    ? 'Kunci yang terpasang di server berbentuk token OAuth/sesi Google (mis. diawali "AQ." atau '
+      + '"ya29."), bukan API key. Token seperti itu tidak akan pernah diterima Gemini API. '
+      + 'Ambil API key di Google AI Studio — bentuknya diawali "AIzaSy" dan panjangnya 39 karakter.'
+    : 'Bentuk kunci yang terpasang tidak seperti API key Gemini (diawali "AIzaSy", 39 karakter). '
+      + 'Periksa apakah yang tersalin memang kuncinya.'
+  return {
+    ...dg,
+    sebab: 'kunci_salah',
+    apa: catatan,
+    perbaikan: `${dg.perbaikan}\n\nPeriksa juga bentuk kuncinya — lihat keterangan di atas.`,
+    tautan: 'https://aistudio.google.com/apikey',
+  }
+}
+
+/**
+ * Ubah daftar nama variabel yang dilihat server menjadi langkah perbaikan.
+ *
+ * "Belum terbaca" bisa berarti tiga hal yang perbaikannya berlainan: belum
+ * ditambahkan sama sekali, salah nama (masih berawalan VITE_, atau ada spasi
+ * ikut tersalin), atau tercentang untuk Preview saja sehingga Production tetap
+ * kosong. Membedakannya dengan menebak berarti satu siklus deploy untuk setiap
+ * tebakan — dan itulah yang sudah beberapa kali terjadi.
+ *
+ * Yang dilaporkan server hanya NAMA variabel, tidak pernah nilainya.
+ */
+export function petunjukVariabel(badan: string): string {
+  let mirip: string[] = []
+  try {
+    const j = JSON.parse(badan) as { error?: { variabelMirip?: unknown } }
+    if (Array.isArray(j?.error?.variabelMirip)) mirip = j.error.variabelMirip.map(String)
+  } catch { /* server versi lama belum mengirimkannya */ }
+
+  const dasar = 'Vercel → Settings → Environment Variables. Namanya harus persis GEMINI_API_KEY '
+    + '(TANPA awalan VITE_), tercentang Production, lalu REDEPLOY — menyimpan variabel saja '
+    + 'tidak berlaku sampai di-deploy ulang.'
+
+  if (!mirip.length) {
+    return `Server tidak melihat SATU PUN variabel bernama mirip Gemini. ${dasar}`
+  }
+  const adaVite = mirip.some(m => m.startsWith('VITE_'))
+  const catatan = adaVite
+    ? ' Yang ada masih berawalan VITE_ — itu justru yang membocorkan kunci ke browser dan harus DIHAPUS.'
+    : ' Namanya belum persis; periksa huruf besar-kecil dan spasi yang mungkin ikut tersalin.'
+  return `Yang dilihat server: ${mirip.join(', ')}.${catatan} ${dasar}`
 }
 
 /**
