@@ -38,6 +38,8 @@ import { totalDibayar, nomorDo, type DeliveryOrder, type PoPayment } from '@/lib
 import type { PurchaseOrder } from '@/lib/procurement'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { kecilkanFoto, ukuranTampil } from '@/lib/kompresFoto'
+import TeksChat from '@/components/cost/TeksChat'
+import { adaTabel } from '@/lib/markdownChat'
 
 const SAPAAN: ChatMessage = {
   id: 'salam',
@@ -57,23 +59,9 @@ const CONTOH = [
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
-/** Markdown seadanya: tebal, garis, dan tabel — cukup untuk jawaban AI. */
-function Teks({ text }: { text: string }) {
-  const baris = text.split('\n')
-  return (
-    <div className="space-y-1">
-      {baris.map((b, i) => {
-        if (!b.trim()) return <div key={i} className="h-1" />
-        if (/^\s*\|?\s*[-:| ]+\s*\|?\s*$/.test(b) && b.includes('-')) return null
-        const isi = b.split(/(\*\*[^*]+\*\*)/g).map((p, j) =>
-          p.startsWith('**') && p.endsWith('**')
-            ? <b key={j} className="font-bold">{p.slice(2, -2)}</b>
-            : <span key={j}>{p}</span>)
-        return <p key={i} className="text-[13px] leading-relaxed break-words">{isi}</p>
-      })}
-    </div>
-  )
-}
+// `Teks` yang dulu di sini hanya menebalkan `**…**` dan mencetak sisanya
+// sebagai paragraf datar — tabel rekap dari model keluar sebagai deretan pipa.
+// Penggambarnya kini satu untuk semua chat; lihat markdownChat.ts.
 
 export default function ChatAiPage() {
   const navigate = useNavigate()
@@ -332,7 +320,12 @@ export default function ChatAiPage() {
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {pesan.map(m => (
                   <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] min-w-0 rounded-2xl px-3.5 py-2.5 ${
+                    {/* Gelembung yang memuat tabel diberi lebar penuh:
+                        potongan 85% pada layar 390 piksel cukup untuk membuang
+                        kolom Total ke luar layar — kolom yang paling dicari. */}
+                    <div className={`min-w-0 rounded-2xl px-3 py-2.5 ${
+                      m.role === 'assistant' && adaTabel(m.text) ? 'max-w-full w-full' : 'max-w-[85%]'
+                    } ${
                       m.role === 'user'
                         ? 'bg-navy text-white rounded-br-sm'
                         : 'bg-slate-100 text-navy rounded-bl-sm'}`}>
@@ -346,7 +339,7 @@ export default function ChatAiPage() {
                           ))}
                         </div>
                       )}
-                      {m.text ? <Teks text={m.text} /> : <p className="text-[13px] italic opacity-70">(lampiran)</p>}
+                      {m.text ? <TeksChat text={m.text} /> : <p className="text-[13px] italic opacity-70">(lampiran)</p>}
                       {(m.newEntries?.length ?? 0) > 0 && (
                         <p className="mt-1.5 text-[10px] font-bold opacity-80">
                           {m.newEntries!.length} transaksi ·{' '}

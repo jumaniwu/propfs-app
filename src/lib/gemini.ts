@@ -19,6 +19,9 @@
 // ============================================================
 
 import { buatAnggaran, pantasDicobaLagi, galatWaktuHabis } from './anggaranWaktu.ts'
+import {
+  BATAS_TOKEN_MS, bacaTokenSimpanan, denganBatas, ingatToken, tokenIngatan,
+} from './tokenSesi.ts'
 
 /** Alamat perantara. Bukan alamat Google — itulah inti perubahannya. */
 export const JALUR_AI = '/api/ai'
@@ -45,16 +48,24 @@ export const BATAS_MS = 75_000
  * latar, dan pada sinyal lemah itu memperlambat percobaan berikutnya.
  */
 async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
+  // Token diambil DI LUAR blok berikut, dan ia punya batas waktunya sendiri.
+  //
+  // Menaruh `await token()` di dalam susunan header terlihat rapi, tetapi
+  // menempatkan satu langkah jaringan tak terbatas di depan pengaman yang
+  // belum menjaga apa pun: jam di bawah memutus `signal`, dan pada detik itu
+  // `fetch` bahkan belum dipanggil. Itulah sebab "AI sedang membaca… 114s"
+  // pada layar yang menjanjikan berhenti di 70 detik. Lihat tokenSesi.ts.
+  const mulai = Date.now()
+  const auth = await token()
+  const sisa = Math.max(5_000, batasMs - (Date.now() - mulai))
+
   const pemutus = new AbortController()
   let diputusKami = false
-  const jam = setTimeout(() => { diputusKami = true; pemutus.abort() }, Math.max(1000, batasMs))
+  const jam = setTimeout(() => { diputusKami = true; pemutus.abort() }, Math.max(1000, sisa))
   try {
     return await fetch(JALUR_AI, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${await token()}`,
-      },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
       body: JSON.stringify(badan),
       signal: pemutus.signal,
     })
@@ -85,7 +96,21 @@ export interface BadanGemini {
  * ke pemilik project.
  */
 async function token(): Promise<string> {
-  try {
+  // 1. Ingatan proses. Pesan kedua dan seterusnya tidak menyentuh apa pun.
+  const diingat = tokenIngatan()
+  if (diingat) return diingat
+
+  // 2. Penyimpanan browser — sinkron, tanpa jaringan. Ini cadangannya bila
+  //    Supabase lambat, dan ia berisi token yang sama persis.
+  const cadangan = bacaTokenSimpanan(
+    (globalThis as { localStorage?: Parameters<typeof bacaTokenSimpanan>[0] }).localStorage,
+  )
+
+  // 3. Supabase, DENGAN BATAS WAKTU. `getSession()` menyegarkan token yang
+  //    kedaluwarsa lewat jaringan, tanpa batas dan tanpa sinyal batal; di
+  //    sinyal lemah ia bisa menggantung berjam-jam. Sebelumnya penungguan itu
+  //    tidak dibatasi siapa pun.
+  const dariSupabase = (async () => {
     // Diimpor saat dipakai, bukan saat modul dimuat. Modul supabase menyentuh
     // `import.meta.env` dan jaringan; mengimpornya di puncak berkas akan
     // membuat setiap modul AI ikut menariknya — termasuk saat diuji di Node,
@@ -93,9 +118,11 @@ async function token(): Promise<string> {
     const { supabase } = await import('./supabase')
     const { data } = await supabase.auth.getSession()
     return data.session?.access_token ?? ''
-  } catch {
-    return ''
-  }
+  })()
+
+  const hasil = (await denganBatas(dariSupabase, BATAS_TOKEN_MS, cadangan)) || cadangan
+  ingatToken(hasil)
+  return hasil
 }
 
 /**

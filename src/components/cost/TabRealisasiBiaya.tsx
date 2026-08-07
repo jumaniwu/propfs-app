@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
+import TeksChat from './TeksChat'
 import {
   chatRealisasiWithGemini, RealisasiEntry, ChatMessage,
   type PemasukanUsul, type PembayaranUsul,
@@ -38,59 +39,9 @@ const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   lainnya:       { bg: 'bg-slate-100',   text: 'text-slate-700',   dot: 'bg-slate-400' },
 }
 
-// ── Markdown Renderer ─────────────────────────────────────────────────────────
-function MarkdownText({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const isTableLine = (l: string) => l.trim().startsWith('|')
-  const rendered: JSX.Element[] = []
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i]
-    if (isTableLine(line)) {
-      const tableLines: string[] = []
-      while (i < lines.length && (isTableLine(lines[i]) || lines[i].trim() === '')) {
-        if (lines[i].trim()) tableLines.push(lines[i])
-        i++
-      }
-      if (tableLines.length >= 2) {
-        const headers = tableLines[0].split('|').filter(c => c.trim())
-        const rows = tableLines.slice(2).map(r => r.split('|').filter(c => c.trim()))
-        rendered.push(
-          <div key={`t${i}`} className="overflow-x-auto my-3 rounded-xl border border-border text-xs shadow-sm">
-            <table className="w-full">
-              <thead className="bg-navy/5 text-navy">
-                <tr>{headers.map((h, j) => <th key={j} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h.trim()}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-white">
-                {rows.map((row, j) => (
-                  <tr key={j} className="hover:bg-muted/30">
-                    {row.map((cell, k) => <td key={k} className="px-3 py-2 whitespace-nowrap">{cell.trim()}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-    } else if (line.startsWith('### ')) {
-      rendered.push(<h4 key={i} className="font-bold text-sm text-navy mt-3 mb-1">{line.slice(4)}</h4>)
-      i++
-    } else if (line.startsWith('## ')) {
-      rendered.push(<h3 key={i} className="font-bold text-sm text-navy mt-3 mb-1">{line.slice(3)}</h3>)
-      i++
-    } else if (line.startsWith('**') && line.endsWith('**')) {
-      rendered.push(<p key={i} className="font-bold text-sm">{line.slice(2, -2)}</p>)
-      i++
-    } else if (line.startsWith('* ') || line.startsWith('- ')) {
-      rendered.push(<li key={i} className="ml-4 list-disc text-sm leading-relaxed">{line.slice(2)}</li>)
-      i++
-    } else {
-      rendered.push(<p key={i} className={line.trim() === '' ? 'h-2' : 'text-sm leading-relaxed mb-0.5'}>{line}</p>)
-      i++
-    }
-  }
-  return <div className="leading-relaxed">{rendered}</div>
-}
+// Penggambar markdown yang dulu di sini sudah pindah ke `TeksChat`, dipakai
+// bersama halaman Chat AI. Dua salinan untuk satu pekerjaan membuat yang satu
+// tertinggal: salinan di halaman Chat AI tidak pernah bisa menggambar tabel.
 
 // ── Entry Detail Card (expanded view inside chat) ─────────────────────────────
 function EntryCard({ e }: { e: RealisasiEntry }) {
@@ -534,7 +485,7 @@ export default function TabRealisasiBiaya() {
                     : 'bg-white border border-border rounded-tl-sm'}`}>
                     {msg.role === 'user'
                       ? <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                      : <MarkdownText text={msg.text} />
+                      : <TeksChat text={msg.text} />
                     }
                   </div>
                 )}
