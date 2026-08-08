@@ -29,6 +29,7 @@ export type SebabAi =
   | 'project_suspend'   // project/consumer disuspend Google
   | 'billing'           // project kunci tidak terhubung ke akun penagihan
   | 'kunci_salah'       // kunci keliru, kedaluwarsa, atau tidak terkirim
+  | 'kunci_bukan_kunci' // yang terpasang token berumur pendek, bukan API key
   | 'kuota'             // kuota / rate limit
   | 'terlalu_besar'     // muatan melewati batas fungsi serverless
   | 'gambar_ditolak'    // gambarnya sampai, tetapi tidak terbaca
@@ -147,8 +148,20 @@ export function petunjukVariabel(badan: unknown): string {
     + LANGKAH_ENV
 }
 
+/**
+ * Keterangan tambahan dari perantara kami, di luar jawaban Google.
+ *
+ * Perantara TAHU bentuk kunci yang dipakainya, dan bentuk itu memisahkan dua
+ * kegagalan yang kalimat Google-nya sama persis. Dulu ia hanya ditulis ke
+ * header `X-PropFS-Bentuk-Kunci` yang tidak pernah dibaca siapa pun.
+ */
+export interface PetunjukPerantara {
+  /** 'api_key' = AIza…, 'oauth' = token (AQ./ya29./1//), sisanya tidak dikenali. */
+  bentukKunci?: 'api_key' | 'oauth' | 'tidak_dikenali' | null
+}
+
 interface Aturan {
-  cocok: (t: string, kode: number) => boolean
+  cocok: (t: string, kode: number, p: PetunjukPerantara) => boolean
   jadi: Omit<Diagnosa, 'asli'>
   /**
    * Perbaikan yang bergantung pada isi respons, bukan hanya pada jenisnya.
@@ -194,6 +207,28 @@ const ATURAN: Aturan[] = [
       'Biasanya karena terlalu buram, terlalu gelap, atau formatnya tidak lazim. Coba foto '
         + 'ulang dengan cahaya cukup dan nota terbentang rata, atau ketik isinya manual.',
       undefined, false),
+  },
+  // Bentuk kunci didahulukan atas seluruh aturan 403.
+  //
+  // Empat sebab berbunyi 403 dan kalimat Google-nya nyaris sama. Tetapi hanya
+  // SATU yang berhasil dulu lalu berhenti sendiri tanpa ada yang mengubah apa
+  // pun: kunci yang sebenarnya bukan API key, melainkan token berumur pendek.
+  // API key (AIza…) tidak punya masa berlaku — ia berhasil selalu atau gagal
+  // sejak panggilan pertama. Token habis di tengah jalan.
+  //
+  // Perantara sudah mengenali bentuknya sebelum permintaan dikirim, jadi ini
+  // bukan tebakan; kalimat Google tetap dilampirkan di bawahnya.
+  {
+    cocok: (_t, k, p) => (k === 403 || k === 401)
+      && !!p.bentukKunci && p.bentukKunci !== 'api_key',
+    jadi: d('kunci_bukan_kunci',
+      'Yang terpasang di GEMINI_API_KEY bukan API key, melainkan token berumur pendek.',
+      'API key Gemini selalu berawalan "AIza" dan panjangnya 39 huruf. Yang berawalan '
+        + '"AQ.", "ya29.", atau "1//" adalah token sementara — ia bekerja beberapa saat '
+        + 'setelah dibuat lalu ditolak sendiri, persis seperti yang terjadi. Buka Google AI '
+        + 'Studio → Get API key → Create API key, salin yang berawalan AIza, ganti '
+        + 'GEMINI_API_KEY di Vercel, lalu REDEPLOY.',
+      TAUTAN.studio),
   },
   // Galat perantara kami sendiri didahulukan: statusnya (500/401) kebetulan
   // sama dengan status Google untuk hal yang sama sekali berbeda, jadi
@@ -329,14 +364,18 @@ const ATURAN: Aturan[] = [
  * `badan` boleh berupa JSON mentah dari Google, pesan Error, atau teks apa
  * adanya — ketiganya benar-benar beredar di kode pemanggil.
  */
-export function diagnosaAi(status: number | undefined, badan: unknown): Diagnosa {
+export function diagnosaAi(
+  status: number | undefined, badan: unknown, petunjuk: PetunjukPerantara = {},
+): Diagnosa {
   const asli = pesanPenyedia(badan)
   const mentah = String(badan ?? '')
   const teks = `${status ?? ''} ${asli} ${mentah}`.toLowerCase()
   const kode = Number(status) || kodeDalam(teks)
 
   for (const a of ATURAN) {
-    if (a.cocok(teks, kode)) return { ...a.jadi, ...(a.sesuaikan?.(mentah) ?? {}), asli }
+    if (a.cocok(teks, kode, petunjuk)) {
+      return { ...a.jadi, ...(a.sesuaikan?.(mentah) ?? {}), asli }
+    }
   }
 
   return {

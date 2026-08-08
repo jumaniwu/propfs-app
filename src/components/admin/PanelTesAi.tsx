@@ -57,6 +57,31 @@ export default function PanelTesAi() {
 
       {hasil && (
         <div className="space-y-3">
+          {/* Peringatan yang muncul BAHKAN KETIKA TESNYA BERHASIL.
+              Token berumur pendek lolos beberapa saat setelah dibuat lalu
+              ditolak sendiri — "tadi bisa, sekarang tidak". Kalau bentuk kunci
+              hanya diperiksa saat gagal, satu-satunya cara mengetahuinya adalah
+              menunggu sampai ia gagal. */}
+          {hasil.bentukKunci && hasil.bentukKunci !== 'api_key' && (
+            <div data-bentuk-kunci={hasil.bentukKunci}
+              className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-900 space-y-1">
+              <p className="text-sm font-bold">
+                {hasil.bentukKunci === 'oauth'
+                  ? 'Yang terpasang bukan API key, melainkan token berumur pendek.'
+                  : 'Bentuk kunci yang terpasang tidak seperti API key Gemini.'}
+              </p>
+              <p className="text-xs leading-relaxed">
+                API key Gemini selalu berawalan <b>AIza</b> dan panjangnya 39 huruf. Yang
+                berawalan <b>AQ.</b>, <b>ya29.</b>, atau <b>1//</b> adalah token sementara: ia
+                bekerja sesaat setelah dibuat, lalu ditolak dengan 403 tanpa ada yang mengubah
+                apa pun.
+              </p>
+              <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
+                className="inline-block text-xs font-bold underline">
+                Ambil API key yang benar di Google AI Studio →
+              </a>
+            </div>
+          )}
           <div data-tes-status={hasil.ok ? 'ok' : 'gagal'}
             className={`flex items-start gap-2.5 rounded-xl border p-3 ${
               hasil.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
