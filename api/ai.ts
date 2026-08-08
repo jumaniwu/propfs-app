@@ -203,6 +203,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // boleh dipakai kunci ini" tanpa pernah menyentuh kuncinya.
   if (aksi === 'daftarModel') {
     const r = await fetch(`${GOOGLE}/models?key=${kunci}&pageSize=200`)
+    // Bentuk kunci dilaporkan juga saat BERHASIL. Kunci yang bentuknya keliru
+    // bisa lolos beberapa saat lalu ditolak sendiri; kalau bentuknya hanya
+    // dilaporkan pada kegagalan, satu-satunya cara mengetahuinya adalah
+    // menunggu sampai ia gagal — persis yang sudah terjadi.
+    res.setHeader('X-PropFS-Bentuk-Kunci', bentukKunci(kunci))
     return res.status(r.status).send(await r.text())
   }
 

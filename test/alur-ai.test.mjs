@@ -232,5 +232,80 @@ function pasangEnv(tambahan) {
   assert(bersih.length === 3, `sisanya utuh: ${bersih.length}`)
 }
 
+
+// ── "Awal dah bisa, kenapa sekarang ga bisa lagi" ───────────────────────
+//
+// Empat sebab berbunyi 403 dan kalimat Google-nya nyaris sama. Hanya SATU yang
+// berhasil dulu lalu berhenti sendiri tanpa ada yang mengubah apa pun: kunci
+// yang sebenarnya token berumur pendek, bukan API key. API key (AIza…) tidak
+// punya masa berlaku — ia berhasil selalu, atau gagal sejak panggilan pertama.
+//
+// Perantara sudah mengenali bentuknya sebelum permintaan dikirim, dan sudah
+// menuliskannya ke header. Yang hilang: tidak ada yang membacanya.
+{
+  const TOLAK_403 = JSON.stringify({
+    error: { code: 403, status: 'PERMISSION_DENIED', message: 'Permission denied on resource.' },
+  })
+
+  // Perantara memang melaporkan bentuk kuncinya lewat header, pada kegagalan.
+  {
+    const asli = process.env.GEMINI_API_KEY
+    process.env.GEMINI_API_KEY = 'AQ.Ab8RN6' + 'z'.repeat(40)   // bentuk token, nilai karangan
+    pasangJaringan(() => jawaban(403, JSON.parse(TOLAK_403)))
+    const res = buatRes()
+    await handler(req({ model: MODEL_UTAMA, contents: [] }), res)
+    assert(res.kode === 403, 'penolakan Google diteruskan apa adanya')
+    assert(res.header['X-PropFS-Bentuk-Kunci'] === 'oauth',
+      'dan perantara melaporkan bahwa yang terpasang berbentuk token, bukan API key')
+    process.env.GEMINI_API_KEY = asli
+  }
+
+  // INILAH cacatnya: header itu dulu tidak pernah dibaca, sehingga 403 yang
+  // sebabnya sudah diketahui tetap tampil sebagai daftar tebakan.
+  {
+    const dg = diagnosaAi(403, TOLAK_403, { bentukKunci: 'oauth' })
+    assert(dg.sebab === 'kunci_bukan_kunci',
+      `403 + bentuk token didiagnosis sebagai kunci yang keliru jenisnya, bukan izin: ${dg.sebab}`)
+    assert(/AIza/.test(dg.perbaikan), 'dan menyebut bentuk yang benar')
+    assert(/AQ\.|token/i.test(dg.perbaikan), 'serta bentuk yang salah')
+    assert(dg.asli === 'Permission denied on resource.',
+      'kalimat Google tetap dilampirkan, tidak ditukar dengan kalimat kami')
+  }
+
+  // Kunci yang bentuknya BENAR tidak boleh dituduh: 403-nya berarti hal lain,
+  // dan menuduh yang salah mengirim orang mengganti kunci yang sudah benar.
+  {
+    const dg = diagnosaAi(403, TOLAK_403, { bentukKunci: 'api_key' })
+    assert(dg.sebab !== 'kunci_bukan_kunci',
+      'kunci berbentuk AIza tidak dituduh salah bentuk')
+  }
+  {
+    const dg = diagnosaAi(403, TOLAK_403)
+    assert(dg.sebab !== 'kunci_bukan_kunci',
+      'tanpa keterangan bentuk pun tidak menuduh — aturan ini bersandar pada bukti')
+  }
+
+  // Bentuk kunci didahulukan atas seluruh aturan 403 lain: kalimat Google untuk
+  // token yang ditolak sering menyebut hal-hal yang MEMANCING salah arah.
+  {
+    const menyesatkan = JSON.stringify({ error: { code: 403, status: 'PERMISSION_DENIED',
+      message: 'Requests to this API generativelanguage.googleapis.com are blocked.' } })
+    const dg = diagnosaAi(403, menyesatkan, { bentukKunci: 'oauth' })
+    assert(dg.sebab === 'kunci_bukan_kunci',
+      'bentuk kunci menang atas tebakan "API belum diaktifkan"')
+  }
+
+  // Yang tidak dikenali sekalipun tetap membawa kalimat Google. Dulu justru
+  // pada keadaan inilah kalimatnya dibuang dan diganti daftar kemungkinan —
+  // orang yang bisa membetulkannya diberi tebakan, padahal jawabannya ada.
+  {
+    const aneh = JSON.stringify({ error: { code: 403, status: 'PERMISSION_DENIED',
+      message: 'Consumer has been suspended pending review.' } })
+    const dg = diagnosaAi(403, aneh, { bentukKunci: 'api_key' })
+    assert(dg.asli === 'Consumer has been suspended pending review.',
+      'kalimat asli Google selalu terbawa, apa pun sebab yang dikenali')
+  }
+}
+
 Object.assign(process.env, ENV_ASLI)
 console.log(`alur-ai: ${ok} assert lulus`)

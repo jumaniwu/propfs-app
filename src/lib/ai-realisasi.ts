@@ -327,7 +327,11 @@ ${rabList.substring(0, 3000)}`
  * sebelum ada yang sempat membacanya. Yang tersisa di layar cuma "403".
  */
 class GalatGemini extends Error {
-  constructor(readonly status: number, readonly badan: string, readonly model: string) {
+  constructor(
+    readonly status: number, readonly badan: string, readonly model: string,
+    /** Bentuk kunci yang dipakai perantara — dilaporkannya lewat header. */
+    readonly bentukKunci: 'api_key' | 'oauth' | 'tidak_dikenali' | null = null,
+  ) {
     super(`${model}: HTTP ${status} ${pesanPenyedia(badan).substring(0, 200)}`)
     this.name = 'GalatGemini'
   }
@@ -369,7 +373,13 @@ async function callGemini(
   // Badan respons TIDAK dipangkas di sini. Di dalamnya persis terletak kalimat
   // yang menyebutkan perbaikannya; yang menyaring apa yang boleh sampai ke
   // layar adalah pemanggilnya, bukan tempat galatnya lahir.
-  if (!res.ok) throw new GalatGemini(res.status, await res.text().catch(() => ''), model)
+  if (!res.ok) {
+    // Perantara melaporkan bentuk kunci yang dipakainya. Selama ini header itu
+    // ditulis tetapi tidak pernah dibaca, sehingga satu-satunya sebab 403 yang
+    // menjelaskan "tadi bisa, sekarang tidak" tak pernah sampai ke layar.
+    const bentuk = res.headers.get('X-PropFS-Bentuk-Kunci') as GalatGemini['bentukKunci']
+    throw new GalatGemini(res.status, await res.text().catch(() => ''), model, bentuk)
+  }
 
   const data = await res.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text
@@ -510,14 +520,22 @@ export async function chatRealisasiWithGemini(
   // yang dikira komentar HTML tak terlihat.
   const superadmin = superadminSaatIni()
   const ringkas = ringkasGalatAi(errors, { adaGambar: hasImages, superadmin })
-  const dg: Diagnosa | null = terakhir ? diagnosaAi(terakhir.status, terakhir.badan) : null
+  const dg: Diagnosa | null = terakhir
+    ? diagnosaAi(terakhir.status, terakhir.badan, { bentukKunci: terakhir.bentukKunci })
+    : null
 
   console.error('[AI Realisasi] Gemini gagal:', ringkas.jenis, dg?.sebab ?? '-', errors)
 
   // Superadmin diberi diagnosis lengkap beserta kalimat asli Google. Dialah
   // yang bisa membetulkannya, dan tanpa kalimat itu ia hanya bisa menebak
   // di antara empat sebab yang semuanya berbunyi 403.
-  if (superadmin && dg && dg.sisiKami) {
+  // Syarat `dg.sisiKami` sengaja dilepas.
+  //
+  // Justru ketika sebabnya TIDAK kami kenali, kalimat asli Google adalah
+  // satu-satunya keterangan yang tersisa — dan dulu tepat pada keadaan itulah
+  // ia dibuang, lalu diganti daftar "yang biasanya jadi sebab". Orang yang bisa
+  // membetulkannya diberi tebakan, padahal jawabannya sudah ada di tangan.
+  if (superadmin && dg) {
     // Tanpa ikon: ChatAiPage sudah menambahkannya sendiri untuk setiap galat.
     // Menambahkan di sini juga membuat "⚠️ ⚠️" tercetak di gelembung chat.
     throw new Error(ceritaDiagnosa(dg))

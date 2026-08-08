@@ -54,6 +54,15 @@ export interface HasilTes {
   modelDipakai: string | null
   /** Ada model yang lebih baik daripada yang biasa dipakai; null bila tidak. */
   modelLebihBaik: string | null
+  /**
+   * Bentuk kunci yang dipakai server: 'api_key' (AIza…), 'oauth' (token
+   * AQ./ya29./1//), atau 'tidak_dikenali'.
+   *
+   * Dilaporkan juga ketika pengujiannya BERHASIL. Token berumur pendek bisa
+   * lolos beberapa saat lalu ditolak sendiri; menunggu sampai ia gagal berarti
+   * kehilangan satu-satunya kesempatan memperingatkan lebih dulu.
+   */
+  bentukKunci: string
 }
 
 const env = (): Record<string, string | undefined> =>
@@ -85,7 +94,7 @@ export async function tesKunciAi(): Promise<HasilTes> {
   const tiruan = (globalThis as { __tesAiMock?: () => Promise<HasilTes> }).__tesAiMock
   if (tiruan) return tiruan()
 
-  const kosong = { model: [] as ModelGemini[], modelDipakai: null, modelLebihBaik: null }
+  const kosong = { model: [] as ModelGemini[], modelDipakai: null, modelLebihBaik: null, bentukKunci: '' }
   const mulai = Date.now()
 
   try {
@@ -115,7 +124,7 @@ export async function tesKunciAi(): Promise<HasilTes> {
         adaKunci: true, ok: true, jenis: null, ms,
         model, modelDipakai: pilihModel(model, MODEL_TEKS),
         modelLebihBaik: adaYangLebihBaik(model, MODEL_DIPAKAI_SEKARANG),
-        pesan: 'Berhasil', diagnosa: null,
+        pesan: 'Berhasil', diagnosa: null, bentukKunci: bentuk,
       }
     }
 
@@ -125,9 +134,9 @@ export async function tesKunciAi(): Promise<HasilTes> {
     const adaKunci = !badan.includes('NO_SERVER_KEY')
     const jenis = jenisGalat(`${res.status} ${badan}`)
     return {
-      adaKunci, ok: false, jenis, ms, ...kosong,
+      adaKunci, ok: false, jenis, ms, ...kosong, bentukKunci: bentuk,
       pesan: adaKunci ? `${PESAN[jenis]} (${res.status})` : 'Kunci server belum dipasang',
-      diagnosa: adaKunci ? bubuhiBentuk(diagnosaAi(res.status, badan), bentuk) : {
+      diagnosa: adaKunci ? diagnosaAi(res.status, badan, { bentukKunci: bentuk as never }) : {
         sebab: 'kunci_salah',
         apa: 'GEMINI_API_KEY belum terbaca di server.',
         perbaikan: petunjukVariabel(badan),
@@ -144,30 +153,10 @@ export async function tesKunciAi(): Promise<HasilTes> {
   }
 }
 
-/**
- * Tempelkan keterangan bentuk kunci pada diagnosis yang sudah ada.
- *
- * Ini menjawab kebingungan yang nyata: kunci baru yang diambil dari halaman
- * yang keliru berbentuk `AQ.…`, ditolak Google dengan 403, dan 403 itu terbaca
- * seperti masalah izin — sehingga yang diperiksa adalah domain, penagihan, dan
- * pengaktifan API, padahal kuncinya memang bukan API key.
- */
-function bubuhiBentuk(dg: Diagnosa, bentuk: string): Diagnosa {
-  if (bentuk !== 'oauth' && bentuk !== 'tidak_dikenali') return dg
-  const catatan = bentuk === 'oauth'
-    ? 'Kunci yang terpasang di server berbentuk token OAuth/sesi Google (mis. diawali "AQ." atau '
-      + '"ya29."), bukan API key. Token seperti itu tidak akan pernah diterima Gemini API. '
-      + 'Ambil API key di Google AI Studio — bentuknya diawali "AIzaSy" dan panjangnya 39 karakter.'
-    : 'Bentuk kunci yang terpasang tidak seperti API key Gemini (diawali "AIzaSy", 39 karakter). '
-      + 'Periksa apakah yang tersalin memang kuncinya.'
-  return {
-    ...dg,
-    sebab: 'kunci_salah',
-    apa: catatan,
-    perbaikan: `${dg.perbaikan}\n\nPeriksa juga bentuk kuncinya — lihat keterangan di atas.`,
-    tautan: 'https://aistudio.google.com/apikey',
-  }
-}
+// `bubuhiBentuk` yang dulu di sini sudah menjadi aturan di dalam diagnosaAi,
+// dipakai bersama Chat AI. Dua salinan untuk satu pekerjaan membuat yang satu
+// tertinggal: Chat AI tidak pernah membaca bentuk kuncinya sama sekali.
+
 
 /**
  * Katalog model yang boleh dipakai sebuah kunci, langsung dari Google.
