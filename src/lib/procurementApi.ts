@@ -11,6 +11,7 @@ import type {
 import { milikWorkspace } from './procurement'
 import { dataOwnerId } from './teamApi'
 import { tautanPublik } from './tautanPendek'
+import type { InvoiceVendor, StatusInvoice } from './invoiceVendor'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
 
 export interface BuatPoInput {
@@ -102,6 +103,55 @@ export interface ProcurementApi {
    * cache lokal dan sesi milik perangkat pemakai aplikasi, bukan vendor.
    */
   poByToken(token: string): Promise<PoPublik | null>
+
+  // ── Tagihan dari vendor ───────────────────────────────────────────────
+  /** Terbitkan tautan kirim-invoice untuk sebuah PO; token BARU tiap kali. */
+  terbitkanInvoiceToken(poId: string): Promise<string | null>
+  listInvoice(): Promise<BarisInvoice[]>
+  updateInvoice(id: string, patch: Partial<Pick<BarisInvoice,
+    'status' | 'catatan_periksa' | 'diperiksa_oleh' | 'diperiksa_at'>>): Promise<void>
+  deleteInvoice(id: string): Promise<void>
+  /** Yang dilihat vendor saat membuka tautannya; null bila tautannya mati. */
+  invoiceFormByToken(token: string): Promise<FormInvoicePublik | null>
+  /** Vendor mengirim tagihannya. Mengembalikan id barisnya, atau null. */
+  kirimInvoice(token: string, data: KirimInvoice): Promise<string | null>
+}
+
+/** Satu tagihan sebagaimana tersimpan. */
+export interface BarisInvoice extends InvoiceVendor {
+  id: string
+  po_id: string
+  po_nomor: string
+  vendor_id: string | null
+  vendor_nama: string
+  project_name: string
+  status: StatusInvoice
+  catatan_periksa: string
+  diperiksa_oleh: string
+  diperiksa_at: string | null
+  berkas_nama: string
+  berkas_mime: string
+  berkas_data?: string | null
+  created_at: string
+}
+
+/** Ringkasan PO yang ditampilkan pada halaman kirim invoice. */
+export interface FormInvoicePublik {
+  po_nomor: string
+  vendor_nama: string
+  project_name: string
+  term: string
+  term_hari: number
+  items: PoItem[]
+  total: number
+  /** Sudah ada berapa tagihan untuk PO ini — vendor perlu tahu ia tidak dobel. */
+  sudah_dikirim: number
+}
+
+export type KirimInvoice = InvoiceVendor & {
+  berkas_nama?: string
+  berkas_mime?: string
+  berkas_data?: string
 }
 
 // ── REST langsung ───────────────────────────────────────────────────────────
@@ -297,6 +347,33 @@ const realApi: ProcurementApi = {
     const rows = await rpc<PoPublik[]>('po_get_by_token', { p_token: token }, true)
     return rows?.[0] ?? null
   },
+
+  async terbitkanInvoiceToken(poId) {
+    return (await rpc<string | null>('po_terbitkan_invoice_token', { p_po_id: poId })) ?? null
+  },
+  async listInvoice() {
+    // `berkas_data` sengaja TIDAK ikut pada daftar: satu foto invoice ratusan
+    // kilobita, dan menariknya untuk setiap baris membuat halaman yang
+    // seharusnya ringan menjadi berat justru saat tagihannya menumpuk.
+    return (await ambil<BarisInvoice[]>(
+      'vendor_invoices?select=id,po_id,po_nomor,vendor_id,vendor_nama,project_name,'
+      + 'nomor_invoice,tanggal,jatuh_tempo,items,subtotal,ppn,total,catatan,dikirim_oleh,'
+      + 'berkas_nama,berkas_mime,status,catatan_periksa,diperiksa_oleh,diperiksa_at,created_at'
+      + '&order=created_at.desc', 'daftar invoice',
+    )) ?? []
+  },
+  async updateInvoice(id, patch) {
+    await ubah(`vendor_invoices?id=eq.${id}`, patch, 'memperbarui invoice')
+  },
+  async deleteInvoice(id) { await hapus(`vendor_invoices?id=eq.${id}`, 'menghapus invoice') },
+
+  async invoiceFormByToken(token) {
+    const rows = await rpc<FormInvoicePublik[]>('invoice_form_by_token', { p_token: token }, true)
+    return rows?.[0] ?? null
+  },
+  async kirimInvoice(token, data) {
+    return (await rpc<string | null>('invoice_kirim', { p_token: token, p_data: data }, true)) ?? null
+  },
 }
 
 export function procurementApi(): ProcurementApi {
@@ -310,6 +387,10 @@ export function vendorDaftarLink(token: string): string {
 /** Tautan pribadi vendor untuk memperbarui daftar barangnya. */
 export function vendorItemLink(token: string): string {
   return tautanPublik('vendor_item', token, window.location.origin)
+}
+/** Tautan tempat vendor mengirim tagihannya, ikut di pesan WA yang sama. */
+export function invoiceKirimLink(token: string): string {
+  return tautanPublik('invoice', token, window.location.origin)
 }
 /** Tautan PO yang dikirim ke vendor — WhatsApp tidak bisa melampirkan file. */
 export function poViewLink(token: string): string {

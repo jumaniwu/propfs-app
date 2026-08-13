@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Send, Paperclip, Loader2, X, RefreshCw, Users, BarChart3,
   HardHat, PackageOpen, ShoppingCart, Truck, FileSignature, ClipboardList,
-  MessageSquare, Info, Trash2,
+  MessageSquare, Info, Trash2, ReceiptText,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
@@ -37,6 +37,7 @@ import { fieldApi } from '@/lib/fieldReports'
 import { materialApi } from '@/lib/materialApi'
 import { penerimaanApi } from '@/lib/penerimaanApi'
 import { spkApi } from '@/lib/spkApi'
+import { procurementApi } from '@/lib/procurementApi'
 import { downscaleImage } from '@/lib/imageUtil'
 
 const KUNCI_BACA = 'propfs-chattim-dibaca'
@@ -44,7 +45,7 @@ const SEMUA = '__semua__'
 
 const IKON: Record<JenisNotifikasi, typeof HardHat> = {
   laporan: HardHat, pakai: PackageOpen, request: ShoppingCart,
-  terima: Truck, ttd: FileSignature, opname: ClipboardList,
+  terima: Truck, ttd: FileSignature, opname: ClipboardList, invoice: ReceiptText,
 }
 const WARNA: Record<JenisNotifikasi, string> = {
   laporan: 'bg-amber-100 text-amber-700',
@@ -53,6 +54,7 @@ const WARNA: Record<JenisNotifikasi, string> = {
   terima: 'bg-emerald-100 text-emerald-700',
   ttd: 'bg-violet-100 text-violet-700',
   opname: 'bg-slate-100 text-slate-700',
+  invoice: 'bg-sky-100 text-sky-700',
 }
 
 const jam = (iso: string) => {
@@ -90,7 +92,7 @@ export default function ChatTimPage() {
       // Kegagalan satu sumber tidak boleh mengosongkan seluruh ruang — kabar
       // dari modul lain tetap layak ditampilkan. Hanya kegagalan tabel chat
       // sendiri yang dilaporkan, karena itulah yang benar-benar menghalangi.
-      const [pesanBaru, laporan, pakai, request, terima, spk, opname, member, ws] = await Promise.all([
+      const [pesanBaru, laporan, pakai, request, terima, spk, opname, member, ws, invoice] = await Promise.all([
         chatTimApi().list(300),
         fieldApi().listReportsTerbaru(50).catch(() => []),
         materialApi().listUsage().catch(() => []),
@@ -100,11 +102,12 @@ export default function ChatTimPage() {
         spkApi().listOpname().catch(() => []),
         teamApi().listMembers().catch(() => []),
         teamApi().myWorkspaces().catch(() => []),
+        procurementApi().listInvoice().catch(() => []),
       ])
       setPesan(pesanBaru)
       setKabar(susunNotifikasi({
         laporan: laporan as never, pakai, request, terima,
-        ttd: spk as never, opname: opname as never,
+        ttd: spk as never, opname: opname as never, invoice: invoice as never,
       }))
       setWorkspaces(ws)
 

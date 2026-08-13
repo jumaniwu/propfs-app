@@ -28,6 +28,7 @@ export type JenisNotifikasi =
   | 'terima'       // barang datang (surat jalan)
   | 'ttd'          // dokumen ditandatangani pihak kedua
   | 'opname'       // form opname diisi petugas
+  | 'invoice'      // vendor mengirim tagihan lewat tautannya — perlu diperiksa
 
 export const LABEL_JENIS: Record<JenisNotifikasi, string> = {
   laporan: 'Laporan Harian',
@@ -36,10 +37,18 @@ export const LABEL_JENIS: Record<JenisNotifikasi, string> = {
   terima: 'Barang Datang',
   ttd: 'Tanda Tangan',
   opname: 'Opname',
+  invoice: 'Tagihan Vendor',
 }
 
 /** Jenis yang menunggu tindakan manusia, bukan sekadar kabar. */
-export const PERLU_TINDAKAN: JenisNotifikasi[] = ['request', 'ttd']
+/**
+ * Jenis yang menunggu tindakan manusia, bukan sekadar kabar.
+ *
+ * Tagihan vendor termasuk: ia menahan pembayaran sampai ada yang
+ * memeriksanya, dan tagihan yang menumpuk tanpa diperiksa berubah menjadi
+ * hubungan yang rusak dengan pemasok — bukan sekadar catatan yang tertunda.
+ */
+export const PERLU_TINDAKAN: JenisNotifikasi[] = ['request', 'ttd', 'invoice']
 
 export interface Notifikasi {
   id: string
@@ -72,6 +81,9 @@ export interface SumberNotifikasi {
   terima?: Array<{ id?: string; nomor_do?: string; penerima?: string; tanggal_terima?: string; created_at?: string; items?: unknown }>
   ttd?: Array<{ id?: string; nomor?: string; vendor_name?: string; signed_at?: string | null; signed_name?: string | null; project_name?: string }>
   opname?: Array<{ id?: string; judul?: string; filled_by?: string | null; filled_at?: string | null; project_name?: string }>
+  invoice?: Array<{ id?: string; po_nomor?: string; vendor_nama?: string; nomor_invoice?: string
+                    total?: number; status?: string; dikirim_oleh?: string
+                    created_at?: string; project_name?: string }>
 }
 
 const teks = (v: unknown) => String(v ?? '').trim()
@@ -177,6 +189,27 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       rincian: teks(o.filled_by) ? `Diisi oleh ${teks(o.filled_by)}` : 'Menunggu persetujuan.',
       tautan: '/kontraktor', proyek: teks(o.project_name) || undefined,
       oleh: teks(o.filled_by) || undefined,
+    })
+  }
+
+  for (const v of sumber.invoice ?? []) {
+    const waktu = teks(v.created_at)
+    if (!waktu) continue
+    const status = teks(v.status) || 'masuk'
+    // Yang sudah dibayar atau ditolak bukan lagi pekerjaan yang tertunda;
+    // menandainya "menunggu" membuat lencana tidak pernah kembali ke nol, dan
+    // lencana yang tidak pernah nol berhenti berarti apa-apa.
+    const menunggu = status !== 'dibayar' && status !== 'ditolak' && status !== 'disetujui'
+    hasil.push({
+      id: `invoice:${teks(v.id) || waktu}`, jenis: 'invoice', waktu, menunggu,
+      judul: `Tagihan dari ${teks(v.vendor_nama) || 'vendor'}`,
+      rincian: [
+        teks(v.nomor_invoice) && `No. ${teks(v.nomor_invoice)}`,
+        angka(v.total) > 0 && `Rp ${Math.round(angka(v.total)).toLocaleString('id-ID')}`,
+        teks(v.po_nomor) && `untuk ${teks(v.po_nomor)}`,
+      ].filter(Boolean).join(' · ') || 'Tagihan baru masuk.',
+      tautan: '/kontraktor/procurement', proyek: teks(v.project_name) || undefined,
+      oleh: teks(v.dikirim_oleh) || undefined,
     })
   }
 

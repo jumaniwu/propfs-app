@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import HomePanelLapangan from '@/components/cost/HomePanelLapangan'
+import HomePanelTagihan from '@/components/cost/HomePanelTagihan'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore, type SavedCostProject } from '@/store/costStore'
 import {
@@ -420,6 +421,12 @@ export default function KontraktorHomePage() {
           onBukaProyek={id => { loadProject(id); navigate('/cost-control?tab=overview') }}
           onBukaMaterial={sub => navigate(`/kontraktor/material?sub=${sub}`)}
           onBukaProcurement={() => navigate('/kontraktor/procurement?sub=po')}
+        />
+
+        {/* ── Tagihan vendor yang menunggu diperiksa ──────────────────── */}
+        <HomePanelTagihan
+          role={role}
+          onBuka={() => navigate('/kontraktor/procurement?sub=invoice')}
         />
 
         {/* ── Aktivitas terbaru ───────────────────────────────────────── */}

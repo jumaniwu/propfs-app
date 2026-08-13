@@ -117,8 +117,49 @@ assert(/1 perlu tindakan/.test(ringkasNotifikasi(semua)), 'ringkasan menyebut ya
 assert(/7 kabar/.test(ringkasNotifikasi(semua)), 'ringkasan menyebut jumlah kabar')
 assert(ringkasNotifikasi([]) === 'belum ada kabar', 'daftar kosong berbunyi wajar')
 
+
+// ── Tagihan vendor ─────────────────────────────────────────────────────────
+//
+// Tagihan yang masuk tanpa terlihat siapa pun akan menumpuk sampai vendornya
+// menagih lewat telepon. Itulah yang membuat jenis ini PERLU_TINDAKAN.
+{
+  const n = susunNotifikasi({ invoice: [
+    { id: 'v1', created_at: '2026-08-13T04:00:00.000Z', vendor_nama: 'Toko Maju',
+      nomor_invoice: 'INV/0123', total: 2390000, po_nomor: 'PO/2026/0007',
+      status: 'masuk', dikirim_oleh: 'Budi', project_name: 'Ruko A' },
+  ] })
+  assert(n.length === 1, 'tagihan menjadi satu kabar')
+  assert(n[0].jenis === 'invoice', 'jenisnya invoice')
+  assert(n[0].menunggu === true, 'dan ia menunggu tindakan')
+  assert(PERLU_TINDAKAN.includes('invoice'), 'jenisnya memang terdaftar perlu tindakan')
+  assert(/Toko Maju/.test(n[0].judul), 'judulnya menyebut vendornya')
+  assert(/INV\/0123/.test(n[0].rincian) && /2.390.000/.test(n[0].rincian),
+    `rincian menyebut nomor dan nilainya: ${n[0].rincian}`)
+  assert(/PO\/2026\/0007/.test(n[0].rincian), 'serta PO yang ditagihnya')
+  assert(n[0].tautan === '/kontraktor/procurement', 'diketuk membawa ke tempat memprosesnya')
+  assert(n[0].oleh === 'Budi', 'pengirimnya terbawa')
+  assert(n[0].proyek === 'Ruko A', 'proyeknya terbawa')
+}
+{
+  // Yang sudah selesai tidak boleh terus menahan lencana. Lencana yang tidak
+  // pernah kembali ke nol berhenti berarti apa-apa.
+  const n = susunNotifikasi({ invoice: [
+    { id: 'a', created_at: '2026-08-13T04:00:00.000Z', status: 'dibayar' },
+    { id: 'b', created_at: '2026-08-13T05:00:00.000Z', status: 'ditolak' },
+    { id: 'c', created_at: '2026-08-13T06:00:00.000Z', status: 'disetujui' },
+    { id: 'd', created_at: '2026-08-13T07:00:00.000Z', status: 'selisih' },
+  ] })
+  assert(n.filter(x => x.menunggu).length === 1, 'hanya yang belum diputuskan yang menunggu')
+  assert(n.find(x => x.menunggu).id === 'invoice:d', 'yaitu yang berselisih')
+}
+{
+  const n = susunNotifikasi({ invoice: [{ id: 'x' }] })
+  assert(n.length === 0, 'baris tanpa waktu dilewati, bukan diberi waktu karangan')
+}
+assert(susunNotifikasi({ invoice: [] }).length === 0, 'daftar invoice kosong aman')
+
 // ── Label & masukan kosong ─────────────────────────────────────────────────
-assert(Object.keys(LABEL_JENIS).length === 6, 'enam jenis kabar')
+assert(Object.keys(LABEL_JENIS).length === 7, 'tujuh jenis kabar')
 assert(susunNotifikasi().length === 0, 'tanpa sumber, tidak ada kabar')
 assert(susunNotifikasi({}).length === 0, 'sumber kosong aman')
 

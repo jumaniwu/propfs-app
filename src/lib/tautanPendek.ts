@@ -33,7 +33,7 @@ export const ALFABET_TOKEN = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 export const PANJANG_TOKEN = 12
 
 export type JenisTautan =
-  | 'vendor_daftar' | 'vendor_item' | 'po'
+  | 'vendor_daftar' | 'vendor_item' | 'po' | 'invoice'
   | 'lapor' | 'progress' | 'spk_sign' | 'opname'
   | 'lead'
 
@@ -52,6 +52,10 @@ export const POLA_TAUTAN: Record<JenisTautan, PolaTautan> = {
   vendor_daftar: { pendek: '/v', lama: '/vendor/daftar' },
   vendor_item: { pendek: '/i', lama: '/vendor/item' },
   po: { pendek: '/po', lama: '/po' },
+  // 'n' dari nota/tagihan. Huruf yang tersisa memang tinggal sedikit, dan
+  // HURUF BESAR bukan jalan keluar: pencocokan rute React Router tidak peka
+  // huruf besar, jadi '/N' akan bertabrakan dengan '/n'.
+  invoice: { pendek: '/n', lama: '/vendor/invoice' },
   lapor: { pendek: '/l', lama: '/lapor' },
   progress: { pendek: '/p', lama: '/progress' },
   spk_sign: { pendek: '/s', lama: '/spk/sign' },
