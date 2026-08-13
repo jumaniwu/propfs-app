@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Store, Package, ShoppingCart, Loader2, RefreshCw, Trash2, Plus, Copy,
   Send, Check, X, Link2, PenLine, Download, FileText, Search, AlertTriangle,
-  ReceiptIcon, Truck,
+  ReceiptIcon, Truck, ReceiptText,
 } from 'lucide-react'
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { useSearchParams } from 'react-router-dom'
@@ -27,7 +27,8 @@ import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
 import { materialApi, type MaterialRequest } from '@/lib/materialApi'
 import {
-  procurementApi, vendorDaftarLink, poViewLink,
+  procurementApi, vendorDaftarLink, poViewLink, invoiceKirimLink,
+  type BarisInvoice,
   type ProfilVendorPublik,
 } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
@@ -35,18 +36,19 @@ import { waKe, nomorWaInternasional } from '@/lib/waLink'
 import { tokenSudahPendek } from '@/lib/tautanPendek'
 import { konteksWatermark } from '@/lib/identitasSaya'
 import TabPenerimaan from '@/components/cost/TabPenerimaan'
+import TabInvoiceVendor from '@/components/cost/TabInvoiceVendor'
 import { penerimaanApi } from '@/lib/penerimaanApi'
 import { statusTerima, type DeliveryOrder } from '@/lib/penerimaan'
 import {
   belumTerpesan, sisaQty, hitungTotalPo, nomorPo, bolehKirimPo, waEfektifPo, statusPoSetelah,
-  ringkasKatalog, hargaVendorUntuk, teksTerm, katalogDariNota, tokoBelumJadiVendor,
+  ringkasKatalog, hargaVendorUntuk, teksTerm, pesanWaPo, katalogDariNota, tokoBelumJadiVendor,
   profilAwal,
   LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
   type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
 } from '@/lib/procurement'
 
-type Sub = 'vendor' | 'katalog' | 'po' | 'terima'
-const SUB_SAH: readonly Sub[] = ['vendor', 'katalog', 'po', 'terima']
+type Sub = 'vendor' | 'katalog' | 'po' | 'terima' | 'invoice'
+const SUB_SAH: readonly Sub[] = ['vendor', 'katalog', 'po', 'terima', 'invoice']
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -79,6 +81,7 @@ export default function ProcurementPage() {
   const [posSemua, setPos] = useState<PurchaseOrder[]>([])
   const [requestsSemua, setRequests] = useState<MaterialRequest[]>([])
   const [dos, setDos] = useState<DeliveryOrder[]>([])
+  const [invoices, setInvoices] = useState<BarisInvoice[]>([])
 
   // Procurement adalah halaman tingkat PERUSAHAAN, bukan per proyek: vendor,
   // katalog, dan daftar PO memang dilihat menyeluruh. Proyek sebuah PO tidak
@@ -99,14 +102,18 @@ export default function ProcurementPage() {
     if (!diam) setMemuat(true)
     try {
       const api = procurementApi()
-      const [v, it, p, r, d] = await Promise.all([
+      const [v, it, p, r, d, inv] = await Promise.all([
         api.listVendors(), api.listVendorItems(), api.listPo(),
         materialApi().listRequests().catch(() => [] as MaterialRequest[]),
         // Penerimaan opsional: bila migration_penerimaan.sql belum dijalankan,
         // tab lain harus tetap bisa dipakai.
         penerimaanApi().listDo().catch(() => [] as DeliveryOrder[]),
+        // Sama alasannya: migration_invoice_vendor.sql mungkin belum dijalankan,
+        // dan seluruh halaman tidak boleh mati karenanya.
+        api.listInvoice().catch(() => [] as BarisInvoice[]),
       ])
-      setVendors(v); setItems(it); setPos(p); setRequests(r); setDos(d); setError('')
+      setVendors(v); setItems(it); setPos(p); setRequests(r); setDos(d)
+      setInvoices(inv); setError('')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setMemuat(false) }
@@ -124,6 +131,14 @@ export default function ProcurementPage() {
 
   // PO terkirim yang barangnya belum lengkap datang — itulah yang menunggu
   // dicatat penerimaannya.
+  // Tagihan yang belum diputuskan. Angkanya dipakai sebagai lencana tab: yang
+  // sudah disetujui, ditolak, atau dibayar bukan lagi pekerjaan yang tertunda.
+  const invoicePerluDiperiksa = useMemo(
+    () => invoices.filter(v => v.status !== 'disetujui' && v.status !== 'ditolak'
+      && v.status !== 'dibayar').length,
+    [invoices],
+  )
+
   const menungguDatang = useMemo(
     () => pos.filter(p => (p.status === 'terkirim' || p.status === 'selesai')
       && statusTerima(p.items, dos.filter(d => d.po_id === p.id)) !== 'lengkap').length,
@@ -135,6 +150,7 @@ export default function ProcurementPage() {
     ['katalog', 'Katalog', <Package key="i" className="w-4 h-4" />, 0],
     ['po', 'Purchase Order', <ShoppingCart key="i" className="w-4 h-4" />, siapDipesan.length],
     ['terima', 'Penerimaan', <Truck key="i" className="w-4 h-4" />, menungguDatang],
+    ['invoice', 'Tagihan', <ReceiptText key="i" className="w-4 h-4" />, invoicePerluDiperiksa],
   ]
 
   return (
@@ -187,6 +203,10 @@ export default function ProcurementPage() {
             )}
             {sub === 'terima' && (
               <TabPenerimaan pos={pos} dos={dos} bolehUbah={bolehUbah} onUbah={muat} />
+            )}
+            {sub === 'invoice' && (
+              <TabInvoiceVendor invoices={invoices} pos={pos} bolehUbah={bolehApprove}
+                namaSaya={profile?.full_name ?? ''} onUbah={muat} />
             )}
             {sub === 'po' && (
               <TabPo
@@ -1195,18 +1215,18 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
       const ok = await procurementApi().kirimPo(po.id)
       if (!ok) throw new Error('Server menolak: pastikan PO sudah ditandatangani dan disetujui.')
       const link = poViewLink(po.view_token)
-      const pesan = [
-        `Halo ${po.vendor_nama}, berikut Purchase Order dari kami:`,
-        '',
-        `Nomor    : ${po.nomor}`,
-        `Total    : ${fmt(po.total)}`,
-        `Pembayaran: ${teksTerm(po.term, po.term_hari)}`,
-        '',
-        `Rincian & PDF bisa dibuka di:`,
-        link,
-        '',
-        'Mohon konfirmasi ketersediaan barang. Terima kasih.',
-      ].join('\n')
+
+      // Tautan kedua: tempat vendor mengirim tagihannya nanti.
+      //
+      // Diterbitkan BARU pada tiap pengiriman, dan yang lama ikut mati. Ia
+      // memberi kuasa MENULIS ke basis data kami dan memakai kuota AI kami —
+      // berbeda dari tautan PO yang hanya membaca — dan pesan WhatsApp memang
+      // diteruskan orang. Kuasa menulis tidak boleh menumpuk di tangan
+      // salinan-salinan pesan lama yang sudah tersebar entah ke mana.
+      const tokenInvoice = await procurementApi().terbitkanInvoiceToken(po.id)
+        .catch(() => null)
+
+      const pesan = pesanWaPo(po, link, tokenInvoice ? invoiceKirimLink(tokenInvoice) : null)
       window.open(waKe(wa, pesan), '_blank')
       toast({ title: 'PO dikirim', description: 'Qty terpesan pada request material sudah diperbarui.' })
       onUbah()

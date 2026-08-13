@@ -10,10 +10,11 @@
 // ============================================================
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Loader2, RefreshCw, X, HardHat, PackageOpen, ShoppingCart, Truck, FileSignature, ClipboardList } from 'lucide-react'
+import { Bell, Loader2, RefreshCw, X, HardHat, PackageOpen, ShoppingCart, Truck, FileSignature, ClipboardList, ReceiptText } from 'lucide-react'
 import { fieldApi } from '@/lib/fieldReports'
 import { materialApi } from '@/lib/materialApi'
 import { penerimaanApi } from '@/lib/penerimaanApi'
+import { procurementApi } from '@/lib/procurementApi'
 import { spkApi } from '@/lib/spkApi'
 import {
   susunNotifikasi, belumDibaca, lencana, waktuLalu, ringkasNotifikasi,
@@ -24,7 +25,7 @@ const KUNCI_DIBACA = 'propfs-notifikasi-dibaca'
 
 const IKON: Record<JenisNotifikasi, typeof Bell> = {
   laporan: HardHat, pakai: PackageOpen, request: ShoppingCart,
-  terima: Truck, ttd: FileSignature, opname: ClipboardList,
+  terima: Truck, ttd: FileSignature, opname: ClipboardList, invoice: ReceiptText,
 }
 const WARNA: Record<JenisNotifikasi, string> = {
   laporan: 'bg-amber-100 text-amber-700',
@@ -33,6 +34,7 @@ const WARNA: Record<JenisNotifikasi, string> = {
   terima: 'bg-emerald-100 text-emerald-700',
   ttd: 'bg-violet-100 text-violet-700',
   opname: 'bg-slate-100 text-slate-700',
+  invoice: 'bg-sky-100 text-sky-700',
 }
 
 function bacaTerakhir(): string {
@@ -51,17 +53,18 @@ export default function PanelNotifikasi() {
     try {
       // Kegagalan satu sumber tidak boleh mengosongkan seluruh daftar — kabar
       // dari modul lain tetap layak ditampilkan.
-      const [laporan, pakai, request, terima, spk, opname] = await Promise.all([
+      const [laporan, pakai, request, terima, spk, opname, invoice] = await Promise.all([
         fieldApi().listReportsTerbaru(30).catch(() => []),
         materialApi().listUsage().catch(() => []),
         materialApi().listRequests().catch(() => []),
         penerimaanApi().listDo().catch(() => []),
         spkApi().listSpk().catch(() => []),
         spkApi().listOpname().catch(() => []),
+        procurementApi().listInvoice().catch(() => []),
       ])
       setDaftar(susunNotifikasi({
         laporan: laporan as never, pakai, request, terima,
-        ttd: spk as never, opname: opname as never,
+        ttd: spk as never, opname: opname as never, invoice: invoice as never,
       }))
     } finally { setMemuat(false) }
   }

@@ -576,3 +576,37 @@ export function hargaVendorUntuk(
     .filter(h => h > 0)
   return harga.length > 0 ? Math.min(...harga) : 0
 }
+
+/**
+ * Pesan WhatsApp yang menyertai sebuah PO.
+ *
+ * Disusun di sini, bukan di dalam komponen, supaya bisa diuji. Yang paling
+ * mudah hilang tanpa ketahuan justru tautan KEDUA: ia hanya ada bila
+ * penerbitan tokennya berhasil, dan bila penerbitan itu diam-diam gagal,
+ * pesannya tetap terkirim — terlihat normal, hanya tanpa jalan bagi vendor
+ * mengirim tagihannya. Kegagalan yang tidak terlihat seperti kegagalan.
+ */
+export function pesanWaPo(
+  po: Pick<PurchaseOrder, 'nomor' | 'vendor_nama' | 'total' | 'term' | 'term_hari'>,
+  linkPo: string,
+  linkInvoice?: string | null,
+): string {
+  const rp = (n: number) => `Rp ${Math.round(Number(n) || 0).toLocaleString('id-ID')}`
+  return [
+    `Halo ${po.vendor_nama}, berikut Purchase Order dari kami:`,
+    '',
+    `Nomor    : ${po.nomor}`,
+    `Total    : ${rp(po.total)}`,
+    `Pembayaran: ${teksTerm(po.term, po.term_hari)}`,
+    '',
+    'Rincian & PDF bisa dibuka di:',
+    linkPo,
+    ...(linkInvoice ? [
+      '',
+      'Sudah siap menagih? Kirim invoicenya di sini (cukup foto/PDF):',
+      linkInvoice,
+    ] : []),
+    '',
+    'Mohon konfirmasi ketersediaan barang. Terima kasih.',
+  ].join('\n')
+}

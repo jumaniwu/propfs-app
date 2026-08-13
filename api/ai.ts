@@ -76,6 +76,26 @@ const POLA_MAHAL = /-(image|tts|audio|live|native-audio)|image-generation/i
 const bolehDipakai = (m: string): boolean =>
   MODEL_BOLEH.has(m) || (POLA_AMAN.test(m) && !POLA_MAHAL.test(m))
 
+/**
+ * Model yang boleh dipakai TAMU — vendor yang membuka tautan invoice tanpa
+ * akun.
+ *
+ * Jauh lebih sempit daripada daftar untuk pengguna yang sudah masuk. Tamu
+ * dikenali hanya dari sepotong token di dalam tautan WhatsApp, dan tautan
+ * WhatsApp diteruskan orang. Yang dibutuhkannya cuma satu: membaca selembar
+ * invoice. Jalur Pro tidak dibuka — tarif tokennya beberapa kali lipat, dan
+ * yang menanggungnya bukan yang memakainya.
+ */
+const bolehUntukTamu = (m: string): boolean =>
+  bolehDipakai(m) && /-flash(-|$)/i.test(m) && !POLA_MAHAL.test(m)
+
+/** Batas ukuran badan permintaan tamu. Satu foto nota yang sudah dikecilkan
+ *  jauh di bawah ini; yang jauh di atasnya bukan invoice. */
+const BATAS_BADAN_TAMU = 4_000_000
+
+/** Berapa kali satu tautan invoice boleh memakai AI. */
+const JATAH_AI_TAMU = 12
+
 const GOOGLE = 'https://generativelanguage.googleapis.com/v1beta'
 
 /**
@@ -152,6 +172,37 @@ async function penggunaSah(token: string): Promise<boolean> {
   }
 }
 
+/**
+ * Apakah pemanggilnya vendor yang memegang tautan invoice yang masih hidup.
+ *
+ * Vendor tidak punya akun dan tidak akan pernah punya — memaksanya mendaftar
+ * hanya untuk mengirim satu tagihan berarti ia akan mengirim fotonya lewat
+ * WhatsApp seperti dulu, dan seluruh fiturnya tidak terpakai.
+ *
+ * Karena itu izinnya dipersempit dari beberapa arah sekaligus, bukan satu:
+ * hanya model Flash, hanya sekian kali per tautan, hanya badan sekian megabita,
+ * dan tautannya mati begitu tagihannya terkirim. RPC di bawah MENAIKKAN
+ * penghitungnya di dalam satu pernyataan yang sama dengan pemeriksaannya —
+ * kalau dipisah, dua permintaan yang datang bersamaan sama-sama membaca angka
+ * lama dan batasnya terlewati.
+ */
+async function tamuSah(token: string): Promise<boolean> {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  if (!url || !anon || !token || token.length < 8 || token.length > 64) return false
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/invoice_ai_boleh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
+      body: JSON.stringify({ p_token: token, p_batas: JATAH_AI_TAMU }),
+    })
+    if (!r.ok) return false
+    return (await r.json()) === true
+  } catch {
+    return false
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: { message: 'Method not allowed' } })
@@ -187,16 +238,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const token = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '').trim()
+  const undangan = String(req.headers['x-propfs-undangan'] ?? '').trim()
+
+  // Pengguna yang sudah masuk diperiksa lebih dulu: jalur itu yang dipakai
+  // hampir setiap permintaan, dan memeriksa tautan tamu untuknya berarti satu
+  // perjalanan ke basis data yang selalu sia-sia.
+  let tamu = false
   if (!(await penggunaSah(token))) {
-    return res.status(401).json({
-      error: { code: 401, status: 'UNAUTHENTICATED', message: 'Silakan masuk dulu untuk memakai fitur AI.' },
-    })
+    tamu = undangan ? await tamuSah(undangan) : false
+    if (!tamu) {
+      return res.status(401).json({
+        error: { code: 401, status: 'UNAUTHENTICATED', message: 'Silakan masuk dulu untuk memakai fitur AI.' },
+      })
+    }
   }
 
   const { aksi, model, ...isi } = (req.body ?? {}) as {
     aksi?: string
     model?: string
     [k: string]: unknown
+  }
+
+  if (tamu) {
+    // Katalog model bukan urusan tamu; ia hanya perlu membaca selembar invoice.
+    if (aksi) {
+      return res.status(403).json({
+        error: { code: 403, status: 'TAMU_TERBATAS', message: 'Aksi ini tidak tersedia lewat tautan undangan.' },
+      })
+    }
+    if (!bolehUntukTamu(String(model ?? ''))) {
+      return res.status(400).json({
+        error: { code: 400, status: 'MODEL_NOT_ALLOWED', message: 'Model itu tidak tersedia lewat tautan undangan.' },
+      })
+    }
+    // Diukur SETELAH lolos pemeriksaan lain supaya tidak ada yang bisa membuat
+    // kami menyusun ulang muatan raksasa hanya untuk mengukurnya.
+    if (JSON.stringify(isi).length > BATAS_BADAN_TAMU) {
+      return res.status(413).json({
+        error: { code: 413, status: 'TERLALU_BESAR', message: 'Berkasnya terlalu besar. Kirim foto satu halaman saja.' },
+      })
+    }
   }
 
   // Daftar model: dipakai halaman Tes Koneksi untuk menjawab "model apa yang

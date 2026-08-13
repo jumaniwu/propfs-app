@@ -47,6 +47,17 @@ export const BATAS_MS = 75_000
  * ditinggalkan tanpa memutus sambungan tetap menahan unggahan foto berjalan di
  * latar, dan pada sinyal lemah itu memperlambat percobaan berikutnya.
  */
+/**
+ * Token undangan yang sedang berlaku, bila halaman ini dibuka tamu.
+ *
+ * Vendor tidak punya sesi Supabase — ia hanya memegang sepotong token di dalam
+ * tautan WhatsApp. Perantara menerimanya sebagai izin yang JAUH lebih sempit:
+ * hanya model Flash, berjatah, dan mati begitu tagihannya terkirim.
+ */
+let undangan = ''
+export function pakaiUndangan(token: string): void { undangan = String(token ?? '').trim() }
+export function lupakanUndangan(): void { undangan = '' }
+
 async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
   // Token diambil DI LUAR blok berikut, dan ia punya batas waktunya sendiri.
   //
@@ -56,7 +67,9 @@ async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
   // `fetch` bahkan belum dipanggil. Itulah sebab "AI sedang membaca… 114s"
   // pada layar yang menjanjikan berhenti di 70 detik. Lihat tokenSesi.ts.
   const mulai = Date.now()
-  const auth = await token()
+  // Tamu tidak punya sesi, dan mencarinya tetap akan memakan waktu tunggu
+  // untuk sesuatu yang sudah pasti tidak ada.
+  const auth = undangan ? '' : await token()
   const sisa = Math.max(5_000, batasMs - (Date.now() - mulai))
 
   const pemutus = new AbortController()
@@ -65,7 +78,11 @@ async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
   try {
     return await fetch(JALUR_AI, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auth}`,
+        ...(undangan ? { 'X-PropFS-Undangan': undangan } : {}),
+      },
       body: JSON.stringify(badan),
       signal: pemutus.signal,
     })

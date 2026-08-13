@@ -61,10 +61,10 @@ export interface HasilKpi {
   sejak: string
 }
 
-const JENIS: JenisNotifikasi[] = ['laporan', 'pakai', 'request', 'terima', 'ttd', 'opname']
+const JENIS: JenisNotifikasi[] = ['laporan', 'pakai', 'request', 'terima', 'ttd', 'opname', 'invoice']
 
 function kegiatanKosong(): Record<JenisNotifikasi, number> {
-  return { laporan: 0, pakai: 0, request: 0, terima: 0, ttd: 0, opname: 0 }
+  return { laporan: 0, pakai: 0, request: 0, terima: 0, ttd: 0, opname: 0, invoice: 0 }
 }
 
 const teks = (v: unknown) => String(v ?? '').trim()
@@ -176,6 +176,7 @@ export function nilaiKpi(
 export const LABEL_KEGIATAN: Record<JenisNotifikasi, string> = {
   laporan: 'Laporan', pakai: 'Pakai bahan', request: 'Request',
   terima: 'Terima barang', ttd: 'Tanda tangan', opname: 'Opname',
+  invoice: 'Tagihan',
 }
 
 /** Jenis kegiatan dalam urutan tetap, supaya kolom tabelnya tidak berpindah. */

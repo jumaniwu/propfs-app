@@ -196,7 +196,7 @@ assert(nilaiKpi().anggota.length === 0, 'tanpa masukan aman')
 assert(nilaiKpi([], ANGGOTA).anggota.length === 3, 'aliran kosong tetap melaporkan seluruh anggota')
 
 // ── Label kegiatan ─────────────────────────────────────────────────────────
-assert(URUT_KEGIATAN.length === 6, 'enam jenis kegiatan')
+assert(URUT_KEGIATAN.length === 7, 'tujuh jenis kegiatan')
 assert(URUT_KEGIATAN.every(j => LABEL_KEGIATAN[j]), 'tiap jenis punya label')
 
 console.log(`chat-tim: ${ok} assert lulus`)
