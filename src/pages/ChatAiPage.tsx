@@ -38,6 +38,7 @@ import { totalDibayar, nomorDo, type DeliveryOrder, type PoPayment } from '@/lib
 import type { PurchaseOrder } from '@/lib/procurement'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { kecilkanFoto, ukuranTampil } from '@/lib/kompresFoto'
+import { dataUriBerkas } from '@/lib/berkasLampiran'
 import TeksChat from '@/components/cost/TeksChat'
 import { adaTabel } from '@/lib/markdownChat'
 
@@ -224,6 +225,13 @@ export default function ChatAiPage() {
       const r = susunRencana(parsedResult, {
         pos: p, dos: d, sudahDibayar: (id: string) => totalDibayar(id, b),
       })
+      // Lampirannya ikut tersimpan bersama pembayaran yang lahir darinya.
+      // Sebelumnya isinya dibaca lalu dibuang: yang tersisa hanya angka hasil
+      // bacaan, tanpa dokumen yang bisa ditunjukkan ketika kelak dipertanyakan.
+      const berkasBukti = milikSaya.files?.[0]
+      if (berkasBukti?.base64Data) {
+        r.bukti = dataUriBerkas(berkasBukti.mimeType, berkasBukti.base64Data)
+      }
       if (r.perluKonfirmasi) {
         setRencana(r)
         setPilihPo(0)

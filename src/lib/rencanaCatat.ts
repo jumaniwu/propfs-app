@@ -91,6 +91,14 @@ export interface PoTagihan {
 }
 
 export interface Rencana {
+  /**
+   * Lampiran yang menyertai masukan ini, sebagai data URI.
+   *
+   * Ikut disimpan bersama pembayaran yang lahir darinya. Membaca angkanya lalu
+   * membuang dokumennya berarti menyimpan kesimpulan tanpa buktinya.
+   */
+  bukti?: string | null
+
   /** Pengeluaran; sudah tercatat otomatis saat AI menjawab. */
   biaya: RealisasiEntry[]
   pemasukan: PemasukanUsul[]

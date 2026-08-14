@@ -7,6 +7,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
 import TeksChat from './TeksChat'
+import PanelDariProcurement from './PanelDariProcurement'
+import { statusEntri, catatanBayar } from '@/lib/sinkronRealisasi'
 import {
   chatRealisasiWithGemini, RealisasiEntry, ChatMessage,
   type PemasukanUsul, type PembayaranUsul,
@@ -111,6 +113,7 @@ export default function TabRealisasiBiaya() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [retryInfo, setRetryInfo] = useState('')
   const [activeTab, setActiveTab] = useState<'semua' | 'material' | 'upah'>('semua')
+
   const [mobileView, setMobileView] = useState<'chat' | 'dashboard'>('chat')
   const chatEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -632,6 +635,16 @@ export default function TabRealisasiBiaya() {
           )}
         </div>
 
+        {/* Barang yang sudah datang menurut Procurement tetapi belum ada di
+            buku ini. Ditawarkan, bukan dimasukkan sendiri: nota yang sama bisa
+            sudah masuk lewat Chat AI, dan biaya ganda ikut ke laba rugi maupun
+            neraca tanpa ada yang menyadarinya. */}
+        <PanelDariProcurement
+          dos={dosDo} pos={posPo} entries={entries} bayar={bayarPo}
+          onCatat={addRealisasiEntries}
+          onSelesai={() => void muatProcurement()}
+        />
+
         {/* Tabs + Transaction list */}
         <div className="bg-white rounded-3xl border border-border flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
@@ -686,6 +699,18 @@ export default function TabRealisasiBiaya() {
                       <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase ${col.bg} ${col.text}`}>{e.kategori}</span>
                       <span>{e.status}</span>
                     </div>
+                    {/* Catatan hutang, dari Procurement. Hanya yang BELUM lunas
+                        diberi catatan: menandai semua baris membuat catatannya
+                        berhenti dibaca, dan yang hilang justru yang penting. */}
+                    {(() => {
+                      const nota = catatanBayar(statusEntri(e, dosDo, posPo, bayarPo))
+                      return nota ? (
+                        <p data-belum-lunas className="mt-1.5 text-[10px] font-bold text-amber-800
+                          bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                          {nota}
+                        </p>
+                      ) : null
+                    })()}
                   </div>
                 )
               })
