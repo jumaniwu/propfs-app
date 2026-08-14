@@ -594,7 +594,11 @@ export default function TabRealisasiBiaya() {
       </div>
 
       {/* ── KANAN: Dashboard ─────────────────────────────────────────────── */}
-      <div className={`w-full lg:w-80 flex flex-col gap-4 lg:min-h-0 ${mobileView !== 'dashboard' ? 'hidden lg:flex' : 'flex'}`}>
+      {/* Kolomnya BISA DIGULUNG. Sejak panel duplikat & panel Procurement ada
+          di sini, isinya bisa jauh lebih panjang daripada tinggi layar —
+          tanpa gulungan, bagian bawahnya tidak bisa dicapai sama sekali. */}
+      <div className={`w-full lg:w-80 flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto
+        overscroll-contain ${mobileView !== 'dashboard' ? 'hidden lg:flex' : 'flex'}`}>
 
         {/* KPI Cards */}
         <div className="bg-navy rounded-3xl p-5 text-white">

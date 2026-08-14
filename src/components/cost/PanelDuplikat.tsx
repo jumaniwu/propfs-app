@@ -67,7 +67,7 @@ export default function PanelDuplikat({ entries, onHapus }: {
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-navy text-sm">Ada biaya yang tercatat dua kali</p>
-          <p className="text-[11px] text-muted-foreground">{ringkasDuplikat(daftar)}</p>
+          <p className="text-[11px] text-muted-foreground break-words">{ringkasDuplikat(daftar)}</p>
         </div>
       </div>
 
@@ -76,7 +76,7 @@ export default function PanelDuplikat({ entries, onHapus }: {
           data-hapus-semua-duplikat
           onClick={hapusSemuaPasti}
           className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-rose-600
-            text-white px-3 py-2 text-xs font-bold">
+            text-white px-3 py-2 text-xs font-bold text-left break-words">
           <Trash2 className="w-3.5 h-3.5" />
           Hapus {pasti.length} baris yang sama persis ({fmt(nilaiDuplikat(pasti))})
         </button>
@@ -88,14 +88,19 @@ export default function PanelDuplikat({ entries, onHapus }: {
         {buka ? 'Tutup rincian' : `Periksa satu per satu (${daftar.length})`}
       </button>
 
+      {/* Rinciannya bisa memuat puluhan pasangan. Diberi gulungan sendiri
+          supaya panel ini tidak mendorong seluruh kolom memanjang ke bawah
+          sampai tombolnya tak tergapai. */}
       {buka && (
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[50vh] overflow-y-auto overscroll-contain pr-0.5">
           {daftar.map(p => (
-            <div key={p.kembar.id} className="rounded-xl border border-border p-3 space-y-2">
-              <p className={`flex items-start gap-1.5 text-[11px] font-bold ${
+            <div key={p.kembar.id} className="rounded-xl border border-border p-3 space-y-2 min-w-0">
+              <p className={`flex items-start gap-1.5 text-[11px] font-bold min-w-0 break-words ${
                 p.keyakinan === 'pasti' ? 'text-rose-700' : 'text-amber-800'}`}>
                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                {p.keyakinan === 'pasti' ? 'Sama persis' : 'Mungkin kembar'} — {p.sebab}
+                <span className="min-w-0 break-words">
+                  {p.keyakinan === 'pasti' ? 'Sama persis' : 'Mungkin kembar'} — {p.sebab}
+                </span>
               </p>
 
               <div className="grid gap-1.5">
@@ -129,8 +134,8 @@ function Baris({ label, e, tone }: { label: string; e: RealisasiEntry; tone: str
   return (
     <div className="rounded-lg bg-slate-50 border border-border px-2.5 py-1.5">
       <p className={`text-[10px] font-black uppercase ${tone}`}>{label}</p>
-      <p className="text-xs font-semibold text-navy truncate">{e.keterangan}</p>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs font-semibold text-navy break-words">{e.keterangan}</p>
+      <p className="text-[10px] text-muted-foreground break-words">
         {e.tanggal} · {fmt(e.jumlah)}
         {e.namaSupplier ? ` · ${e.namaSupplier}` : ''}
         {e.nomorNota ? ` · ${e.nomorNota}` : ''}
