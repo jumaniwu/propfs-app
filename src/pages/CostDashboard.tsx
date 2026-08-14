@@ -519,16 +519,25 @@ export default function CostDashboard() {
         <KontraktorHeader
           onMenu={() => setDrawerOpen(true)}
           judul={JUDUL_TAB[activeTab]}
-          subjudul={<PilihProyek />}
+          // Akuntan punya pemilih lingkupnya SENDIRI tepat di bawah header —
+          // Konsolidasi atau satu proyek. Dua pemilih proyek dalam satu layar,
+          // dengan jawaban yang bisa berbeda, adalah cara paling cepat membuat
+          // orang salah membaca laporan siapa yang sedang dilihatnya.
+          subjudul={activeTab === 'akuntan' ? undefined : <PilihProyek />}
           kembaliKe="/kontraktor"
           aksi={
             <div className="flex items-center gap-2 w-full sm:w-auto">
               {/* Pintasan kembali ke daftar proyek — dulu ada di bawah header,
-                  dipindah ke sini saat header disatukan agar tidak hilang. */}
-              <button onClick={() => clearProject()}
-                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/10 text-white/90 text-xs font-bold hover:bg-white/20 transition-colors shrink-0">
-                <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
-              </button>
+                  dipindah ke sini saat header disatukan agar tidak hilang.
+                  Ikut disembunyikan di Akuntan: di sana proyek bukan lagi
+                  keadaan halamannya, jadi "keluar dari proyek" tidak berarti
+                  apa-apa. */}
+              {activeTab !== 'akuntan' && (
+                <button onClick={() => clearProject()}
+                  className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/10 text-white/90 text-xs font-bold hover:bg-white/20 transition-colors shrink-0">
+                  <FolderPlus className="h-3.5 w-3.5" /> Daftar Proyek
+                </button>
+              )}
               {/* Tidak ada lagi tombol "Simpan Data": setiap perubahan sudah
                   langsung ditulis ke localStorage dan disinkronkan ke Supabase.
                   Yang ditampilkan sekarang adalah keadaan penyimpanan itu. */}

@@ -438,3 +438,44 @@ export function totalKonsolidasi(baris: BarisKonsolidasi[]) {
     terpakaiPct: rab > 0 ? (pengeluaran / rab) * 100 : 0,
   }
 }
+
+// ── Angka & label untuk tabel sempit ────────────────────────────────────────
+
+/**
+ * Nominal ringkas dalam juta: `250,0 jt`.
+ *
+ * Dipakai HANYA di tabel yang sempit — Per Bulan pada layar ponsel. Bentuk
+ * panjang `Rp 250.00 Jt` memakan lebih dari separuh lebar kolomnya, sehingga
+ * angkanya patah menjadi dua baris dan tabelnya terbaca berantakan. Satuannya
+ * sudah disebut di kepala kolom, jadi "Rp" tidak perlu diulang pada tiap sel.
+ *
+ * Koma sebagai pemisah desimal, mengikuti cara menulis angka di Indonesia —
+ * `250.0` di antara angka-angka lain yang bertitik-ribuan akan terbaca sebagai
+ * dua ratus lima puluh ribu.
+ */
+export function fmtJutaRingkas(n: unknown): string {
+  const v = Number(n)
+  if (!Number.isFinite(v)) return '0,0'
+  return (v / 1_000_000).toFixed(1).replace('.', ',')
+}
+
+const NAMA_BULAN = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+]
+
+/**
+ * `2026-08` → `Agu 2026`.
+ *
+ * Lebih pendek DAN lebih mudah dibaca daripada bentuk aslinya: `2026-08`
+ * memaksa pembacanya menerjemahkan angka bulan sendiri, dan tanda hubungnya
+ * menjadi tempat pemenggalan baris di kolom yang sempit — persis yang membuat
+ * satu baris tabel menjadi dua.
+ */
+export function labelBulan(ym: unknown): string {
+  const s = String(ym ?? '').trim()
+  const m = /^(\d{4})-(\d{1,2})$/.exec(s)
+  if (!m) return s
+  const bulan = NAMA_BULAN[Number(m[2]) - 1]
+  return bulan ? `${bulan} ${m[1]}` : s
+}

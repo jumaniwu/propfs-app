@@ -222,3 +222,42 @@ console.log(`akuntan-do-proyek: ${ok} assert lulus (kumulatif)`)
 }
 
 console.log(`akuntan-nota-do: ${ok} assert lulus (kumulatif)`)
+
+// ── Angka & label untuk tabel sempit ───────────────────────────────────
+//
+// Yang dijaga di sini bukan selera: bentuk panjang `Rp 250.00 Jt` memakan
+// lebih dari separuh lebar kolomnya di ponsel, sehingga angkanya patah jadi
+// dua baris. Dan `250.0` di antara angka bertitik-ribuan terbaca sebagai
+// dua ratus lima puluh ribu, bukan dua ratus lima puluh juta.
+{
+  const { fmtJutaRingkas, labelBulan } = await import('../src/lib/akuntan.ts')
+
+  assert(fmtJutaRingkas(250_000_000) === '250,0', 'juta ditulis ringkas dengan koma desimal')
+  assert(fmtJutaRingkas(2_900_000) === '2,9', 'nilai kecil tetap satu desimal')
+  assert(fmtJutaRingkas(0) === '0,0', 'nol pun bersatu desimal, supaya kolomnya sejajar')
+  assert(fmtJutaRingkas(-2_900_000) === '-2,9', 'rugi ditulis minus')
+  assert(!fmtJutaRingkas(1_234_567).includes('.'), 'tidak ada titik yang bisa dikira ribuan')
+
+  assert(fmtJutaRingkas('abc') === '0,0', 'masukan bukan angka aman')
+  assert(fmtJutaRingkas(null) === '0,0', 'null aman')
+  assert(fmtJutaRingkas(undefined) === '0,0', 'undefined aman')
+  assert(fmtJutaRingkas(Infinity) === '0,0', 'tak hingga tidak dicetak sebagai angka')
+  assert(fmtJutaRingkas(NaN) === '0,0', 'NaN tidak bocor ke layar')
+
+  assert(labelBulan('2026-08') === 'Agu 2026', 'bulan ditulis namanya')
+  assert(labelBulan('2026-01') === 'Jan 2026', 'Januari')
+  assert(labelBulan('2026-12') === 'Des 2026', 'Desember')
+  assert(labelBulan('2026-6') === 'Jun 2026', 'satu digit tetap dikenali')
+  assert(!labelBulan('2026-08').includes('-'),
+    'tanpa tanda hubung: di kolom sempit ia menjadi tempat baris dipenggal')
+
+  // Yang tidak dikenali dikembalikan apa adanya — lebih baik terbaca aneh
+  // daripada hilang atau salah bulan.
+  assert(labelBulan('2026-13') === '2026-13', 'bulan di luar 1-12 tidak ditebak')
+  assert(labelBulan('2026-00') === '2026-00', 'bulan nol tidak ditebak')
+  assert(labelBulan('bukan tanggal') === 'bukan tanggal', 'teks lain dikembalikan apa adanya')
+  assert(labelBulan('') === '', 'kosong tetap kosong')
+  assert(labelBulan(null) === '', 'null aman')
+}
+
+console.log(`akuntan-tabel-sempit: ${ok} assert lulus (kumulatif)`)

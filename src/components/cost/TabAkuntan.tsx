@@ -26,7 +26,7 @@ import { useAkuntanStore } from '@/store/akuntanStore'
 import { useToast } from '@/hooks/use-toast'
 import {
   hitungLabaRugi, hitungInventori, hitungNeraca, progresOpname, saringLingkup,
-  penerimaanInventori, PROYEK_UMUM, LABEL_PROYEK_UMUM,
+  penerimaanInventori, fmtJutaRingkas, labelBulan, PROYEK_UMUM, LABEL_PROYEK_UMUM,
   type PemasukanEntry, type OpnameItem, type LingkupAkuntan,
 } from '@/lib/akuntan'
 import { materialApi, type MaterialUsage, type MaterialRequest } from '@/lib/materialApi'
@@ -43,7 +43,12 @@ import type { DeliveryOrder, PoPayment } from '@/lib/penerimaan'
 import type { PurchaseOrder } from '@/lib/procurement'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
-const fmtJt = (n: number) => `Rp ${(n / 1_000_000).toFixed(2)} Jt`
+// Koma sebagai pemisah desimal, sama seperti `fmtJutaRingkas`. Titik di
+// antara angka-angka yang ribuannya juga bertitik membuat `325.94` terbaca
+// sebagai tiga ratus dua puluh lima ribu — pada neraca, itu salah baca yang
+// tidak menyisakan jejak.
+const fmtJt = (n: number) =>
+  `Rp ${((Number(n) || 0) / 1_000_000).toFixed(2).replace('.', ',')} Jt`
 
 type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname' | 'hutang'
 
@@ -110,9 +115,16 @@ export default function TabAkuntan(
   const [opnameLoading, setOpnameLoading] = useState(false)
   const [opnameError, setOpnameError] = useState('')
 
-  // ── Lingkup laporan: proyek aktif (default) atau konsolidasi semua proyek ──
-  const [lingkupId, setLingkupId] = useState<string>(() => projectInfo?.id ?? KONSOLIDASI)
-  useEffect(() => { if (projectInfo?.id) setLingkupId(projectInfo.id) }, [projectInfo?.id])
+  // ── Lingkup laporan: KONSOLIDASI dulu, proyek tunggal bila dipilih ────────
+  //
+  // Dibuka dengan gabungan seluruh proyek, bukan dengan proyek yang kebetulan
+  // terakhir dibuka. Laba rugi dan neraca perusahaan adalah angka perusahaan;
+  // membukanya pada satu proyek membuat orang membaca angka sebagian sebagai
+  // angka keseluruhan — dan tidak ada yang menandai bahwa itu terjadi.
+  //
+  // Tidak ada lagi efek yang memaksanya mengikuti proyek aktif: pilihan yang
+  // sudah dibuat orang tidak boleh dibatalkan diam-diam dari tempat lain.
+  const [lingkupId, setLingkupId] = useState<string>(KONSOLIDASI)
 
   const daftarProyek = useCostStore(s => s.savedProjects)
   const semuaRealisasi = useCostStore(s => s.getAllRealisasi)
@@ -271,11 +283,17 @@ export default function TabAkuntan(
         <h2 className="text-xl md:text-2xl font-serif font-bold text-navy flex items-center gap-2">
           <Scale className="w-6 h-6" /> Akuntan
         </h2>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
           {/* Lingkup laporan: konsolidasi semua proyek atau satu proyek */}
+          {/* Selebar induknya di ponsel, dibatasi mulai dari sm.
+              `max-w-[230px]` memotong pilihannya sendiri — "Konsolidasi (Semua
+              Proyek)" terbaca "Konsolidasi (Semua Proy" dengan panah menimpa
+              huruf terakhirnya. Pemilih yang tidak bisa dibaca isinya adalah
+              pemilih yang ditebak. */}
           <select value={lingkupId} onChange={e => setLingkupId(e.target.value)}
             aria-label="Lingkup laporan"
-            className="h-10 rounded-xl border border-input bg-white px-3 text-xs font-semibold text-navy max-w-[230px]">
+            className="h-10 w-full sm:w-auto sm:max-w-[280px] rounded-xl border border-input
+              bg-white pl-3 pr-8 text-xs font-semibold text-navy">
             <option value={KONSOLIDASI}>📊 Konsolidasi (Semua Proyek)</option>
             {daftarProyek.map(p => (
               <option key={p.info.id} value={p.info.id}>🏗️ {p.info.projectName}</option>
@@ -359,47 +377,74 @@ function SubLabaRugi({ labaRugi, neraca }: {
       <div className="bg-white rounded-3xl border border-border p-5 space-y-3">
         <h3 className="font-bold text-navy text-sm">Laporan Laba Rugi</h3>
         <div className="space-y-1.5 text-sm">
+          {/* `gap-3` + `shrink-0` pada angkanya, `min-w-0 truncate` pada
+              labelnya. Tanpa jarak itu, `justify-between` merapatkan kedua sisi
+              sampai bersentuhan — "Total" dan nominalnya terbaca sebagai satu
+              kata. Dan tanpa `shrink-0`, nama kategori yang panjang memaksa
+              angkanya patah menjadi dua baris; yang boleh menyusut adalah
+              labelnya, bukan nilainya. */}
           {labaRugi.pemasukanPerKategori.map(p => (
-            <div key={p.kategori} className="flex justify-between text-emerald-700">
-              <span>+ {p.kategori}</span><span>{fmt(p.jumlah)}</span>
+            <div key={p.kategori} className="flex justify-between gap-3 text-emerald-700">
+              <span className="min-w-0 truncate">+ {p.kategori}</span>
+              <span className="shrink-0 tabular-nums whitespace-nowrap">{fmt(p.jumlah)}</span>
             </div>
           ))}
-          <div className="flex justify-between font-bold border-t border-border pt-1.5">
-            <span>Total Pemasukan</span><span className="text-emerald-700">{fmt(labaRugi.totalPemasukan)}</span>
+          <div className="flex justify-between gap-3 font-bold border-t border-border pt-1.5">
+            <span className="min-w-0 truncate">Total Pemasukan</span>
+            <span className="shrink-0 tabular-nums whitespace-nowrap text-emerald-700">
+              {fmt(labaRugi.totalPemasukan)}
+            </span>
           </div>
           {labaRugi.pengeluaranPerKategori.map(p => (
-            <div key={p.kategori} className="flex justify-between text-red-600">
-              <span>− {p.kategori}</span><span>({fmt(p.jumlah)})</span>
+            <div key={p.kategori} className="flex justify-between gap-3 text-red-600">
+              <span className="min-w-0 truncate">− {p.kategori}</span>
+              <span className="shrink-0 tabular-nums whitespace-nowrap">({fmt(p.jumlah)})</span>
             </div>
           ))}
-          <div className="flex justify-between font-bold border-t border-border pt-1.5">
-            <span>Total Pengeluaran</span><span className="text-red-600">({fmt(labaRugi.totalPengeluaran)})</span>
+          <div className="flex justify-between gap-3 font-bold border-t border-border pt-1.5">
+            <span className="min-w-0 truncate">Total Pengeluaran</span>
+            <span className="shrink-0 tabular-nums whitespace-nowrap text-red-600">
+              ({fmt(labaRugi.totalPengeluaran)})
+            </span>
           </div>
-          <div className={`flex justify-between font-black text-base rounded-xl px-3 py-2 mt-2 ${
+          <div className={`flex items-center justify-between gap-3 font-black text-sm sm:text-base
+            rounded-xl px-3 py-2 mt-2 ${
             labaRugi.laba >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
-            <span>LABA / (RUGI)</span><span>{fmt(labaRugi.laba)}</span>
+            <span className="min-w-0 truncate">LABA / (RUGI)</span>
+            <span className="shrink-0 tabular-nums whitespace-nowrap">{fmt(labaRugi.laba)}</span>
           </div>
         </div>
         {labaRugi.perBulan.length > 0 && (
           <div className="pt-2">
             <p className="text-xs font-bold text-navy mb-1.5">Per Bulan</p>
+            {/* Satuan "juta" disebut SEKALI di kepala kolom, tidak diulang pada
+                tiap sel. Bentuk lama `Rp 250.00 Jt` memakan lebih dari separuh
+                lebar kolomnya di ponsel, sehingga tiap angka patah menjadi dua
+                baris dan tabelnya jadi setinggi tiga kali lipat. */}
             <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs tabular-nums">
                 <thead className="bg-navy/5 text-navy">
                   <tr>
-                    <th className="px-3 py-1.5 text-left">Bulan</th>
-                    <th className="px-3 py-1.5 text-right">Masuk</th>
-                    <th className="px-3 py-1.5 text-right">Keluar</th>
-                    <th className="px-3 py-1.5 text-right">Laba</th>
+                    <th className="px-2 py-1.5 text-left font-bold whitespace-nowrap">Bulan</th>
+                    <th className="px-2 py-1.5 text-right font-bold whitespace-nowrap">Masuk (jt)</th>
+                    <th className="px-2 py-1.5 text-right font-bold whitespace-nowrap">Keluar (jt)</th>
+                    <th className="px-2 py-1.5 text-right font-bold whitespace-nowrap">Laba (jt)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {labaRugi.perBulan.map(b => (
                     <tr key={b.bulan}>
-                      <td className="px-3 py-1.5">{b.bulan}</td>
-                      <td className="px-3 py-1.5 text-right text-emerald-700">{fmtJt(b.pemasukan)}</td>
-                      <td className="px-3 py-1.5 text-right text-red-600">{fmtJt(b.pengeluaran)}</td>
-                      <td className={`px-3 py-1.5 text-right font-bold ${b.laba >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{fmtJt(b.laba)}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{labelBulan(b.bulan)}</td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap text-emerald-700">
+                        {fmtJutaRingkas(b.pemasukan)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right whitespace-nowrap text-red-600">
+                        {fmtJutaRingkas(b.pengeluaran)}
+                      </td>
+                      <td className={`px-2 py-1.5 text-right font-bold whitespace-nowrap ${
+                        b.laba >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {fmtJutaRingkas(b.laba)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -412,22 +457,25 @@ function SubLabaRugi({ labaRugi, neraca }: {
       {/* Neraca */}
       <div className="bg-white rounded-3xl border border-border p-5 space-y-3">
         <h3 className="font-bold text-navy text-sm">Neraca (Sederhana)</h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        {/* Bertumpuk di ponsel, berdampingan mulai dari sm.
+            Dua kolom pada layar 390px menyisakan ~140px untuk sepasang
+            label + nominal — keduanya patah, dan "Total" menempel pada
+            angkanya sehingga terbaca "TotalRp 394.58 Jt". Neraca yang harus
+            digulung ke samping lebih buruk daripada neraca yang bertumpuk. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <div className="rounded-2xl bg-blue-lt/60 p-3 space-y-1.5">
             <p className="text-xs font-bold text-blue-dk uppercase">Aset</p>
-            <div className="flex justify-between"><span>Kas & Bank</span><span className="font-bold">{fmtJt(neraca.kas)}</span></div>
-            <div className="flex justify-between"><span>Persediaan</span><span className="font-bold">{fmtJt(neraca.persediaan)}</span></div>
-            <div className="flex justify-between border-t border-blue-200 pt-1 font-black">
-              <span>Total</span><span>{fmtJt(neraca.totalAset)}</span>
-            </div>
+            <BarisNeraca label="Kas & Bank" nilai={neraca.kas} />
+            <BarisNeraca label="Persediaan" nilai={neraca.persediaan} />
+            <BarisNeraca label="Total" nilai={neraca.totalAset}
+              kelas="border-t border-blue-200 pt-1 font-black" />
           </div>
           <div className="rounded-2xl bg-gold-lt/50 p-3 space-y-1.5">
             <p className="text-xs font-bold text-navy uppercase">Pasiva</p>
-            <div className="flex justify-between"><span>Modal Disetor</span><span className="font-bold">{fmtJt(neraca.modalDisetor)}</span></div>
-            <div className="flex justify-between"><span>Laba Berjalan</span><span className="font-bold">{fmtJt(neraca.labaBerjalan)}</span></div>
-            <div className="flex justify-between border-t border-gold/40 pt-1 font-black">
-              <span>Total</span><span>{fmtJt(neraca.totalPasiva)}</span>
-            </div>
+            <BarisNeraca label="Modal Disetor" nilai={neraca.modalDisetor} />
+            <BarisNeraca label="Laba Berjalan" nilai={neraca.labaBerjalan} />
+            <BarisNeraca label="Total" nilai={neraca.totalPasiva}
+              kelas="border-t border-gold/40 pt-1 font-black" />
           </div>
         </div>
         <p className={`text-xs rounded-xl px-3 py-2 ${neraca.seimbang ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -442,6 +490,24 @@ function SubLabaRugi({ labaRugi, neraca }: {
 }
 
 // ── Sub: Pemasukan ──────────────────────────────────────────────────────────
+/**
+ * Satu baris neraca: label boleh menyusut, nominalnya tidak pernah patah.
+ *
+ * Dijadikan komponen karena enam barisnya harus berperilaku persis sama —
+ * enam salinan `flex justify-between` adalah enam kesempatan bagi salah
+ * satunya untuk luput ketika aturannya diperbaiki.
+ */
+function BarisNeraca({ label, nilai, kelas = '' }: {
+  label: string; nilai: number; kelas?: string
+}) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 ${kelas}`}>
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="shrink-0 whitespace-nowrap tabular-nums font-bold">{fmtJt(nilai)}</span>
+    </div>
+  )
+}
+
 function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
   onAdd, onDelete, onPindah }: {
   entries: PemasukanEntry[]
