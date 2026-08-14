@@ -27,7 +27,6 @@ import { getBrandingCache, kopLaporan } from '@/lib/branding'
 import { teamApi, roleSaatIni, dataOwnerId, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
 import { sisaQty, milikWorkspace } from '@/lib/procurement'
-import { konteksWatermark } from '@/lib/identitasSaya'
 import { subSah } from '@/lib/posisiKerja'
 
 type Sub = 'pakai' | 'request' | 'kurang'
@@ -117,7 +116,7 @@ export default function MaterialLapanganPage() {
 
   function exportExcel() {
     const wb = reportXlsx.utils.book_new()
-    const kop = kopLaporan(getBrandingCache(), konteksWatermark())
+    const kop = kopLaporan(getBrandingCache())
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
     const subtitle = `Proyek: ${projectInfo?.projectName ?? 'Semua'} · Dicetak: ${printed}`
 

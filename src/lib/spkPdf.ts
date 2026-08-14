@@ -2,16 +2,11 @@
 // pasal-pasal, dan dua blok tanda tangan (Pihak Pertama & Pihak Kedua).
 import { jsPDF } from 'jspdf'
 import { spkTitle, type SpkDoc } from './spkApi'
-import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark } from './branding'
 import { kopSaya } from './identitasSaya'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 
-/**
- * `konteks` menentukan watermark. Superadmin dan pengguna berbayar dicetak
- * bersih — lihat perluWatermark() di branding.ts.
- */
-export function downloadSpkPdf(spk: SpkDoc, konteks?: string | null | KonteksWatermark): void {
+export function downloadSpkPdf(spk: SpkDoc): void {
   const isKonsumen = (spk.pihak_kedua_peran || '').toLowerCase() === 'konsumen'
   const merek = kopSaya()
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
@@ -179,24 +174,6 @@ export function downloadSpkPdf(spk: SpkDoc, konteks?: string | null | KonteksWat
     doc.text(`Digital ${new Date(spk.signed_at).toLocaleString('id-ID')}`, rightX + colW / 2, y + 4, { align: 'center' })
   }
 
-  // ── Watermark: HANYA paket gratis. Paket berbayar dicetak bersih. ──
-  if (perluWatermark(konteks)) {
-    const jml = doc.getNumberOfPages()
-    for (let i = 1; i <= jml; i++) {
-      doc.setPage(i)
-      doc.saveGraphicsState()
-      // setGState tersedia pada jsPDF modern; bila tidak, watermark tetap
-      // dicetak dengan warna abu muda tanpa transparansi.
-      const gs = (doc as unknown as { GState?: (o: object) => unknown; setGState?: (s: unknown) => void })
-      try { if (gs.GState && gs.setGState) gs.setGState(gs.GState({ opacity: 0.12 })) } catch { /* abaikan */ }
-      doc.setTextColor(120, 130, 145)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(46)
-      doc.text(TEKS_WATERMARK, W / 2, 160, { align: 'center', angle: 35 })
-      doc.restoreGraphicsState()
-    }
-    doc.setPage(jml)
-  }
 
   doc.save(`${spk.nomor.replace(/[^\w-]+/g, '_')}.pdf`)
 }

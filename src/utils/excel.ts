@@ -119,8 +119,6 @@ export interface ReportSheetSpec {
   kop?: string;
   /** Baris kontak perusahaan (alamat · telepon · email) di bawah kop. */
   kopKontak?: string;
-  /** Diisi HANYA untuk paket gratis — dicetak sebagai catatan kaki. */
-  watermark?: string;
 }
 
 const NAVY = '0D1B2A';
@@ -137,7 +135,7 @@ const BORDERS = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
  * Sel angka diberi format ribuan #,##0 dan lebar kolom otomatis.
  */
 export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet {
-  const { title, subtitle, headers, rows, sumCols, kop, kopKontak, watermark } = spec;
+  const { title, subtitle, headers, rows, sumCols, kop, kopKontak } = spec;
   const totalRow: Array<string | number> = headers.map(() => '');
   totalRow[0] = 'TOTAL';
 
@@ -153,7 +151,6 @@ export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet 
   const aoa: Array<Array<string | number>> = [
     ...barisKop, [title], [subtitle], [], headers, ...rows, totalRow,
   ];
-  if (watermark) aoa.push([], [watermark]);
   const ws = reportXlsx.utils.aoa_to_sheet(aoa);
 
   const nCols = headers.length;
@@ -185,11 +182,6 @@ export function buildReportSheet(spec: ReportSheetSpec): reportXlsxNs.WorkSheet 
   if (selJudul) selJudul.s = { font: { bold: true, sz: 14, color: { rgb: NAVY } } };
   const selSub = ws[reportXlsx.utils.encode_cell({ r: off + 1, c: 0 })];
   if (selSub) selSub.s = { font: { sz: 10, color: { rgb: '5A6673' } } };
-
-  if (watermark) {
-    const selWm = ws[reportXlsx.utils.encode_cell({ r: totalIdx + 1, c: 0 })];
-    if (selWm) selWm.s = { font: { sz: 9, italic: true, color: { rgb: '9AA4B0' } } };
-  }
 
   for (let c = 0; c < nCols; c++) {
     const head = ws[reportXlsx.utils.encode_cell({ r: 3 + off, c })];

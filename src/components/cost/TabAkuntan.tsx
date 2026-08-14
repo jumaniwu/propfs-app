@@ -184,7 +184,7 @@ export default function TabAkuntan(
   const exportAkuntan = () => {
     const wb = reportXlsx.utils.book_new()
     // kop perusahaan + watermark (watermark hanya untuk paket gratis)
-    const kop = kopLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))
+    const kop = kopLaporan(getBrandingCache())
     const projectName = konsolidasi
       ? 'Konsolidasi Semua Proyek'
       : lingkupId === PROYEK_UMUM

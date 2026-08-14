@@ -65,13 +65,16 @@ const kopSaja = buildReportSheet({
 assert(kopSaja['A2'].v === 'JUDUL', 'kop tanpa kontak: judul bergeser 1 baris')
 assert(kopSaja['B8'].f.includes('SUM(B6:B7)'), 'kop tanpa kontak: rumus SUM benar')
 
-// watermark hanya ditulis bila diminta (paket gratis)
-assert(!berkop['A11'], 'tanpa watermark: tidak ada baris tambahan di bawah TOTAL')
-const berWm = buildReportSheet({
+// Tidak ada baris apa pun di bawah TOTAL. Watermark "PropFS — Versi Gratis"
+// sudah dihapus dari seluruh dokumen, dan `watermark` bukan lagi kolom yang
+// dikenali — memberikannya tidak boleh diam-diam menghidupkannya kembali.
+assert(!berkop['A11'], 'tidak ada baris tambahan di bawah TOTAL')
+const dipaksa = buildReportSheet({
   title: 'JUDUL', subtitle: 'SUB', headers: ['Nama', 'Nilai'], rows: dataUji, sumCols: [1],
   kop: 'PT Uji', kopKontak: 'Kontak', watermark: 'PropFS — Versi Gratis',
 })
-assert(berWm['A11'].v === 'PropFS — Versi Gratis', 'watermark dicetak dua baris di bawah TOTAL')
-assert(berWm['B9'].f.includes('SUM(B7:B8)'), 'watermark tidak mengganggu rumus TOTAL')
+assert(!dipaksa['A11'], 'kolom watermark diabaikan, bukan dicetak')
+assert(!JSON.stringify(dipaksa).includes('Versi Gratis'),
+  'tidak ada sel mana pun yang memuat teks watermark')
 
 console.log('buildReportSheet:', ok, 'assert lulus')

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   ReceiptText, Download, Copy, RefreshCw, Loader2, ShieldCheck, Send, Check,
+  Pencil, Trash2, AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -10,9 +11,13 @@ import { kwitansiApi, kwitansiLink, type BarisKwitansi } from '@/lib/kwitansiApi
 import { unduhKwitansiPdf, unduhPdfTersimpan } from '@/lib/kwitansiPdf'
 import {
   perluMaterai, siapKirimKwitansi, pesanWaKwitansi, namaFileKwitansi,
+  bolehKelolaKwitansi, akibatHapusKwitansi,
   LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI,
 } from '@/lib/kwitansi'
+import { roleSaatIni, teamApi, type Workspace } from '@/lib/teamApi'
+import { useAuthStore } from '@/store/authStore'
 import DialogUnggahMaterai from './DialogUnggahMaterai'
+import DialogKwitansi from './DialogKwitansi'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tgl = (s?: string | null) => {
@@ -44,6 +49,20 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
   const [kirimId, setKirimId] = useState('')
   const [unduhId, setUnduhId] = useState('')
   const [materaiUntuk, setMateraiUntuk] = useState<BarisKwitansi | null>(null)
+  const [ubahUntuk, setUbahUntuk] = useState<BarisKwitansi | null>(null)
+  const [hapusUntuk, setHapusUntuk] = useState<BarisKwitansi | null>(null)
+  const [hapusProses, setHapusProses] = useState(false)
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([])
+
+  useEffect(() => {
+    teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
+  }, [])
+
+  // Gerbangnya dihitung sekali di sini, bukan di tiap baris: satu jawaban
+  // untuk seluruh panel menghindari daftar yang sebagian barisnya bisa dihapus
+  // dan sebagian tidak tanpa alasan yang bisa diterangkan.
+  const superadmin = useAuthStore(st => st.profile?.role) === 'superadmin'
+  const izin = bolehKelolaKwitansi(roleSaatIni(workspaces), superadmin)
 
   async function muat() {
     setMemuat(true)
@@ -88,6 +107,23 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
    * konsumen setelah barisnya bertanda terkirim — jadi menandainya belakangan
    * berarti mengirim tautan yang saat itu masih tertutup.
    */
+  async function hapus() {
+    const k = hapusUntuk
+    if (!k || hapusProses) return
+    setHapusProses(true)
+    try {
+      await kwitansiApi().hapus(k.id)
+      toast({ title: `Kwitansi ${k.nomor} dihapus` })
+      setHapusUntuk(null)
+      await muat()
+    } catch (e) {
+      toast({
+        title: 'Gagal menghapus', variant: 'destructive',
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally { setHapusProses(false) }
+  }
+
   async function kirim(k: BarisKwitansi) {
     const siap = siapKirimKwitansi(k)
     if (!siap.boleh) {
@@ -222,6 +258,24 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
                   {k.terkirim_at ? 'Kirim Ulang ke Konsumen' : 'Kirim ke Konsumen'}
                 </Button>
 
+                {/* Ubah & Hapus HANYA untuk pemilik/superadmin. Kwitansi
+                    adalah bukti penerimaan uang yang bernomor urut; orang yang
+                    mencatatnya tidak boleh sekaligus bisa menghilangkannya. */}
+                {izin.boleh && (
+                  <div className="flex gap-2 pt-0.5">
+                    <button data-ubah-kwitansi onClick={() => setUbahUntuk(k)}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border
+                        border-border px-2 py-1.5 text-[11px] font-bold text-navy">
+                      <Pencil className="w-3 h-3" /> Ubah
+                    </button>
+                    <button data-hapus-kwitansi onClick={() => setHapusUntuk(k)}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border
+                        border-rose-200 bg-rose-50 px-2 py-1.5 text-[11px] font-bold text-rose-700">
+                      <Trash2 className="w-3 h-3" /> Hapus
+                    </button>
+                  </div>
+                )}
+
                 {belumMaterai && (
                   <p className="text-[10px] leading-relaxed text-amber-900">
                     Belum bermeterai. Boleh dikirim, tetapi versi bermeterai lebih kuat
@@ -234,12 +288,52 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
         </div>
       )}
 
+      {/* Alasan penolakan dikatakan sekali di kaki panel, bukan pada tiap
+          baris: tanpa ini tombol yang tidak ada terbaca sebagai aplikasi
+          rusak, bukan sebagai batasan yang disengaja. */}
+      {!izin.boleh && daftar.length > 0 && (
+        <p className="text-[10px] text-muted-foreground">{izin.alasan}</p>
+      )}
+
       {materaiUntuk && (
         <DialogUnggahMaterai
           k={materaiUntuk}
           onSelesai={() => void muat()}
           onTutup={() => setMateraiUntuk(null)}
         />
+      )}
+
+      {ubahUntuk && (
+        <DialogKwitansi
+          baris={ubahUntuk}
+          namaSaya={ubahUntuk.penanda_nama}
+          onTutup={() => { setUbahUntuk(null); void muat() }}
+        />
+      )}
+
+      {hapusUntuk && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-end sm:items-center
+          justify-center p-0 sm:p-4" onClick={() => setHapusUntuk(null)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-5 space-y-3">
+            <p className="flex items-center gap-2 font-bold text-navy">
+              <AlertTriangle className="w-4 h-4 text-rose-600" /> Hapus kwitansi?
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground break-words">
+              {akibatHapusKwitansi(hapusUntuk)}
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1 font-bold"
+                onClick={() => setHapusUntuk(null)}>Batal</Button>
+              <Button data-hapus-ya onClick={() => void hapus()} disabled={hapusProses}
+                className="flex-1 gap-1.5 font-bold bg-rose-600 hover:bg-rose-700 text-white">
+                {hapusProses ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+                Hapus
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -225,7 +225,7 @@ export default function TabSPK() {
                       <Pencil className="w-3 h-3" /> Edit
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => downloadSpkPdf(spk, useAuthStore.getState().getPlanFor('kontraktor'))}>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => downloadSpkPdf(spk)}>
                     <FileDown className="w-3 h-3" /> PDF
                   </Button>
                   <button

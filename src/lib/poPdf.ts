@@ -4,7 +4,6 @@
 // dengan SPK yang sudah dipakai.
 import { jsPDF } from 'jspdf'
 import { teksTerm, type PurchaseOrder } from './procurement'
-import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark } from './branding'
 import { kopSaya } from './identitasSaya'
 import type { IdentitasLaporan } from './branding'
 
@@ -17,18 +16,12 @@ const tgl = (s?: string | null) => {
 }
 
 /**
- * @param konteks menentukan watermark. Superadmin dan pengguna berbayar
- *   dicetak bersih — lihat perluWatermark() di branding.ts.
  * @param kop identitas yang dicetak di kepala surat. Diisi eksplisit oleh
  *   halaman PO publik: vendor membukanya tanpa login, jadi cache lokal dan
  *   sesi — keduanya milik perangkat pemakai aplikasi — tidak bisa dipakai.
  */
-export function downloadPoPdf(
-  po: PurchaseOrder,
-  konteks?: string | null | KonteksWatermark,
-  kop?: IdentitasLaporan,
-): void {
-  buatPoPdf(po, konteks, kop).save(`${(po.nomor || 'PO').replace(/[^\w-]+/g, '_')}.pdf`)
+export function downloadPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): void {
+  buatPoPdf(po, kop).save(`${(po.nomor || 'PO').replace(/[^\w-]+/g, '_')}.pdf`)
 }
 
 /**
@@ -38,11 +31,7 @@ export function downloadPoPdf(
  * cacat tata letak seperti garis tabel yang tidak rapi tidak akan pernah
  * ketahuan dari membaca kode, hanya dari memandang halamannya.
  */
-export function buatPoPdf(
-  po: PurchaseOrder,
-  konteks?: string | null | KonteksWatermark,
-  kop?: IdentitasLaporan,
-): jsPDF {
+export function buatPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): jsPDF {
   // Kop: Profil Perusahaan → nama pemilik akun → identitas PropFS. Vendor
   // harus tahu siapa yang memesan, termasuk saat pemesannya perorangan.
   const merek = kop ?? kopSaya()
@@ -330,22 +319,6 @@ export function buatPoPdf(
     doc.text(`Digital ${new Date(po.approver_signed_at).toLocaleString('id-ID')}`, kananX + colW / 2, y + 4, { align: 'center' })
   }
 
-  // ── Watermark: HANYA paket gratis. Paket berbayar dicetak bersih. ──
-  if (perluWatermark(konteks)) {
-    const jml = doc.getNumberOfPages()
-    for (let i = 1; i <= jml; i++) {
-      doc.setPage(i)
-      doc.saveGraphicsState()
-      const gs = (doc as unknown as { GState?: (o: object) => unknown; setGState?: (s: unknown) => void })
-      try { if (gs.GState && gs.setGState) gs.setGState(gs.GState({ opacity: 0.12 })) } catch { /* abaikan */ }
-      doc.setTextColor(120, 130, 145)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(46)
-      doc.text(TEKS_WATERMARK, W / 2, 160, { align: 'center', angle: 35 })
-      doc.restoreGraphicsState()
-    }
-    doc.setPage(jml)
-  }
 
   return doc
 }

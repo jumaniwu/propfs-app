@@ -18,7 +18,7 @@ import {
   terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, siapSimpanKwitansi,
   pesanWaKwitansi,
   peringatanMaterai, TAUTAN_EMETERAI, berkasUntukKonsumen, namaFileKwitansi,
-  namaProyekEntri,
+  namaProyekEntri, bolehKelolaKwitansi, akibatUbahKwitansi, akibatHapusKwitansi,
   KWITANSI_KOSONG, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI, LABEL_METODE_TERIMA,
 } from '../src/lib/kwitansi.ts'
 
@@ -349,6 +349,59 @@ assert(berkasUntukKonsumen({}) === 'bersih', 'masukan kosong aman')
   assert(namaProyekEntri(undefined, DAFTAR) === '', 'entri undefined aman')
   assert(namaProyekEntri({ projectId: 'p-noble' }, null) === '', 'daftar null aman')
   assert(namaProyekEntri({ projectId: 'p-noble' }, undefined) === '', 'daftar undefined aman')
+}
+
+// ── Siapa yang boleh mengubah & menghapus kwitansi terbit ──────────────
+//
+// Kwitansi adalah bukti penerimaan uang yang bernomor urut. Mengubahnya
+// berarti mengubah arsip; menghapusnya melubangi urutan nomornya. Orang yang
+// mencatat penerimaan tidak boleh sekaligus jadi orang yang bisa
+// menghilangkan catatannya.
+{
+  assert(bolehKelolaKwitansi('pemilik').boleh === true, 'pemilik boleh')
+  assert(bolehKelolaKwitansi('viewer', true).boleh === true, 'superadmin boleh apa pun perannya')
+  assert(bolehKelolaKwitansi(null, true).boleh === true, 'superadmin tanpa peran tim pun boleh')
+
+  for (const r of ['manajemen', 'keuangan', 'pm', 'logistik', 'pengawas', 'viewer']) {
+    assert(bolehKelolaKwitansi(r).boleh === false, `${r} tidak boleh`)
+    assert(bolehKelolaKwitansi(r, false).boleh === false, `${r} + bukan superadmin tetap tidak boleh`)
+  }
+  assert(bolehKelolaKwitansi('keuangan').alasan.includes('Pemilik'),
+    'alasannya disebutkan, supaya tombol yang hilang bisa diterangkan')
+
+  // Ejaan dan spasi tidak boleh menjadi celah — maupun penghalang.
+  assert(bolehKelolaKwitansi('  Pemilik  ').boleh === true, 'spasi & huruf besar tetap dikenali')
+  assert(bolehKelolaKwitansi('').boleh === false, 'peran kosong tidak boleh')
+  assert(bolehKelolaKwitansi(undefined).boleh === false, 'undefined tidak boleh')
+  assert(bolehKelolaKwitansi(null).boleh === false, 'null tidak boleh')
+  // Nilai selain `true` tidak boleh lolos sebagai superadmin.
+  assert(bolehKelolaKwitansi('viewer', 'ya').boleh === false, 'teks bukan true bukan superadmin')
+  assert(bolehKelolaKwitansi('viewer', 1).boleh === false, 'angka bukan true bukan superadmin')
+}
+
+// ── Akibatnya dikatakan sebelum dikerjakan ─────────────────────────────
+{
+  const BELUM = { nomor: 'KW/2026/08/0009', terkirim_at: null }
+  const SUDAH = { nomor: 'KW/2026/08/0009', terkirim_at: '2026-08-14T03:00:00Z' }
+
+  assert(akibatUbahKwitansi(BELUM) === '',
+    'yang belum dikirim tidak perlu peringatan: belum ada yang memegangnya')
+  assert(akibatUbahKwitansi({ nomor: 'X', terkirim_at: '   ' }) === '',
+    'spasi saja bukan tanda sudah terkirim')
+  const u = akibatUbahKwitansi(SUDAH)
+  assert(u.includes('KW/2026/08/0009'), 'peringatan ubah menyebut nomornya')
+  assert(/sudah dikirim/i.test(u), 'menyebut bahwa kwitansinya sudah dikirim')
+  assert(/versi lama/i.test(u), 'menyebut PDF yang terlanjur diunduh tetap versi lama')
+
+  const h = akibatHapusKwitansi(BELUM)
+  assert(/permanen/i.test(h), 'penghapusan selalu diterangkan permanen')
+  assert(!/tautan/i.test(h), 'yang belum dikirim tidak menyebut tautan konsumen')
+  const h2 = akibatHapusKwitansi(SUDAH)
+  assert(/permanen/i.test(h2) && /tautan/i.test(h2),
+    'yang sudah dikirim: tautan konsumen akan mati, dan itu dikatakan')
+
+  assert(akibatUbahKwitansi({}) === '', 'masukan kosong aman')
+  assert(akibatHapusKwitansi({}).length > 0, 'masukan kosong tetap memberi kalimat')
 }
 
 console.log(`kwitansi: ${ok} assert lulus`)

@@ -34,7 +34,6 @@ import {
 import { downloadPoPdf } from '@/lib/poPdf'
 import { waKe, nomorWaInternasional } from '@/lib/waLink'
 import { tokenSudahPendek } from '@/lib/tautanPendek'
-import { konteksWatermark } from '@/lib/identitasSaya'
 import TabPenerimaan from '@/components/cost/TabPenerimaan'
 import TabInvoiceVendor from '@/components/cost/TabInvoiceVendor'
 import { penerimaanApi } from '@/lib/penerimaanApi'
@@ -1296,7 +1295,7 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
       {/* Aksi */}
       <div className="flex gap-1.5 pt-1 border-t border-border flex-wrap">
         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
-          onClick={() => downloadPoPdf(po, konteksWatermark())}>
+          onClick={() => downloadPoPdf(po)}>
           <Download className="w-3 h-3" /> PDF
         </Button>
 

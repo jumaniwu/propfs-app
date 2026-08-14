@@ -16,7 +16,6 @@ import { useToast } from '@/hooks/use-toast'
 import { ringkasPerProyek, totalKonsolidasi, PROYEK_UMUM } from '@/lib/akuntan'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getBrandingCache, kopLaporan } from '@/lib/branding'
-import { useAuthStore } from '@/store/authStore'
 
 const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 const fmtJt = (n: number) => {
@@ -49,7 +48,7 @@ export default function KonsolidasiPage() {
 
   function exportExcel() {
     const wb = reportXlsx.utils.book_new()
-    const kop = kopLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))
+    const kop = kopLaporan(getBrandingCache())
     const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
     const subtitle = `Seluruh proyek · Dicetak: ${printed}`
 

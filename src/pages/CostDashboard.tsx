@@ -22,9 +22,7 @@ import TabAkuntan from '@/components/cost/TabAkuntan'
 import TabSPK from '@/components/cost/TabSPK'
 import TabLaporanLapangan, { DriveSettingCard } from '@/components/cost/TabLaporanLapangan'
 import ProfilPerusahaanCard from '@/components/cost/ProfilPerusahaanCard'
-import {
-  getBrandingCache, identitasLaporan, perluWatermark, TEKS_WATERMARK,
-} from '@/lib/branding'
+import { getBrandingCache, identitasLaporan } from '@/lib/branding'
 import CreateProjectModal from '@/components/cost/CreateProjectModal'
 import CostProjectCard from '@/components/cost/CostProjectCard'
 import WorkspaceSidebar, { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
@@ -32,7 +30,6 @@ import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
-import { konteksWatermark } from '@/lib/identitasSaya'
 import { useBuatProyek } from '@/hooks/useBuatProyek'
 import { bacaPosisi, tulisPosisi, samaPosisi } from '@/lib/posisiKerja'
 
@@ -213,13 +210,6 @@ export default function CostDashboard() {
     ws.mergeCells(4 + off, 1, 4 + off, colCount)
     ws.getCell(4 + off, 1).value = `Dicetak      : ${new Date().toLocaleString('id-ID')}`
     ws.getCell(4 + off, 1).font = { name: 'Calibri', size: 10 }
-
-    // Watermark hanya untuk paket gratis
-    if (perluWatermark(konteksWatermark())) {
-      ws.mergeCells(5 + off, 1, 5 + off, colCount)
-      ws.getCell(5 + off, 1).value = TEKS_WATERMARK
-      ws.getCell(5 + off, 1).font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF9AA4B0' } }
-    }
   }
 
   const formatHeaderRow = (row: ExcelJS.Row) => {

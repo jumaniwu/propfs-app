@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Save, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { X, Save, Loader2, ShieldCheck, AlertTriangle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useToast } from '@/hooks/use-toast'
 import { kwitansiApi, type BarisKwitansi } from '@/lib/kwitansiApi'
 import {
   KWITANSI_KOSONG, nomorKwitansi, terbilang, perluMaterai, statusMaterajAwal,
-  siapSimpanKwitansi, AMBANG_MATERAI, LABEL_METODE_TERIMA,
+  siapSimpanKwitansi, akibatUbahKwitansi, AMBANG_MATERAI, LABEL_METODE_TERIMA,
   type Kwitansi, type MetodeTerima,
 } from '@/lib/kwitansi'
 
@@ -28,23 +28,39 @@ const inputCls = 'w-full rounded-xl border border-border bg-white px-3 py-2 text
  * di situs lain, konsumen dikirimi ulang minggu depan), sedangkan formulir ini
  * hanya masuk akal sekali. Menggabungkannya memaksa formulir tetap terbuka
  * untuk pekerjaan yang bukan miliknya.
+ *
+ * Dipakai untuk MEMBUAT (`awal`) maupun MEMBETULKAN (`baris`). Satu formulir,
+ * bukan dua: aturan isian, terbilang, dan tanda tangan harus persis sama pada
+ * kedua jalur, dan salinan kedua akan berbeda diam-diam begitu salah satunya
+ * diperbaiki.
  */
-export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }: {
-  awal: { pemasukanId: string; tanggal: string; sumber: string; jumlah: number }
-  projectName: string
+export interface AwalKwitansi {
+  pemasukanId: string; tanggal: string; sumber: string; jumlah: number
+}
+
+type PropsKwitansi = {
+  projectName?: string
   namaSaya: string
   onTutup: () => void
-}) {
+} & (
+  | { awal: AwalKwitansi; baris?: undefined }
+  | { baris: BarisKwitansi; awal?: undefined }
+)
+
+export default function DialogKwitansi(
+  { awal, baris, projectName = '', namaSaya, onTutup }: PropsKwitansi,
+) {
+  const ubahMode = !!baris
   const { toast } = useToast()
-  const [k, setK] = useState<Kwitansi>(() => ({
+  const [k, setK] = useState<Kwitansi>(() => (baris ? { ...baris } : {
     ...KWITANSI_KOSONG,
     nomor: '',
-    tanggal: awal.tanggal,
-    untuk_pembayaran: awal.sumber,
-    jumlah: awal.jumlah,
+    tanggal: awal!.tanggal,
+    untuk_pembayaran: awal!.sumber,
+    jumlah: awal!.jumlah,
     project_name: projectName,
     penanda_nama: namaSaya,
-    materai_status: statusMaterajAwal(awal.jumlah),
+    materai_status: statusMaterajAwal(awal!.jumlah),
   }))
   const [proses, setProses] = useState(false)
   const [pesanSimpan, setPesanSimpan] = useState('')
@@ -52,6 +68,10 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
   const [tandaTangan, setTandaTangan] = useState(false)
 
   useEffect(() => {
+    // Yang sedang dibetulkan sudah punya nomor. Menghitung ulang justru
+    // berbahaya: nomor kwitansi yang berubah setelah terbit berarti dua
+    // dokumen berbeda mengaku sebagai penerimaan yang sama.
+    if (!awal) return
     void (async () => {
       // Nomor urut diambil dari jumlah kwitansi bulan ini yang sudah ada.
       const semua = await kwitansiApi().list().catch(() => [] as BarisKwitansi[])
@@ -59,7 +79,7 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
       const urut = semua.filter(x => (x.tanggal ?? '').startsWith(bl)).length + 1
       setK(s => (s.nomor ? s : { ...s, nomor: nomorKwitansi(urut, new Date(awal.tanggal)) }))
     })()
-  }, [awal.tanggal])
+  }, [awal?.tanggal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const wajib = perluMaterai(k.jumlah)
   const siap = useMemo(() => siapSimpanKwitansi(k), [k])
@@ -72,11 +92,29 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
     setProses(true)
     setPesanSimpan('')
     try {
-      await kwitansiApi().buat({ ...k, pemasukan_id: awal.pemasukanId, perlu_materai: wajib })
-      toast({
-        title: 'Kwitansi tersimpan',
-        description: 'Unduh PDF, bubuhkan meterai, dan kirim ke konsumen dari daftar di bawah.',
-      })
+      if (baris) {
+        // `view_token`, `terkirim_at`, dan `materai_pdf` sengaja TIDAK ikut:
+        // membetulkan isi kwitansi tidak boleh mematikan tautan yang sudah
+        // dipegang konsumen, membatalkan status terkirimnya, atau membuang
+        // berkas bermeterai yang sudah dibayar.
+        const { id, ...isi } = { ...baris, ...k }
+        void id
+        await kwitansiApi().ubah(baris.id, {
+          nomor: isi.nomor, tanggal: isi.tanggal, penerima_dari: isi.penerima_dari,
+          penerima_wa: isi.penerima_wa, untuk_pembayaran: isi.untuk_pembayaran,
+          jumlah: isi.jumlah, metode: isi.metode, project_name: isi.project_name,
+          penanda_nama: isi.penanda_nama, penanda_jabatan: isi.penanda_jabatan,
+          penanda_signature: isi.penanda_signature ?? null,
+          catatan: isi.catatan, perlu_materai: wajib,
+        } as Partial<BarisKwitansi>)
+        toast({ title: 'Kwitansi diperbarui' })
+      } else {
+        await kwitansiApi().buat({ ...k, pemasukan_id: awal!.pemasukanId, perlu_materai: wajib })
+        toast({
+          title: 'Kwitansi tersimpan',
+          description: 'Unduh PDF, bubuhkan meterai, dan kirim ke konsumen dari daftar di bawah.',
+        })
+      }
       onTutup()
     } catch (e) {
       setPesanSimpan(e instanceof Error ? e.message : String(e))
@@ -98,7 +136,9 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             adalah tempat lahirnya bilah yang menutupi isinya. */}
         <div className="border-b border-border px-5 py-3 flex items-center justify-between shrink-0">
           <div className="min-w-0">
-            <p className="font-bold text-navy">Kwitansi Digital</p>
+            <p className="font-bold text-navy">
+              {ubahMode ? 'Ubah Kwitansi' : 'Kwitansi Digital'}
+            </p>
             <p className="text-[11px] text-muted-foreground truncate">
               {k.nomor || 'menyiapkan nomor…'}
             </p>
@@ -109,6 +149,15 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
         </div>
 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 space-y-4">
+          {/* Yang sudah dikirim: akibatnya dikatakan di ATAS isian, sebelum
+              satu huruf pun diketik — bukan sebagai penyesalan di bawah. */}
+          {ubahMode && akibatUbahKwitansi(baris!) && (
+            <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50
+              p-3 text-[11px] leading-relaxed text-amber-900">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span className="flex-1 min-w-0">{akibatUbahKwitansi(baris!)}</span>
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <label className="col-span-2 space-y-1">
               <span className="text-[11px] font-bold text-muted-foreground">Telah terima dari</span>
@@ -231,7 +280,7 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             <div data-pesan-simpan className="rounded-lg bg-rose-50 border border-rose-200 p-2">
               <div className="flex items-start gap-1.5">
                 <p className="flex-1 min-w-0 text-[11px] text-rose-900 break-words">
-                  Kwitansinya belum tersimpan.{' '}
+                  {ubahMode ? 'Perubahannya belum tersimpan.' : 'Kwitansinya belum tersimpan.'}{' '}
                   <button onClick={() => setRinciSimpan(v => !v)} className="font-bold underline">
                     {rinciSimpan ? 'Tutup' : 'Kenapa?'}
                   </button>
@@ -258,8 +307,9 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             <Button data-simpan-kwitansi onClick={() => void simpan()}
               disabled={!siap.boleh || proses}
               variant="gold" className="flex-1 gap-1.5 font-bold">
-              {proses ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Simpan Kwitansi
+              {proses ? <Loader2 className="w-4 h-4 animate-spin" />
+                : ubahMode ? <Pencil className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {ubahMode ? 'Simpan Perubahan' : 'Simpan Kwitansi'}
             </Button>
           </div>
         </div>

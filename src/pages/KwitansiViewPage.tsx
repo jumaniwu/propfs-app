@@ -18,7 +18,7 @@ import {
   terbilang, perluMaterai, berkasUntukKonsumen, namaFileKwitansi,
   LABEL_METODE_TERIMA, KWITANSI_KOSONG,
 } from '@/lib/kwitansi'
-import { TANPA_WATERMARK, type IdentitasLaporan } from '@/lib/branding'
+import type { IdentitasLaporan } from '@/lib/branding'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tglPanjang = (s?: string | null) => {
@@ -89,7 +89,7 @@ export default function KwitansiViewPage() {
    */
   function unduh() {
     if (bermeterai) unduhPdfTersimpan(String(k!.materai_pdf), namaFileKwitansi(k!))
-    else unduhKwitansiPdf({ ...KWITANSI_KOSONG, ...k! }, kop(k!), TANPA_WATERMARK)
+    else unduhKwitansiPdf({ ...KWITANSI_KOSONG, ...k! }, kop(k!))
   }
 
   return (
