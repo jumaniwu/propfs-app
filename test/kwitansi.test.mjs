@@ -16,6 +16,7 @@
 import {
   AMBANG_MATERAI, TARIF_MATERAI, perluMaterai, statusMaterajAwal, nomorKwitansi,
   terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, pesanWaKwitansi,
+  peringatanMaterai, TAUTAN_EMETERAI,
   KWITANSI_KOSONG, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI, LABEL_METODE_TERIMA,
 } from '../src/lib/kwitansi.ts'
 
@@ -149,15 +150,33 @@ const LENGKAP = {
   jumlah: 250_000_000, penanda_nama: 'Jumani', materai_status: 'menunggu',
 }
 {
+  // DIREVISI: kewajiban meterai TIDAK LAGI menahan pengiriman.
+  //
+  // Pembubuhannya dikerjakan sendiri di situs e-Meterai, dan menahan
+  // dokumennya di sini berarti menahan pekerjaan yang memang harus keluar dari
+  // aplikasi ini dulu. Kewajibannya tetap DIKATAKAN, tetapi yang memutuskan
+  // kapan mengirim adalah orang yang mengerjakannya.
   const r = siapKirimKwitansi(LENGKAP)
-  assert(r.boleh === false, '250 juta tanpa meterai: TIDAK boleh dikirim')
-  assert(/wajib bermeterai/i.test(r.alasan), 'dan alasannya menyebut kewajibannya')
-  assert(/tidak bisa ditarik kembali/i.test(r.alasan),
-    'beserta sebab mengapa tidak bisa dikerjakan belakangan')
+  assert(r.boleh === true, '250 juta tanpa meterai TETAP boleh dikirim — tidak lagi ditahan')
+
+  const p = peringatanMaterai(LENGKAP)
+  assert(p, 'tetapi peringatannya ada')
+  assert(/wajib bermeterai/i.test(p), 'menyebut kewajibannya')
+  assert(/UU No. 10\/2020/.test(p), 'beserta dasar hukumnya')
+  assert(/Unduh PDF/i.test(p), 'dan langkah nyatanya: unduh, bubuhkan, tandai')
+  assert(/^https:\/\//.test(TAUTAN_EMETERAI), 'tautan situs resminya tersedia')
+}
+{
+  // Setelah ditandai sudah dibubuhkan sendiri, peringatannya hilang.
+  assert(peringatanMaterai({ ...LENGKAP, materai_status: 'terbubuh' }) === '',
+    'yang sudah bermeterai tidak diperingatkan lagi')
+  assert(peringatanMaterai({ jumlah: 2_000_000, materai_status: 'tidak_perlu' }) === '',
+    'yang tidak wajib tidak pernah diperingatkan')
+  assert(peringatanMaterai({}) === '', 'masukan kosong aman')
 }
 {
   const r = siapKirimKwitansi({ ...LENGKAP, materai_status: 'terbubuh' })
-  assert(r.boleh === true, 'setelah meterainya terbubuh, boleh dikirim')
+  assert(r.boleh === true, 'setelah meterainya terbubuh, tentu boleh dikirim')
 }
 {
   const kecil = { ...LENGKAP, jumlah: 2_000_000, materai_status: 'tidak_perlu' }

@@ -14,6 +14,7 @@ import { unduhKwitansiPdf, kwitansiPdfBase64 } from '@/lib/kwitansiPdf'
 import {
   KWITANSI_KOSONG, nomorKwitansi, terbilang, perluMaterai, statusMaterajAwal,
   siapKirimKwitansi, bolehBubuhMaterai, sisaKuota, pesanWaKwitansi,
+  peringatanMaterai, TAUTAN_EMETERAI,
   AMBANG_MATERAI, LABEL_METODE_TERIMA, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI,
   type Kwitansi, type MetodeTerima, type KuotaMaterai,
 } from '@/lib/kwitansi'
@@ -147,6 +148,22 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
     } finally { setProses('') }
   }
 
+  /** Meterai dibubuhkan sendiri di situs resmi; di sini hanya dicatat. */
+  async function tandaiManual() {
+    setProses('manual')
+    try {
+      const b = await pastikanTersimpan()
+      await kwitansiApi().ubah(b.id, {
+        materai_status: 'terbubuh', materai_sn: k.materai_sn,
+        materai_at: new Date().toISOString(),
+      } as Partial<BarisKwitansi>)
+      setK(s => ({ ...s, materai_status: 'terbubuh' }))
+      toast({ title: 'Ditandai sudah bermeterai' })
+    } catch (e) {
+      toast({ title: 'Gagal menyimpan', description: pesan(e), variant: 'destructive' })
+    } finally { setProses('') }
+  }
+
   async function kirim() {
     if (!siap.boleh) return
     setProses('kirim')
@@ -260,50 +277,62 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
 
             {wajib && (
               <>
-                <p className="text-[11px] text-muted-foreground">
-                  Kuota perusahaan: <b className="text-navy">{sisaKuota(kuota)}</b> tersisa
-                  {' '}(dibeli {kuota.dibeli}, terpakai {kuota.terpakai})
-                </p>
-                <Button data-bubuh-materai onClick={() => void bubuh()}
-                  disabled={!bolehBubuh.boleh || proses !== ''}
-                  variant="gold" className="h-8 text-xs font-bold gap-1.5">
-                  {proses === 'materai' ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <ShieldCheck className="w-3.5 h-3.5" />}
-                  Bubuhkan e-Meterai
-                </Button>
-                {/* Tombol mati tanpa sebab membuat orang mengira fiturnya rusak,
-                    lalu mengirim kwitansinya tanpa meterai. */}
-                {!bolehBubuh.boleh && (
-                  <p className="text-[11px] text-amber-900">{bolehBubuh.alasan}</p>
+                {/* JALUR MANUAL — inilah yang dipakai sekarang.
+                    Pembubuhan dikerjakan sendiri di situs e-Meterai, jadi yang
+                    dibutuhkan di sini cuma dua: PDF-nya bisa keluar, dan
+                    hasilnya bisa dicatat balik supaya dokumennya tidak
+                    selamanya berstatus "menunggu". */}
+                <div className="rounded-lg bg-white border border-border p-2.5 space-y-2">
+                  <p className="text-[11px] font-bold text-navy">Bubuhkan sendiri</p>
+                  <ol className="text-[11px] text-muted-foreground list-decimal ml-4 space-y-0.5">
+                    <li>Unduh PDF kwitansinya lewat tombol di bawah.</li>
+                    <li>
+                      Bubuhkan e-Meterai di{' '}
+                      <a href={TAUTAN_EMETERAI} target="_blank" rel="noopener noreferrer"
+                        className="font-bold text-navy underline">situs resmi e-Meterai</a>.
+                    </li>
+                    <li>Kembali ke sini, tandai sudah dibubuhkan.</li>
+                  </ol>
+                  <div className="flex items-end gap-2">
+                    <label className="flex-1 space-y-1">
+                      <span className="text-[10px] font-bold text-muted-foreground">
+                        Nomor seri meterai (opsional)
+                      </span>
+                      <input data-sn-manual className={inputCls} value={k.materai_sn}
+                        onChange={e => ubah('materai_sn', e.target.value)} placeholder="dari situs e-Meterai" />
+                    </label>
+                    <Button
+                      data-tandai-materai
+                      onClick={() => void tandaiManual()}
+                      disabled={proses !== '' || k.materai_status === 'terbubuh'}
+                      variant="gold" className="h-9 text-xs font-bold gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      {k.materai_status === 'terbubuh' ? 'Sudah ditandai' : 'Sudah dibubuhkan'}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Pembubuhan otomatis lewat API distributor tetap ada, tetapi
+                    disembunyikan sampai penyedianya benar-benar dipasang —
+                    tombol yang selalu gagal hanya melatih orang mengabaikannya. */}
+                {penyediaSiap && sisaKuota(kuota) > 0 && (
+                  <>
+                    <p className="text-[11px] text-muted-foreground">
+                      Kuota otomatis: <b className="text-navy">{sisaKuota(kuota)}</b> tersisa
+                    </p>
+                    <Button data-bubuh-materai onClick={() => void bubuh()}
+                      disabled={!bolehBubuh.boleh || proses !== ''}
+                      variant="outline" className="h-8 text-xs font-bold gap-1.5">
+                      {proses === 'materai' ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <ShieldCheck className="w-3.5 h-3.5" />}
+                      Bubuhkan otomatis
+                    </Button>
+                  </>
                 )}
                 {pesanMaterai && (
                   <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200
                     rounded-lg p-2">{pesanMaterai}</p>
                 )}
-                {distributor.length > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Distributor resmi Peruri: {distributor.join(', ')}.
-                  </p>
-                )}
-
-                {/* Meterai dibeli perusahaan atas namanya sendiri di
-                    distributor resmi; yang dicatat di sini jumlahnya, supaya
-                    pemakaiannya bisa dihitung dan dokumen yang wajib tidak
-                    lolos tanpa meterai. */}
-                <div className="flex items-end gap-2 pt-1">
-                  <label className="flex-1 space-y-1">
-                    <span className="text-[10px] font-bold text-muted-foreground">
-                      Catat kuota yang sudah dibeli
-                    </span>
-                    <input className={inputCls} inputMode="numeric" value={beli || ''}
-                      onChange={e => setBeli(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                      placeholder="jumlah meterai" />
-                  </label>
-                  <Button onClick={() => void tambahKuota()} disabled={beli <= 0 || proses !== ''}
-                    variant="outline" className="h-9 text-xs font-bold gap-1">
-                    <Plus className="w-3.5 h-3.5" /> Tambah
-                  </Button>
-                </div>
               </>
             )}
           </div>
@@ -335,6 +364,14 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             <p className="flex items-start gap-1.5 text-[11px] text-amber-900">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {siap.alasan}
+            </p>
+          )}
+          {/* Kewajiban meterai DIKATAKAN, tetapi tidak lagi menahan. Yang
+              memutuskan kapan mengirim adalah orang yang mengerjakannya. */}
+          {siap.boleh && peringatanMaterai(k) && (
+            <p data-peringatan-materai className="flex items-start gap-1.5 text-[11px] text-amber-900">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              {peringatanMaterai(k)}
             </p>
           )}
           {baris && (
