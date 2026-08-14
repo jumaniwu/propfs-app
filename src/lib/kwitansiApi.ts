@@ -6,6 +6,8 @@
 // melahirkan salinan kedua yang tertinggal begitu salah satunya diperbaiki.
 // ============================================================
 import { restFetch } from './procurementApi'
+import { milikWorkspace } from './procurement'
+import { dataOwnerId } from './teamApi'
 import { tautanPublik } from './tautanPendek'
 import type { Kwitansi, KuotaMaterai, StatusMaterai, MetodeTerima } from './kwitansi'
 
@@ -74,9 +76,8 @@ const PESAN_MIGRASI = ' Jalankan migration_kwitansi_materai.sql di Supabase SQL 
  * jadi keduanya disebutkan. "HTTP 403" sendirian tidak memberi tahu apa pun
  * dan membuat orang mengira aplikasinya rusak.
  */
-const PESAN_403 = ' Tabelnya menolak akses: jalankan migration_kwitansi_materai.sql'
-  + ' (dan migration_kwitansi_materai_pdf.sql) di Supabase SQL Editor, lalu keluar'
-  + ' dan masuk lagi.'
+const PESAN_403 = ' Aksesnya ditolak. Coba keluar lalu masuk lagi; bila tetap begitu,'
+  + ' pastikan migration_kwitansi_materai.sql sudah dijalankan di Supabase.'
 
 async function json<T>(path: string, init: RequestInit, apa: string, publik = false): Promise<T> {
   const res = await restFetch(path, init, 15000, publik)
@@ -97,8 +98,17 @@ const nyata: KwitansiApi = {
     return await json<BarisKwitansi[]>('kwitansi?select=*&order=created_at.desc', {}, 'memuat kwitansi')
   },
   async buat(k) {
+    // `user_id` DISTEMPEL di sini, sama seperti seluruh tabel lain.
+    //
+    // Tanpa ini barisnya dikirim tanpa pemilik. Kolomnya `not null` dan
+    // kebijakan RLS berbunyi `auth.uid() = user_id`, jadi PostgREST menolaknya
+    // dengan 403 — dan 403 itu terbaca seperti "migrasinya belum dijalankan",
+    // padahal migrasinya sudah benar sejak awal. Salah alamat yang membuat
+    // orang menjalankan ulang SQL berkali-kali tanpa hasil.
     const rows = await json<BarisKwitansi[]>('kwitansi', {
-      method: 'POST', body: JSON.stringify(k), headers: { Prefer: 'return=representation' },
+      method: 'POST',
+      body: JSON.stringify(milikWorkspace({ ...k }, dataOwnerId())),
+      headers: { Prefer: 'return=representation' },
     }, 'menyimpan kwitansi')
     return rows[0]
   },

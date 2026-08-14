@@ -54,6 +54,7 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
   const [pesanMaterai, setPesanMaterai] = useState('')
   const [distributor, setDistributor] = useState<string[]>([])
   const [pesanSimpan, setPesanSimpan] = useState('')
+  const [rinciSimpan, setRinciSimpan] = useState(false)
   const [materaiPdf, setMateraiPdf] = useState<{ nama: string; data: string } | null>(null)
   const [tandaTangan, setTandaTangan] = useState(false)
   const [beli, setBeli] = useState(0)
@@ -374,7 +375,8 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
           </label>
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-border p-4 space-y-2">
+        <div className="sticky bottom-0 bg-white border-t border-border p-4 space-y-2
+          max-h-[40vh] overflow-y-auto overscroll-contain">
           <div className="flex gap-2">
             <Button onClick={unduh}
               variant="outline" className="flex-1 gap-1.5 font-bold">
@@ -394,19 +396,34 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
               {siap.alasan}
             </p>
           )}
-          {/* Kewajiban meterai DIKATAKAN, tetapi tidak lagi menahan. Yang
-              memutuskan kapan mengirim adalah orang yang mengerjakannya. */}
-          {siap.boleh && peringatanMaterai(k) && (
-            <p data-peringatan-materai className="flex items-start gap-1.5 text-[11px] text-amber-900">
-              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              {peringatanMaterai(k)}
-            </p>
-          )}
+          {/* Peringatan meterai TIDAK diulang di sini: kalimat yang sama sudah
+              tercetak di kartu e-Meterai tepat di atas. Mengulangnya membuat
+              bilah bawah tinggi sekali, mendorong isinya keluar layar, dan
+              melatih orang melewati keduanya. */}
           {/* Kegagalan menyimpan dilaporkan sebagai CATATAN, bukan sebagai
-              kegagalan mengunduh: PDF-nya sudah ada di tangan pemakainya. */}
+              kegagalan mengunduh: PDF-nya sudah ada di tangan pemakainya.
+              Ringkas dan bisa ditutup — rinciannya di balik satu ketukan,
+              sebab yang panjang justru terpotong tepi layar dan tak terbaca. */}
           {pesanSimpan && (
-            <p data-pesan-simpan className="text-[11px] text-amber-900 bg-amber-50
-              border border-amber-200 rounded-lg p-2">{pesanSimpan}</p>
+            <div data-pesan-simpan className="rounded-lg bg-amber-50 border border-amber-200 p-2">
+              <div className="flex items-start gap-1.5">
+                <p className="flex-1 min-w-0 text-[11px] text-amber-900 break-words">
+                  Belum tersimpan di server — PDF-nya tetap bisa dipakai.{' '}
+                  <button onClick={() => setRinciSimpan(v => !v)}
+                    className="font-bold underline">
+                    {rinciSimpan ? 'Tutup' : 'Kenapa?'}
+                  </button>
+                </p>
+                <button onClick={() => setPesanSimpan('')}
+                  className="p-0.5 text-amber-900/60 hover:text-amber-900 shrink-0"
+                  aria-label="Tutup pesan">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {rinciSimpan && (
+                <p className="mt-1.5 text-[11px] text-amber-900 break-words">{pesanSimpan}</p>
+              )}
+            </div>
           )}
           {baris && (
             <button
