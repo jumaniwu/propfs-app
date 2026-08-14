@@ -36,6 +36,7 @@ import type { RealisasiEntry } from './ai-realisasi.ts'
 import type { PurchaseOrder, PoItem } from './procurement.ts'
 import type { DeliveryOrder, PoPayment } from './penerimaan.ts'
 import { totalDibayar, statusBayar, type StatusBayar } from './penerimaan.ts'
+import { normalNota } from './duplikatBiaya.ts'
 
 const teks = (v: unknown) => String(v ?? '').trim()
 const kunci = (v: unknown) => teks(v).toLowerCase().replace(/\s+/g, ' ')
@@ -72,9 +73,12 @@ export function doUntukEntri(
     const lewatId = daftar.find(d => teks(d?.id) === id)
     if (lewatId) return lewatId
   }
-  const nota = kunci(entri?.nomorNota)
+  // Nomor nota disamakan dengan MEMBUANG seluruh aksara selain huruf & angka.
+  // "A 40637" yang diketik manusia dan "A40637" yang dibaca AI adalah nota
+  // yang sama; menganggapnya berbeda sudah pernah melahirkan biaya ganda.
+  const nota = normalNota(entri?.nomorNota)
   if (!nota) return null
-  const cocok = daftar.filter(d => kunci(d?.nomor_nota) === nota)
+  const cocok = daftar.filter(d => normalNota(d?.nomor_nota) === nota)
   // Nomor nota yang muncul pada DUA surat jalan berbeda bukan tautan yang bisa
   // dibuktikan — ia justru tanda ada yang keliru. Lebih baik tidak menebak.
   return cocok.length === 1 ? cocok[0] : null
@@ -149,7 +153,7 @@ export function penerimaanBelumTercatat(
   for (const e of entries ?? []) {
     const id = teks(e?.doId)
     if (id) sudah.add(id)
-    const n = kunci(e?.nomorNota)
+    const n = normalNota(e?.nomorNota)
     if (n) notaTerpakai.add(n)
   }
 
@@ -160,7 +164,7 @@ export function penerimaanBelumTercatat(
     // Nota yang sama sudah diketik manual tanpa tautan surat jalan. Itu tetap
     // "sudah tercatat" — mengusulkannya lagi berarti mengajak membuat biaya
     // ganda, tepat kesalahan yang modul ini ada untuk mencegahnya.
-    if (kunci(d.nomor_nota) && notaTerpakai.has(kunci(d.nomor_nota))) continue
+    if (normalNota(d.nomor_nota) && notaTerpakai.has(normalNota(d.nomor_nota))) continue
 
     const po = (pos ?? []).find(p => teks(p?.id) === teks(d.po_id))
     if (!po) continue

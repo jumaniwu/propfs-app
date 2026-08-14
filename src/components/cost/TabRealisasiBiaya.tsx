@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
 import TeksChat from './TeksChat'
 import PanelDariProcurement from './PanelDariProcurement'
+import PanelDuplikat from './PanelDuplikat'
 import { statusEntri, catatanBayar } from '@/lib/sinkronRealisasi'
 import {
   chatRealisasiWithGemini, RealisasiEntry, ChatMessage,
@@ -634,6 +635,11 @@ export default function TabRealisasiBiaya() {
             </div>
           )}
         </div>
+
+        {/* Biaya yang terlanjur tercatat dua kali. Selama masih di sana,
+            seluruh laporan keuangannya keliru — jadi ia ditaruh PALING ATAS,
+            di depan segala hal lain yang bisa menunggu. */}
+        <PanelDuplikat entries={entries} onHapus={deleteRealisasiEntry} />
 
         {/* Barang yang sudah datang menurut Procurement tetapi belum ada di
             buku ini. Ditawarkan, bukan dimasukkan sendiri: nota yang sama bisa

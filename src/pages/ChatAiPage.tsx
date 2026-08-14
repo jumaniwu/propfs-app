@@ -39,6 +39,7 @@ import type { PurchaseOrder } from '@/lib/procurement'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { kecilkanFoto, ukuranTampil } from '@/lib/kompresFoto'
 import { dataUriBerkas } from '@/lib/berkasLampiran'
+import { saringEntriBaru } from '@/lib/duplikatBiaya'
 import TeksChat from '@/components/cost/TeksChat'
 import { adaTabel } from '@/lib/markdownChat'
 
@@ -214,7 +215,18 @@ export default function ChatAiPage() {
 
       // Biaya langsung tercatat — itu memang tugas utamanya, dan menahannya di
       // balik satu tombol lagi hanya memperlambat pekerjaan yang sudah benar.
-      if (parsedResult.added.length > 0) addRealisasiEntries(parsedResult.added)
+      // Nota yang sudah pernah difoto dan dicatat sering difoto lagi — oleh
+      // orang berbeda, atau oleh orang yang sama karena lupa. Menyaringnya di
+      // sini jauh lebih murah daripada mencarinya kembali setelah laporan
+      // keuangannya salah.
+      const { diterima, ditolak } = saringEntriBaru(parsedResult.added, realisasiEntries)
+      if (diterima.length > 0) addRealisasiEntries(diterima)
+      if (ditolak.length > 0) {
+        toast({
+          title: `${ditolak.length} baris dilewati — sudah pernah dicatat`,
+          description: ditolak.map(e => `${e.keterangan} ${fmt(e.jumlah)}`).join(', '),
+        })
+      }
       parsedResult.updated.forEach(u => updateRealisasiEntry(u.id, u.data))
       parsedResult.deleted.forEach(id => deleteRealisasiEntry(id))
 
@@ -237,7 +249,7 @@ export default function ChatAiPage() {
         setPilihPo(0)
         setPilihBayar(r.pembayaran.map(() => 0))
       }
-      const jml = parsedResult.added.length + parsedResult.updated.length + parsedResult.deleted.length
+      const jml = diterima.length + parsedResult.updated.length + parsedResult.deleted.length
       if (jml > 0) toast({ title: `✅ ${jml} perubahan dicatat` })
     } catch (e) {
       setPesan(v => [...v, {
