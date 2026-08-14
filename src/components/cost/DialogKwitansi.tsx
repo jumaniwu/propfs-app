@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  X, Download, Send, Loader2, ShieldCheck, AlertTriangle, Plus, Copy,
+  X, Download, Send, Loader2, ShieldCheck, AlertTriangle, Copy, Upload, FileCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -52,6 +52,8 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
   const [proses, setProses] = useState('')
   const [pesanMaterai, setPesanMaterai] = useState('')
   const [distributor, setDistributor] = useState<string[]>([])
+  const [pesanSimpan, setPesanSimpan] = useState('')
+  const [materaiPdf, setMateraiPdf] = useState<{ nama: string; data: string } | null>(null)
   const [beli, setBeli] = useState(0)
 
   useEffect(() => {
@@ -89,14 +91,22 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
     return b
   }
 
-  async function unduh() {
-    setProses('unduh')
-    try {
-      await pastikanTersimpan()
-      unduhKwitansiPdf(k, merek)
-    } catch (e) {
-      toast({ title: 'Gagal', description: pesan(e), variant: 'destructive' })
-    } finally { setProses('') }
+  /**
+   * Unduh PDF — TIDAK menunggu penyimpanan.
+   *
+   * Sebelumnya ia memanggil `pastikanTersimpan()` lebih dulu, sehingga satu
+   * galat server (403 karena migrasinya belum dijalankan) MEMBATALKAN unduhan
+   * yang sebenarnya seluruhnya dikerjakan di dalam peramban. Pekerjaan lokal
+   * tidak boleh digantungkan pada jaringan.
+   *
+   * Penyimpanannya tetap dijalankan, di belakang, dan kegagalannya dilaporkan
+   * sebagai catatan — bukan sebagai kegagalan mengunduh.
+   */
+  function unduh() {
+    unduhKwitansiPdf(k, merek)
+    void pastikanTersimpan().catch(e => {
+      setPesanSimpan(`PDF sudah terunduh, tetapi kwitansinya belum tersimpan di server: ${pesan(e)}`)
+    })
   }
 
   async function bubuh() {
@@ -148,19 +158,45 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
     } finally { setProses('') }
   }
 
-  /** Meterai dibubuhkan sendiri di situs resmi; di sini hanya dicatat. */
-  async function tandaiManual() {
+  /**
+   * Terima PDF yang sudah dibubuhi meterai.
+   *
+   * Yang diunggah menggantikan berkas yang dikirim ke konsumen. Ukurannya
+   * dibatasi karena ia disimpan bersama barisnya; PDF satu halaman bermeterai
+   * jauh di bawah batas ini, dan yang jauh di atasnya bukan kwitansi.
+   */
+  async function pilihMateraiPdf(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setPesanMaterai('')
+    if (f.size > 3 * 1024 * 1024) {
+      setPesanMaterai('Berkasnya lebih dari 3 MB. Kwitansi satu halaman semestinya jauh di bawah itu.')
+      return
+    }
+    const data = await new Promise<string>((selesai, gagal) => {
+      const r = new FileReader()
+      r.onload = () => selesai(String(r.result ?? ''))
+      r.onerror = () => gagal(r.error)
+      r.readAsDataURL(f)
+    })
+    setMateraiPdf({ nama: f.name, data })
+    setK(s => ({ ...s, materai_status: 'terbubuh', materai_pdf: data }))
+    void simpanMaterai(data)
+  }
+
+  /** Simpan versi bermeterai; kegagalannya tidak menghapus yang sudah diunggah. */
+  async function simpanMaterai(data: string) {
     setProses('manual')
     try {
       const b = await pastikanTersimpan()
       await kwitansiApi().ubah(b.id, {
-        materai_status: 'terbubuh', materai_sn: k.materai_sn,
+        materai_status: 'terbubuh', materai_pdf: data,
         materai_at: new Date().toISOString(),
       } as Partial<BarisKwitansi>)
-      setK(s => ({ ...s, materai_status: 'terbubuh' }))
-      toast({ title: 'Ditandai sudah bermeterai' })
+      toast({ title: 'PDF bermeterai tersimpan' })
     } catch (e) {
-      toast({ title: 'Gagal menyimpan', description: pesan(e), variant: 'destructive' })
+      setPesanSimpan(`PDF bermeterai belum tersimpan di server: ${pesan(e)}`)
     } finally { setProses('') }
   }
 
@@ -255,87 +291,50 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             <p className="text-xs italic text-muted-foreground mt-0.5">{terbilang(k.jumlah)}</p>
           </div>
 
-          {/* ── e-Meterai ─────────────────────────────────────────────── */}
-          <div className={`rounded-xl border p-3 space-y-2 ${
-            wajib ? 'border-amber-200 bg-amber-50' : 'border-border bg-slate-50'}`}>
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-sm font-bold text-navy">
-                <ShieldCheck className="w-4 h-4" /> e-Meterai
+          {/* ── e-Meterai: unduh → bubuhkan sendiri → unggah kembali ──── */}
+          {wajib && (
+            <div className={`rounded-xl border p-3 space-y-2 ${
+              k.materai_status === 'terbubuh'
+                ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-sm font-bold text-navy">
+                  <ShieldCheck className="w-4 h-4" /> e-Meterai
+                </p>
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full
+                  ${TONE_STATUS_MATERAI[k.materai_status]}`}>
+                  {LABEL_STATUS_MATERAI[k.materai_status]}
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Nominal di atas Rp {AMBANG_MATERAI.toLocaleString('id-ID')}{' '}
+                <b>wajib bermeterai</b> menurut UU No. 10/2020. Unduh PDF-nya, bubuhkan
+                e-Meterai sendiri, lalu unggah kembali di sini — yang dikirim ke konsumen
+                adalah versi yang bermeterai.
               </p>
-              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full
-                ${TONE_STATUS_MATERAI[k.materai_status]}`}>
-                {LABEL_STATUS_MATERAI[k.materai_status]}
-              </span>
-            </div>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">
-              {wajib
-                ? <>Nominal di atas Rp {AMBANG_MATERAI.toLocaleString('id-ID')} <b>wajib bermeterai</b> menurut
-                   UU No. 10/2020, termasuk untuk dokumen elektronik.</>
-                : <>Nominalnya tidak melebihi Rp {AMBANG_MATERAI.toLocaleString('id-ID')}, jadi tidak wajib
-                   bermeterai.</>}
-            </p>
 
-            {wajib && (
-              <>
-                {/* JALUR MANUAL — inilah yang dipakai sekarang.
-                    Pembubuhan dikerjakan sendiri di situs e-Meterai, jadi yang
-                    dibutuhkan di sini cuma dua: PDF-nya bisa keluar, dan
-                    hasilnya bisa dicatat balik supaya dokumennya tidak
-                    selamanya berstatus "menunggu". */}
-                <div className="rounded-lg bg-white border border-border p-2.5 space-y-2">
-                  <p className="text-[11px] font-bold text-navy">Bubuhkan sendiri</p>
-                  <ol className="text-[11px] text-muted-foreground list-decimal ml-4 space-y-0.5">
-                    <li>Unduh PDF kwitansinya lewat tombol di bawah.</li>
-                    <li>
-                      Bubuhkan e-Meterai di{' '}
-                      <a href={TAUTAN_EMETERAI} target="_blank" rel="noopener noreferrer"
-                        className="font-bold text-navy underline">situs resmi e-Meterai</a>.
-                    </li>
-                    <li>Kembali ke sini, tandai sudah dibubuhkan.</li>
-                  </ol>
-                  <div className="flex items-end gap-2">
-                    <label className="flex-1 space-y-1">
-                      <span className="text-[10px] font-bold text-muted-foreground">
-                        Nomor seri meterai (opsional)
-                      </span>
-                      <input data-sn-manual className={inputCls} value={k.materai_sn}
-                        onChange={e => ubah('materai_sn', e.target.value)} placeholder="dari situs e-Meterai" />
-                    </label>
-                    <Button
-                      data-tandai-materai
-                      onClick={() => void tandaiManual()}
-                      disabled={proses !== '' || k.materai_status === 'terbubuh'}
-                      variant="gold" className="h-9 text-xs font-bold gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      {k.materai_status === 'terbubuh' ? 'Sudah ditandai' : 'Sudah dibubuhkan'}
-                    </Button>
-                  </div>
+              {k.materai_status === 'terbubuh' && materaiPdf ? (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200
+                  bg-white p-2">
+                  <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="text-xs truncate flex-1">{materaiPdf.nama}</span>
+                  <button onClick={() => { setMateraiPdf(null); ubah('materai_status', 'menunggu') }}
+                    className="p-1 hover:bg-slate-100 rounded-lg"><X className="w-3.5 h-3.5" /></button>
                 </div>
-
-                {/* Pembubuhan otomatis lewat API distributor tetap ada, tetapi
-                    disembunyikan sampai penyedianya benar-benar dipasang —
-                    tombol yang selalu gagal hanya melatih orang mengabaikannya. */}
-                {penyediaSiap && sisaKuota(kuota) > 0 && (
-                  <>
-                    <p className="text-[11px] text-muted-foreground">
-                      Kuota otomatis: <b className="text-navy">{sisaKuota(kuota)}</b> tersisa
-                    </p>
-                    <Button data-bubuh-materai onClick={() => void bubuh()}
-                      disabled={!bolehBubuh.boleh || proses !== ''}
-                      variant="outline" className="h-8 text-xs font-bold gap-1.5">
-                      {proses === 'materai' ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <ShieldCheck className="w-3.5 h-3.5" />}
-                      Bubuhkan otomatis
-                    </Button>
-                  </>
-                )}
-                {pesanMaterai && (
-                  <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200
-                    rounded-lg p-2">{pesanMaterai}</p>
-                )}
-              </>
-            )}
-          </div>
+              ) : (
+                <label data-unggah-materai className="flex items-center justify-center gap-2
+                  rounded-lg border-2 border-dashed border-amber-300 bg-white py-3 cursor-pointer
+                  text-xs font-bold text-navy">
+                  <Upload className="w-4 h-4" /> Unggah PDF yang sudah bermeterai
+                  <input type="file" accept="application/pdf" className="hidden"
+                    onChange={e => void pilihMateraiPdf(e)} />
+                </label>
+              )}
+              {pesanMaterai && (
+                <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200
+                  rounded-lg p-2">{pesanMaterai}</p>
+              )}
+            </div>
+          )}
 
           <label className="block space-y-1">
             <span className="text-[11px] font-bold text-muted-foreground">Catatan (opsional)</span>
@@ -346,11 +345,9 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
 
         <div className="sticky bottom-0 bg-white border-t border-border p-4 space-y-2">
           <div className="flex gap-2">
-            <Button onClick={() => void unduh()} disabled={proses !== ''}
+            <Button onClick={unduh}
               variant="outline" className="flex-1 gap-1.5 font-bold">
-              {proses === 'unduh' ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Download className="w-4 h-4" />}
-              Unduh PDF
+              <Download className="w-4 h-4" /> Unduh PDF
             </Button>
             <Button data-kirim-kwitansi onClick={() => void kirim()}
               disabled={!siap.boleh || proses !== ''}
@@ -373,6 +370,12 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {peringatanMaterai(k)}
             </p>
+          )}
+          {/* Kegagalan menyimpan dilaporkan sebagai CATATAN, bukan sebagai
+              kegagalan mengunduh: PDF-nya sudah ada di tangan pemakainya. */}
+          {pesanSimpan && (
+            <p data-pesan-simpan className="text-[11px] text-amber-900 bg-amber-50
+              border border-amber-200 rounded-lg p-2">{pesanSimpan}</p>
           )}
           {baris && (
             <button

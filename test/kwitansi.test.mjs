@@ -16,7 +16,7 @@
 import {
   AMBANG_MATERAI, TARIF_MATERAI, perluMaterai, statusMaterajAwal, nomorKwitansi,
   terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, pesanWaKwitansi,
-  peringatanMaterai, TAUTAN_EMETERAI,
+  peringatanMaterai, TAUTAN_EMETERAI, berkasUntukKonsumen,
   KWITANSI_KOSONG, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI, LABEL_METODE_TERIMA,
 } from '../src/lib/kwitansi.ts'
 
@@ -213,6 +213,25 @@ for (const s of ['tidak_perlu', 'menunggu', 'terbubuh', 'gagal']) {
 }
 for (const m of ['transfer', 'tunai', 'giro', 'lainnya']) {
   assert(LABEL_METODE_TERIMA[m], `label metode ${m} ada`)
+}
+
+// ── Yang dikirim ke konsumen: versi bermeterai bila ada ─────────────────
+//
+// Mengirim PDF bersih padahal versi bermeterainya sudah diunggah berarti
+// konsumen memegang dokumen yang lebih lemah daripada yang sudah dibayar
+// meterainya — dan tidak ada yang akan menyadarinya sampai dipersoalkan.
+assert(berkasUntukKonsumen({ materai_status: 'terbubuh', materai_pdf: 'data:application/pdf;base64,AA' })
+  === 'bermeterai', 'versi bermeterai yang dikirim bila sudah diunggah')
+assert(berkasUntukKonsumen({ materai_status: 'terbubuh', materai_pdf: '' }) === 'bersih',
+  'ditandai terbubuh tetapi berkasnya belum ada: yang dikirim tetap yang bersih')
+assert(berkasUntukKonsumen({ materai_status: 'menunggu', materai_pdf: 'data:x' }) === 'bersih',
+  'berkas ada tetapi belum ditandai: belum dianggap bermeterai')
+assert(berkasUntukKonsumen({ materai_status: 'tidak_perlu' }) === 'bersih',
+  'yang tidak wajib memakai PDF biasa')
+assert(berkasUntukKonsumen({}) === 'bersih', 'masukan kosong aman')
+{
+  const p = peringatanMaterai(LENGKAP)
+  assert(/unggah kembali/i.test(p), `peringatannya menyebut langkah unggahnya: ${p}`)
 }
 
 console.log(`kwitansi: ${ok} assert lulus`)
