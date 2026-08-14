@@ -3,21 +3,19 @@
 // laporan Kontraktor AI. Bila diisi, identitas PropFS tidak lagi dicetak.
 // ============================================================
 import { useEffect, useRef, useState } from 'react'
-import { Building2, Upload, Trash2, Loader2, Save, ShieldCheck, Info } from 'lucide-react'
+import { Building2, Upload, Trash2, Loader2, Save, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { useAuthStore } from '@/store/authStore'
 import { downscaleImage } from '@/lib/imageUtil'
 import {
-  brandingApi, getBrandingCache, perluWatermark, identitasLaporan,
+  brandingApi, getBrandingCache, identitasLaporan,
   PROFIL_KOSONG, type CompanyProfile,
 } from '@/lib/branding'
 
 export default function ProfilPerusahaanCard() {
   const { toast } = useToast()
-  const { getPlanFor } = useAuthStore()
   const [p, setP] = useState<CompanyProfile>(() => getBrandingCache())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -25,8 +23,6 @@ export default function ProfilPerusahaanCard() {
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const plan = getPlanFor('kontraktor')
-  const adaWatermark = perluWatermark(plan)
   const merek = identitasLaporan(p)
 
   useEffect(() => {
@@ -169,24 +165,17 @@ export default function ProfilPerusahaanCard() {
             )}
           </div>
 
-          {/* Status watermark */}
-          <div className={`rounded-xl p-3 flex items-start gap-2.5 ${
-            adaWatermark ? 'bg-amber-50 border border-amber-200' : 'bg-emerald-50 border border-emerald-200'}`}>
-            {adaWatermark
-              ? <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              : <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
+          {/* Setiap dokumen dicetak bersih atas nama perusahaan pemakainya.
+              Tidak ada lagi penanda "Versi Gratis": sistem ini hanya bisa
+              dipakai setelah berlangganan, jadi tidak ada versi lain untuk
+              dibedakan — dan menempelkan iklan pada surat orang, di hadapan
+              konsumen dan pemasoknya, tidak pernah pantas. */}
+          <div className="rounded-xl p-3 flex items-start gap-2.5 bg-emerald-50
+            border border-emerald-200">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-relaxed">
-              {adaWatermark ? (
-                <>
-                  <b className="text-amber-800">Paket gratis:</b> laporan masih diberi watermark PropFS.
-                  Berlangganan untuk mendapatkan laporan bersih sepenuhnya atas nama perusahaan Anda.
-                </>
-              ) : (
-                <>
-                  <b className="text-emerald-800">Langganan aktif:</b> seluruh laporan dicetak tanpa
-                  watermark apa pun.
-                </>
-              )}
+              <b className="text-emerald-800">Dokumen bersih:</b> seluruh laporan, SPK, PO,
+              dan kwitansi dicetak atas nama perusahaan Anda, tanpa watermark apa pun.
             </p>
           </div>
 

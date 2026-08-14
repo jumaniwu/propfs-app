@@ -308,6 +308,57 @@ export function namaProyekEntri(
   return String(ketemu?.nama ?? '').trim()
 }
 
+/**
+ * Siapa yang boleh mengubah dan menghapus kwitansi yang sudah terbit.
+ *
+ * HANYA pemilik/direktur dan superadmin. Kwitansi adalah bukti penerimaan uang
+ * yang bernomor urut; mengubahnya berarti mengubah arsip, dan menghapusnya
+ * berarti melubangi urutan nomornya. Keduanya tanggung jawab yang tidak bisa
+ * dibagikan ke seluruh tim hanya karena praktis — orang yang mencatat
+ * penerimaan tidak boleh juga menjadi orang yang bisa menghilangkan catatannya.
+ *
+ * Alasannya dikembalikan, bukan sekadar `false`, supaya tombol yang tidak
+ * muncul bisa diterangkan alih-alih membuat orang mengira aplikasinya rusak.
+ */
+export function bolehKelolaKwitansi(
+  role: string | null | undefined,
+  superadmin = false,
+): { boleh: boolean; alasan: string } {
+  if (superadmin === true) return { boleh: true, alasan: '' }
+  if (String(role ?? '').trim().toLowerCase() === 'pemilik') return { boleh: true, alasan: '' }
+  return {
+    boleh: false,
+    alasan: 'Hanya Pemilik/Direktur yang boleh mengubah atau menghapus kwitansi terbit.',
+  }
+}
+
+/**
+ * Akibat yang harus dikatakan SEBELUM kwitansi terkirim diubah atau dihapus.
+ *
+ * Yang sudah dikirim berarti tautannya sudah dipegang konsumen, dan PDF-nya
+ * mungkin sudah diunduh. Mengubahnya membuat dua dokumen bernomor sama beredar
+ * dengan isi berbeda; menghapusnya mematikan tautan yang sudah ada di tangan
+ * orang. Keduanya tetap boleh — kesalahan memang perlu bisa dibetulkan — asal
+ * yang mengerjakannya tahu apa yang terjadi.
+ */
+export function akibatUbahKwitansi(
+  k: Pick<Kwitansi, 'nomor'> & { terkirim_at?: string | null },
+): string {
+  if (!String(k?.terkirim_at ?? '').trim()) return ''
+  return `Kwitansi ${k?.nomor || 'ini'} sudah dikirim ke konsumen. Perubahannya ikut `
+    + 'terlihat di tautan yang sudah dipegang konsumen, tetapi PDF yang terlanjur '
+    + 'diunduh tetap versi lama. Kabari konsumennya setelah diperbaiki.'
+}
+
+export function akibatHapusKwitansi(
+  k: Pick<Kwitansi, 'nomor'> & { terkirim_at?: string | null },
+): string {
+  const dasar = `Kwitansi ${k?.nomor || 'ini'} dihapus permanen dan nomornya tidak dipakai ulang.`
+  return String(k?.terkirim_at ?? '').trim()
+    ? `${dasar} Kwitansi ini SUDAH DIKIRIM — tautan yang dipegang konsumen akan mati.`
+    : dasar
+}
+
 /** Situs resmi tempat meterai dibubuhkan sendiri. */
 export const TAUTAN_EMETERAI = 'https://e-meterai.co.id'
 

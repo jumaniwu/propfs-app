@@ -1,16 +1,14 @@
 // ============================================================
-// PropFS — Identitas & hak cetak pemakai yang sedang login
+// PropFS — Identitas pemakai yang sedang login
 //
-// Menyatukan dua hal yang sebelumnya diputuskan terpisah di tiap pemanggil:
-//   1. Nama & logo apa yang dicetak di kop dokumen
-//   2. Apakah dokumennya perlu diberi watermark "Versi Gratis"
+// Menyatukan satu hal yang sebelumnya diputuskan terpisah di tiap pemanggil:
+// nama & logo apa yang dicetak di kop dokumen.
 //
 // Dipisahkan dari branding.ts karena modul ini membaca store, sedangkan
 // branding.ts harus tetap murni agar bisa diuji langsung di Node.
 // ============================================================
 import { useAuthStore } from '@/store/authStore'
-import { getBrandingCache, identitasLaporan, type IdentitasCadangan, type IdentitasLaporan, type KonteksWatermark } from './branding'
-import type { Produk } from './produk'
+import { getBrandingCache, identitasLaporan, type IdentitasCadangan, type IdentitasLaporan } from './branding'
 
 /** Nama pemilik akun, cadangan kop untuk kontraktor perorangan. */
 export function identitasAkun(): IdentitasCadangan {
@@ -28,17 +26,3 @@ export function kopSaya(): IdentitasLaporan {
   return identitasLaporan(getBrandingCache(), identitasAkun())
 }
 
-/**
- * Keadaan yang menentukan watermark. Peran dan pemberian akses per pengguna
- * ikut dibawa — paket saja tidak cukup, lihat perluWatermark() di branding.ts.
- */
-export function konteksWatermark(produk: Produk = 'kontraktor'): KonteksWatermark {
-  const s = useAuthStore.getState()
-  return {
-    planId: s.getPlanFor(produk),
-    role: s.profile?.role ?? '',
-    customFeatures: s.profile?.custom_features ?? null,
-    fitur: 'cost_control',
-    sistemLanggananAktif: s.isSubscriptionEnabled,
-  }
-}

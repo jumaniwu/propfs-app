@@ -24,84 +24,6 @@ export const PROFIL_KOSONG: CompanyProfile = {
   nama: '', logo: '', alamat: '', telepon: '', email: '', website: '', npwp: '',
 }
 
-// ── Aturan watermark ────────────────────────────────────────────────────────
-
-/** Teks watermark yang dicetak pada laporan paket gratis. */
-export const TEKS_WATERMARK = 'PropFS — Versi Gratis'
-
-/**
- * Paket yang masih dianggap gratis (belum berlangganan).
- * Laporan pada paket ini diberi watermark; paket berbayar tidak.
- */
-const PAKET_GRATIS = new Set(['', 'free', 'trial', 'free_trial'])
-
-/**
- * Keadaan pengguna yang menentukan watermark.
- *
- * Paket saja TIDAK cukup. getPlanFor() mengembalikan 'free' pada dua keadaan
- * yang sama sekali bukan "pelanggan gratis":
- *
- *   - Superadmin dan pengguna dengan custom_features tidak punya baris
- *     langganan sama sekali — haknya datang dari peran, bukan dari paket.
- *   - Ketika sistem langganan DIMATIKAN, getPlanFor() mengembalikan 'free'
- *     untuk SEMUA orang. Tidak ada paket berbayar yang bisa dibeli, jadi
- *     menandai dokumennya "Versi Gratis" justru menyesatkan.
- *
- * Urutan pemeriksaan di bawah sengaja sama dengan isFeatureEnabled() di
- * authStore, supaya "boleh memakai fitur" dan "dokumennya bersih" tidak
- * pernah berbeda jawaban.
- */
-export interface KonteksWatermark {
-  /**
-   * Dokumen ini dikirim ke pihak luar (vendor), jadi tidak pernah diberi
-   * watermark apa pun paketnya. Watermark adalah penanda produk untuk pemakai
-   * aplikasi — mencetaknya pada surat pesanan berarti memasang iklan di atas
-   * kop surat perusahaan pengguna, di hadapan pemasoknya sendiri.
-   */
-  untukPihakLuar?: boolean
-  planId?: string | null
-  /** profile.role — 'superadmin' selalu bersih. */
-  role?: string | null
-  /** profile.custom_features — pemberian akses per pengguna. */
-  customFeatures?: Record<string, unknown> | null
-  /** Nama fitur yang dicari di customFeatures. */
-  fitur?: string
-  /** isSubscriptionEnabled. false = sistem langganan dimatikan. */
-  sistemLanggananAktif?: boolean
-}
-
-const FITUR_BAWAAN = 'cost_control'
-
-/** Konteks siap pakai untuk dokumen yang dikirim ke vendor/pihak luar. */
-export const TANPA_WATERMARK: KonteksWatermark = { untukPihakLuar: true }
-
-/**
- * Apakah laporan perlu diberi watermark.
- *
- * Menerima paket sebagai teks (bentuk lama) atau konteks lengkap. Bentuk teks
- * dipertahankan supaya pemanggil yang memang hanya tahu paketnya tetap jalan.
- */
-export function perluWatermark(
-  arg: string | null | undefined | KonteksWatermark,
-): boolean {
-  const k: KonteksWatermark = typeof arg === 'object' && arg !== null ? arg : { planId: arg }
-
-  // 0. Salinan untuk pihak luar selalu bersih.
-  if (k.untukPihakLuar === true) return false
-
-  // 1. Superadmin — dokumennya milik pengelola sistem, bukan pelanggan.
-  if ((k.role ?? '').trim().toLowerCase() === 'superadmin') return false
-
-  // 2. Akses yang diberikan langsung ke pengguna tertentu.
-  if (k.customFeatures?.[k.fitur ?? FITUR_BAWAAN] === true) return false
-
-  // 3. Sistem langganan dimatikan: tidak ada paket berbayar untuk dibandingkan.
-  if (k.sistemLanggananAktif === false) return false
-
-  // 4. Sisanya ditentukan paketnya.
-  return PAKET_GRATIS.has((k.planId ?? '').trim().toLowerCase())
-}
-
 // ── Identitas yang tampil di laporan ────────────────────────────────────────
 
 export interface IdentitasLaporan {
@@ -170,33 +92,27 @@ export function identitasLaporan(
   return { nama: 'PropFS', logo: '', kontak: 'propfs.id', bawaan: true, sumber: 'bawaan' }
 }
 
-/** Baris kaki laporan: identitas perusahaan, plus penanda gratis bila perlu. */
-export function footerLaporan(
-  profil: CompanyProfile | null | undefined,
-  planId: string | null | undefined | KonteksWatermark,
-): string {
+/** Baris kaki laporan: identitas perusahaan. */
+export function footerLaporan(profil: CompanyProfile | null | undefined): string {
   const id = identitasLaporan(profil)
-  const dasar = id.bawaan
+  return id.bawaan
     ? 'Dokumen digital · propfs.id'
     : `Dokumen digital · ${id.nama}${id.kontak ? ' · ' + id.kontak : ''}`
-  return perluWatermark(planId) ? `${dasar} · ${TEKS_WATERMARK}` : dasar
 }
 
 /**
- * Potongan kop + watermark untuk disebar ke setiap sheet laporan Excel:
- * `buildReportSheet({ ...spec, ...kopLaporan(profil, plan) })`.
+ * Potongan kop untuk disebar ke setiap sheet laporan Excel:
+ * `buildReportSheet({ ...spec, ...kopLaporan(profil) })`.
  */
 export function kopLaporan(
   profil: CompanyProfile | null | undefined,
-  planId: string | null | undefined | KonteksWatermark,
-): { kop?: string; kopKontak?: string; watermark?: string } {
+): { kop?: string; kopKontak?: string } {
   const id = identitasLaporan(profil)
-  const out: { kop?: string; kopKontak?: string; watermark?: string } = {}
+  const out: { kop?: string; kopKontak?: string } = {}
   if (!id.bawaan) {
     out.kop = id.nama
     if (id.kontak) out.kopKontak = id.kontak
   }
-  if (perluWatermark(planId)) out.watermark = TEKS_WATERMARK
   return out
 }
 

@@ -6,7 +6,6 @@ import { useCostStore } from '@/store/costStore'
 import { formatRupiah, formatPct } from '@/engine/formatter'
 import { exportToPDF } from '@/utils/export'
 import { getBrandingCache, footerLaporan, identitasLaporan } from '@/lib/branding'
-import { useAuthStore } from '@/store/authStore'
 import { toast } from '@/hooks/use-toast'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -181,7 +180,7 @@ export default function CostReportPage() {
             </div>
           </div>
           <div className="border-t border-white/20 pt-6 flex justify-between text-white/50 text-sm">
-            <span>{footerLaporan(getBrandingCache(), useAuthStore.getState().getPlanFor('kontraktor'))}</span>
+            <span>{footerLaporan(getBrandingCache())}</span>
             <span>Dicetak: {new Date().toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
           </div>
         </div>

@@ -14,7 +14,7 @@ import { procurementApi } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
 import { teksTerm, type PurchaseOrder } from '@/lib/procurement'
 import type { PoPublik } from '@/lib/procurementApi'
-import { TANPA_WATERMARK, type IdentitasLaporan } from '@/lib/branding'
+import type { IdentitasLaporan } from '@/lib/branding'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const tglPanjang = (s?: string | null) => {
@@ -91,11 +91,10 @@ export default function PoViewPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 -mt-6 space-y-4">
-        {/* Salinan vendor dicetak BERSIH: watermark "Versi Gratis" adalah
-            penanda produk untuk pemakai aplikasi, bukan untuk vendor yang
-            sekadar menerima surat pesanan. Kop diambil dari server karena
-            vendor membuka halaman ini tanpa login. */}
-        <button onClick={() => downloadPoPdf(po, TANPA_WATERMARK, kopVendor(po))}
+        {/* Kop diambil dari server, bukan dari cache: vendor membuka halaman
+            ini tanpa login, jadi cache lokal dan sesi — keduanya milik
+            perangkat pemakai aplikasi — tidak ada di sini. */}
+        <button onClick={() => downloadPoPdf(po, kopVendor(po))}
           className="w-full h-12 rounded-xl bg-gold text-navy font-black text-sm inline-flex items-center justify-center gap-2 hover:bg-gold/90">
           <Download className="w-4 h-4" /> UNDUH PDF
         </button>

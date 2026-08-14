@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf'
-import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark, type IdentitasLaporan } from './branding'
+import type { IdentitasLaporan } from './branding'
 import {
   terbilang, perluMaterai, namaFileKwitansi, LABEL_METODE_TERIMA, TARIF_MATERAI,
   type Kwitansi, type MetodeTerima,
@@ -25,7 +25,6 @@ const tglPanjang = (s: string) => {
 export function buatKwitansiPdf(
   k: Kwitansi,
   merek: IdentitasLaporan,
-  konteks?: string | null | KonteksWatermark,
 ): jsPDF {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
   const W = 297
@@ -153,23 +152,14 @@ export function buatKwitansiPdf(
     }
   }
 
-  if (perluWatermark(konteks)) {
-    doc.setTextColor(200, 205, 210)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(40)
-    try {
-      const g = doc as unknown as { setGState?: (s: unknown) => void; GState?: new (o: unknown) => unknown }
-      if (g.setGState && g.GState) g.setGState(new g.GState({ opacity: 0.12 }))
-    } catch { /* jsPDF lama: watermark tetap tercetak, hanya lebih pekat */ }
-    doc.text(TEKS_WATERMARK, W / 2, H / 2, { align: 'center', angle: 20 })
-  }
 
   return doc
 }
 
 export function unduhKwitansiPdf(
-  k: Kwitansi, merek: IdentitasLaporan, konteks?: string | null | KonteksWatermark,
+  k: Kwitansi, merek: IdentitasLaporan,
 ): void {
-  buatKwitansiPdf(k, merek, konteks).save(namaFileKwitansi({ ...k, materai_pdf: null }))
+  buatKwitansiPdf(k, merek).save(namaFileKwitansi({ ...k, materai_pdf: null }))
 }
 
 /**
@@ -201,8 +191,8 @@ export function unduhPdfTersimpan(data: string, nama: string): void {
 
 /** PDF sebagai base64 tanpa awalan data URI — inilah yang dikirim ke e-Meterai. */
 export function kwitansiPdfBase64(
-  k: Kwitansi, merek: IdentitasLaporan, konteks?: string | null | KonteksWatermark,
+  k: Kwitansi, merek: IdentitasLaporan,
 ): string {
-  const uri = buatKwitansiPdf(k, merek, konteks).output('datauristring')
+  const uri = buatKwitansiPdf(k, merek).output('datauristring')
   return uri.slice(uri.indexOf(',') + 1)
 }
