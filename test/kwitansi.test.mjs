@@ -15,7 +15,8 @@
 // ============================================================
 import {
   AMBANG_MATERAI, TARIF_MATERAI, perluMaterai, statusMaterajAwal, nomorKwitansi,
-  terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, pesanWaKwitansi,
+  terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, siapSimpanKwitansi,
+  pesanWaKwitansi,
   peringatanMaterai, TAUTAN_EMETERAI, berkasUntukKonsumen,
   KWITANSI_KOSONG, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI, LABEL_METODE_TERIMA,
 } from '../src/lib/kwitansi.ts'
@@ -189,6 +190,46 @@ const LENGKAP = {
   assert(siapKirimKwitansi({ ...LENGKAP, penanda_nama: '' }).boleh === false,
     'tanpa penanda tangan ditolak')
   assert(siapKirimKwitansi(KWITANSI_KOSONG).boleh === false, 'yang kosong ditolak')
+}
+
+// ── 6b. Menyimpan dan mengirim adalah dua peristiwa yang berbeda ────────
+//
+// Formulir kwitansi kini hanya MENYIMPAN. Unduh PDF, pembubuhan meterai, dan
+// pengiriman ke konsumen dikerjakan dari daftar kwitansi terbit, karena
+// ketiganya berulang dan terjadi pada waktu yang berlainan.
+//
+// Yang dijaga di sini: gerbang simpan tidak boleh ikut menuntut hal-hal yang
+// hanya diperlukan saat mengirim. Kwitansi yang isinya sudah lengkap tetap
+// layak tersimpan meskipun nomor WhatsApp konsumennya baru dicari besok —
+// kalau tidak, satu kolom kosong membuat seluruh pekerjaan pengisian hilang.
+{
+  assert(siapSimpanKwitansi(LENGKAP).boleh === true, 'yang lengkap boleh disimpan')
+  assert(siapSimpanKwitansi(LENGKAP).alasan === '', 'tanpa alasan penolakan')
+
+  assert(siapSimpanKwitansi({ ...LENGKAP, penerima_wa: '' }).boleh === true,
+    'tanpa nomor WhatsApp TETAP boleh disimpan — itu syarat mengirim, bukan menyimpan')
+  assert(siapSimpanKwitansi({ ...LENGKAP, penanda_signature: null }).boleh === true,
+    'belum ditandatangani pun boleh disimpan')
+  assert(siapSimpanKwitansi({ ...LENGKAP, materai_status: 'menunggu' }).boleh === true,
+    'belum bermeterai tidak menahan penyimpanan')
+
+  assert(siapSimpanKwitansi({ ...LENGKAP, penerima_dari: '   ' }).boleh === false,
+    'nama penyetor berisi spasi saja tetap dianggap kosong')
+  assert(siapSimpanKwitansi({ ...LENGKAP, penerima_dari: '' }).alasan.includes('penyetor'),
+    'alasannya disebutkan, bukan ditolak diam-diam')
+  assert(siapSimpanKwitansi({ ...LENGKAP, untuk_pembayaran: '' }).alasan.includes('Uraian'),
+    'uraian pembayaran kosong ditolak dengan alasannya')
+  assert(siapSimpanKwitansi({ ...LENGKAP, jumlah: 0 }).boleh === false, 'nominal nol ditolak')
+  assert(siapSimpanKwitansi({ ...LENGKAP, jumlah: -5 }).boleh === false, 'nominal minus ditolak')
+  assert(siapSimpanKwitansi({ ...LENGKAP, penanda_nama: '' }).boleh === false,
+    'tanpa nama penanda tangan ditolak')
+  assert(siapSimpanKwitansi(KWITANSI_KOSONG).boleh === false, 'yang kosong ditolak')
+
+  // Masukan yang tidak berbentuk kwitansi sama sekali tidak boleh melempar:
+  // gerbang ini dipanggil pada tiap ketikan di dalam formulir.
+  assert(siapSimpanKwitansi({}).boleh === false, 'objek kosong ditolak, bukan melempar')
+  assert(siapSimpanKwitansi(null).boleh === false, 'null ditolak, bukan melempar')
+  assert(siapSimpanKwitansi(undefined).boleh === false, 'undefined ditolak, bukan melempar')
 }
 
 // ── 7. Pesan WhatsApp ───────────────────────────────────────────────────

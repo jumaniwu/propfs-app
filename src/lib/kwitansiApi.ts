@@ -93,8 +93,32 @@ async function json<T>(path: string, init: RequestInit, apa: string, publik = fa
 const rpc = <T>(fn: string, body: unknown, apa: string, publik = false) =>
   json<T>(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) }, apa, publik)
 
+/**
+ * Kolom yang dimuat untuk daftar — disebut satu per satu supaya `materai_pdf`
+ * TIDAK ikut.
+ *
+ * PDF bermeterai disimpan sebagai data URI di dalam barisnya sendiri, sampai
+ * 3 MB setiap satu. Daftar kwitansi kini memuat ulang tiap kali ada tindakan,
+ * jadi `select=*` berarti mengunduh ulang seluruh PDF yang pernah dibubuhi
+ * hanya untuk menampilkan nomor dan nominalnya.
+ */
+const KOLOM_DAFTAR = [
+  'id', 'nomor', 'tanggal', 'penerima_dari', 'penerima_wa', 'untuk_pembayaran',
+  'jumlah', 'metode', 'project_name', 'penanda_nama', 'penanda_jabatan', 'catatan',
+  'materai_status', 'materai_sn', 'penanda_signature', 'pemasukan_id', 'perlu_materai',
+  'materai_at', 'materai_galat', 'view_token', 'terkirim_at', 'created_at',
+].join(',')
+
 const nyata: KwitansiApi = {
   async list() {
+    // Bila satu saja kolom di atas belum ada di basis data pemakainya,
+    // PostgREST menolak seluruh permintaannya. Daftar yang kosong gara-gara
+    // satu nama kolom jauh lebih buruk daripada muatan yang lebih berat, jadi
+    // ada jalan mundur ke `select=*`.
+    const res = await restFetch(
+      `kwitansi?select=${KOLOM_DAFTAR}&order=created_at.desc`, {}, 15000,
+    ).catch(() => null)
+    if (res?.ok) return await res.json() as BarisKwitansi[]
     return await json<BarisKwitansi[]>('kwitansi?select=*&order=created_at.desc', {}, 'memuat kwitansi')
   },
   async buat(k) {

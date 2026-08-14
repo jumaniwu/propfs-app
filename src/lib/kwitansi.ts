@@ -266,6 +266,31 @@ export function berkasUntukKonsumen(
 /** Situs resmi tempat meterai dibubuhkan sendiri. */
 export const TAUTAN_EMETERAI = 'https://e-meterai.co.id'
 
+/**
+ * Apa yang harus terisi sebelum kwitansi boleh DISIMPAN.
+ *
+ * Dipisahkan dari `siapKirimKwitansi` karena menyimpan dan mengirim kini dua
+ * peristiwa yang berbeda: yang satu terjadi di dalam formulir, yang lain dari
+ * daftar kwitansi terbit. Yang menahan pengiriman (nomor WhatsApp konsumen)
+ * tidak boleh ikut menahan penyimpanan — kwitansi yang sudah lengkap isinya
+ * tetap layak tersimpan meskipun nomor WA-nya baru dicari besok.
+ */
+export function siapSimpanKwitansi(k: Kwitansi): { boleh: boolean; alasan: string } {
+  if (!String(k?.penerima_dari ?? '').trim()) {
+    return { boleh: false, alasan: 'Nama penyetor belum diisi.' }
+  }
+  if (!String(k?.untuk_pembayaran ?? '').trim()) {
+    return { boleh: false, alasan: 'Uraian pembayaran belum diisi.' }
+  }
+  if (!(Number(k?.jumlah) > 0)) {
+    return { boleh: false, alasan: 'Nominalnya masih nol.' }
+  }
+  if (!String(k?.penanda_nama ?? '').trim()) {
+    return { boleh: false, alasan: 'Nama penanda tangan belum diisi.' }
+  }
+  return { boleh: true, alasan: '' }
+}
+
 export function siapKirimKwitansi(k: Kwitansi): { boleh: boolean; alasan: string } {
   if (!String(k.penerima_dari ?? '').trim()) {
     return { boleh: false, alasan: 'Nama penyetor belum diisi.' }
