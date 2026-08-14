@@ -34,6 +34,7 @@
 
 import type { RealisasiEntry } from './ai-realisasi.ts'
 import type { PurchaseOrder, PoItem } from './procurement.ts'
+import { jenisPo } from './procurement.ts'
 import type { DeliveryOrder, PoPayment } from './penerimaan.ts'
 import { totalDibayar, statusBayar, type StatusBayar } from './penerimaan.ts'
 import { normalNota } from './duplikatBiaya.ts'
@@ -226,6 +227,102 @@ export function barisDariSuratJalan(
         doId: teks(d.id),
       }
     })
+}
+
+// ── Pembelian non-proyek yang belum jadi biaya perusahaan ──────────────────
+
+/**
+ * Baris biaya dari PO biaya kantor.
+ *
+ * Berbeda dari `barisDariSuratJalan` dalam tiga hal yang semuanya disengaja:
+ *
+ *   1. `tipe: 'operasional'`, bukan `'material'` — `hitungInventori` hanya
+ *      menghitung yang bertipe material sebagai stok, dan kertas A4 kantor
+ *      bukan persediaan proyek.
+ *   2. `kategori: 'kantor'` — kategori baru mengalir sendiri ke Laba Rugi,
+ *      yang mengelompokkan pengeluaran hanya dari string kategorinya.
+ *   3. TANPA `doId` — penanda itu ada untuk mencegah stok dihitung dua kali,
+ *      dan di sini tidak ada stok yang bisa terhitung dua kali.
+ *
+ * Dipakai untuk PO berjenis `kantor`. PO berjenis `alat` TIDAK lewat sini:
+ * alat menjadi aset, bukan beban, dan yang menjadi beban hanyalah
+ * penyusutannya.
+ */
+export function barisDariPoKantor(
+  d: DeliveryOrder, po: PurchaseOrder,
+): Omit<RealisasiEntry, 'id'>[] {
+  const hargaPo = new Map<string, PoItem>()
+  for (const it of po.items ?? []) {
+    const k = kunci(it?.nama)
+    if (k) hargaPo.set(k, it)
+  }
+  const tanggal = teks(d.tanggal_nota) || teks(d.tanggal_terima) || teks(po.tanggal)
+
+  return (d.items ?? [])
+    .filter(it => teks(it?.nama) && Number(it?.qty) > 0)
+    .map(it => {
+      const asal = hargaPo.get(kunci(it.nama))
+      const harga = Number(asal?.harga) || 0
+      const qty = Number(it.qty) || 0
+      return {
+        tipe: 'operasional' as const,
+        tanggal,
+        namaMaterial: teks(it.nama),
+        volume: qty,
+        satuan: teks(it.satuan) || teks(asal?.satuan) || 'unit',
+        hargaSatuan: harga,
+        namaSupplier: teks(po.vendor_nama),
+        nomorNota: teks(d.nomor_nota),
+        keterangan: `${teks(it.nama)} — dari ${teks(po.nomor)}`,
+        kategori: 'kantor',
+        jumlah: Math.round(qty * harga),
+        status: '✅ Dicatat',
+      }
+    })
+}
+
+/**
+ * Penerimaan barang PO biaya kantor yang belum ada di buku biaya non-proyek.
+ *
+ * Sejajar `penerimaanBelumTercatat`, tetapi membaca daftar biaya umum — bukan
+ * realisasi proyek — dan hanya melihat PO berjenis `kantor`. Penandanya di
+ * sini `keterangan`, bukan `doId`: baris biaya kantor sengaja tidak membawa
+ * `doId` (lihat `barisDariPoKantor`), jadi yang membuktikan "sudah dicatat"
+ * adalah nomor PO yang tertulis di keterangannya.
+ */
+export function poKantorBelumTercatat(
+  dos: DeliveryOrder[] | null | undefined,
+  pos: PurchaseOrder[] | null | undefined,
+  biayaUmum: RealisasiEntry[] | null | undefined,
+  bayar: PoPayment[] | null | undefined,
+): UsulDariPo[] {
+  const notaTerpakai = new Set<string>()
+  const poTerpakai = new Set<string>()
+  for (const e of biayaUmum ?? []) {
+    const n = normalNota(e?.nomorNota)
+    if (n) notaTerpakai.add(n)
+    const m = /dari\s+(\S+)/.exec(teks(e?.keterangan))
+    if (m) poTerpakai.add(normalNota(m[1]))
+  }
+
+  const hasil: UsulDariPo[] = []
+  for (const d of dos ?? []) {
+    const po = (pos ?? []).find(p => teks(p?.id) === teks(d?.po_id))
+    if (!po || jenisPo(po) !== 'kantor') continue
+    if (normalNota(d.nomor_nota) && notaTerpakai.has(normalNota(d.nomor_nota))) continue
+    if (normalNota(po.nomor) && poTerpakai.has(normalNota(po.nomor))) continue
+
+    const entri = barisDariPoKantor(d, po)
+    if (!entri.length) continue
+    hasil.push({
+      po, suratJalan: d,
+      status: statusBayar(po, bayar),
+      sisa: Math.max(0, (Number(po.total) || 0) - totalDibayar(po.id, bayar)),
+      entri,
+      total: entri.reduce((s, e) => s + e.jumlah, 0),
+    })
+  }
+  return hasil
 }
 
 /** Ringkasan satu kalimat untuk panel "belum tercatat". */

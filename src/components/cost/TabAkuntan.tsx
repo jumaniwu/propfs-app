@@ -6,11 +6,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Scale, TrendingUp, PackageOpen, ClipboardList, Download,
-  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet,
+  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet, Wrench,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
 import PanelDaftarKwitansi from './PanelDaftarKwitansi'
+import SubNonProyek from './SubNonProyek'
+import { asetApi } from '@/lib/asetApi'
+import { totalAsetTetap, type AsetAlat } from '@/lib/asetAlat'
 import { perluMaterai, namaProyekEntri } from '@/lib/kwitansi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -50,9 +53,9 @@ const fmt = (n: number) => `Rp ${Math.round(n).toLocaleString('id-ID')}`
 const fmtJt = (n: number) =>
   `Rp ${((Number(n) || 0) / 1_000_000).toFixed(2).replace('.', ',')} Jt`
 
-type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname' | 'hutang'
+type SubTab = 'labarugi' | 'pemasukan' | 'inventori' | 'opname' | 'hutang' | 'nonproyek'
 
-const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname', 'hutang']
+const SUB_TABS: SubTab[] = ['labarugi', 'pemasukan', 'inventori', 'opname', 'hutang', 'nonproyek']
 /** Nilai dropdown lingkup untuk "semua proyek". */
 const KONSOLIDASI = '__konsolidasi__'
 
@@ -68,7 +71,7 @@ export default function TabAkuntan(
   const { toast } = useToast()
   const { realisasiEntries, projectInfo } = useCostStore()
   const {
-    pemasukanEntries, inventoryAdjustments,
+    pemasukanEntries, inventoryAdjustments, biayaUmumEntries,
     addPemasukan, deletePemasukan, addAdjustment, deleteAdjustment,
     setPemasukanProject,
   } = useAkuntanStore()
@@ -108,7 +111,7 @@ export default function TabAkuntan(
     } finally { setHutangMuat(false) }
   }
   useEffect(() => {
-    if (sub !== 'hutang' && sub !== 'inventori') return
+    if (sub !== 'hutang' && sub !== 'inventori' && sub !== 'nonproyek') return
     void muatHutang()
     teamApi().myWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([]))
   }, [sub]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,12 +137,26 @@ export default function TabAkuntan(
     : { jenis: 'proyek', projectId: lingkupId }
   const konsolidasi = lingkupId === KONSOLIDASI
 
-  /** Pengeluaran sesuai lingkup: proyek aktif memakai state aktif, selain itu ditarik lintas proyek. */
+  /**
+   * Pengeluaran sesuai lingkup.
+   *
+   * Biaya umum (kantor, alat, sewa) tidak dimiliki proyek mana pun, jadi ia
+   * ikut pada dua lingkup saja: Konsolidasi — karena itu memang uang
+   * perusahaan yang keluar — dan "Umum (Non-Proyek)". Ia TIDAK PERNAH ikut ke
+   * lingkup sebuah proyek; kalau ikut, laba proyek akan berkurang oleh biaya
+   * yang bukan miliknya, dan tidak akan ada yang tahu dari mana asalnya.
+   *
+   * `getAllRealisasi()` selalu menempelkan projectId dari proyek pemiliknya,
+   * jadi tidak ada satu pun entri proyek yang bisa jatuh ke Umum. Kedua daftar
+   * ini tidak akan pernah tumpang-tindih.
+   */
   const pengeluaran = useMemo(() => {
-    if (!konsolidasi && lingkupId === projectInfo?.id) return realisasiEntries
+    if (konsolidasi) return [...saringLingkup(semuaRealisasi(), lingkup), ...biayaUmumEntries]
+    if (lingkupId === PROYEK_UMUM) return biayaUmumEntries
+    if (lingkupId === projectInfo?.id) return realisasiEntries
     return saringLingkup(semuaRealisasi(), lingkup)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [konsolidasi, lingkupId, projectInfo?.id, realisasiEntries, daftarProyek])
+  }, [konsolidasi, lingkupId, projectInfo?.id, realisasiEntries, daftarProyek, biayaUmumEntries])
 
   const pemasukanLingkup = useMemo(
     () => saringLingkup(pemasukanEntries, lingkup),
@@ -180,7 +197,33 @@ export default function TabAkuntan(
     () => hitungInventori(pengeluaran, adjustmentsLingkup, penerimaanLingkup, pemakaianLingkup),
     [pengeluaran, adjustmentsLingkup, penerimaanLingkup, pemakaianLingkup],
   )
-  const neraca = useMemo(() => hitungNeraca(pemasukanLingkup, pengeluaran, inventori), [pemasukanLingkup, pengeluaran, inventori])
+  /**
+   * Alat kerja perusahaan. Dimuat sekali di sini, bukan di dalam sub-tabnya,
+   * karena nilainya ikut ke NERACA — dan neraca tercetak di sub-tab Laba Rugi,
+   * yang bisa dibuka tanpa pernah menyentuh sub-tab Aset.
+   */
+  const [asetAlat, setAsetAlat] = useState<AsetAlat[]>([])
+  /** Dinaikkan tiap sub-tab Aset mengubah sesuatu, supaya neracanya ikut segar. */
+  const [muatAset, setMuatAset] = useState(0)
+  useEffect(() => {
+    // Gagal memuat bukan kesalahan: tabelnya baru ada setelah migrasi
+    // dijalankan, dan seluruh laporan lain tetap benar tanpanya.
+    asetApi().list().then(setAsetAlat).catch(() => setAsetAlat([]))
+  }, [muatAset])
+
+  /**
+   * Aset tetap hanya masuk lingkup KONSOLIDASI. Alat kerja milik perusahaan,
+   * bukan milik satu proyek — menambahkannya ke neraca sebuah proyek berarti
+   * mengaku proyek itu memiliki gensetnya.
+   */
+  const asetTetap = useMemo(
+    () => (konsolidasi ? totalAsetTetap(asetAlat) : 0),
+    [konsolidasi, asetAlat],
+  )
+  const neraca = useMemo(
+    () => hitungNeraca(pemasukanLingkup, pengeluaran, inventori, asetTetap),
+    [pemasukanLingkup, pengeluaran, inventori, asetTetap],
+  )
 
   const loadOpnames = () => {
     setOpnameLoading(true)
@@ -324,6 +367,7 @@ export default function TabAkuntan(
           ['inventori', 'Inventori', <PackageOpen key="i" className="w-3.5 h-3.5" />],
           ['opname', 'Opname', <ClipboardList key="i" className="w-3.5 h-3.5" />],
           ['hutang', 'Hutang Vendor (PO)', <Wallet key="i" className="w-3.5 h-3.5" />],
+          ['nonproyek', 'Aset & Biaya Kantor', <Wrench key="i" className="w-3.5 h-3.5" />],
         ] as Array<[SubTab, string, JSX.Element]>).map(([key, label, icon]) => (
           <button key={key} onClick={() => { setSub(key); onSubChange?.(key) }}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all ${
@@ -332,6 +376,19 @@ export default function TabAkuntan(
           </button>
         ))}
       </div>
+
+      {sub === 'nonproyek' && (
+        hutangMuat
+          ? <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          : (
+          <SubNonProyek
+            pos={pos} dos={dos} bayar={bayarPo}
+            daftarProyek={daftarProyek.map(p => ({ id: p.info.id, nama: p.info.projectName }))}
+            bolehUbah={bolehBayar}
+            onUbah={() => { setMuatAset(n => n + 1); void muatHutang() }}
+          />
+        )
+      )}
 
       {sub === 'hutang' && (
         hutangMuat
@@ -467,6 +524,12 @@ function SubLabaRugi({ labaRugi, neraca }: {
             <p className="text-xs font-bold text-blue-dk uppercase">Aset</p>
             <BarisNeraca label="Kas & Bank" nilai={neraca.kas} />
             <BarisNeraca label="Persediaan" nilai={neraca.persediaan} />
+            {/* Baris ini hanya muncul bila memang ada alatnya. Baris "Rp 0,00"
+                yang selalu tercetak melatih orang melewatinya, sehingga saat
+                angkanya benar-benar terisi pun ia tidak terbaca. */}
+            {neraca.asetTetap > 0 && (
+              <BarisNeraca label="Alat & Aset" nilai={neraca.asetTetap} />
+            )}
             <BarisNeraca label="Total" nilai={neraca.totalAset}
               kelas="border-t border-blue-200 pt-1 font-black" />
           </div>
@@ -481,8 +544,12 @@ function SubLabaRugi({ labaRugi, neraca }: {
         <p className={`text-xs rounded-xl px-3 py-2 ${neraca.seimbang ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
           {neraca.seimbang ? '✅ Neraca seimbang (Aset = Pasiva).' : '⚠️ Selisih pembulatan neraca — periksa data pemasukan/pengeluaran.'}
         </p>
-        <p className="text-[11px] text-muted-foreground">
-          Catatan: pemasukan berkategori <b>Modal Disetor</b> masuk ke pasiva modal; material yang masih menjadi stok dihitung sebagai aset persediaan.
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Catatan: pemasukan berkategori <b>Modal Disetor</b> masuk ke pasiva modal; material
+          yang masih menjadi stok dihitung sebagai aset persediaan
+          {neraca.asetTetap > 0
+            ? '; alat kerja dihitung sebesar nilai bukunya, dan yang membebani laba hanya penyusutannya.'
+            : '.'}
         </p>
       </div>
     </div>

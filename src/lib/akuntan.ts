@@ -96,6 +96,8 @@ export interface LabaRugi {
 export interface Neraca {
   kas: number
   persediaan: number
+  /** Nilai buku alat kerja: harga perolehan dikurangi penyusutannya. */
+  asetTetap: number
   totalAset: number
   modalDisetor: number
   labaBerjalan: number
@@ -314,19 +316,42 @@ export function penerimaanInventori(
   return hasil
 }
 
-/** Neraca sederhana: Aset (kas + persediaan) = Modal disetor + laba berjalan (non-modal). */
-export function hitungNeraca(pemasukan: PemasukanEntry[], pengeluaran: RealisasiEntry[], inventori: InventoryRow[]): Neraca {
+/**
+ * Neraca sederhana: Aset (kas + persediaan + aset tetap) = Modal + laba berjalan.
+ *
+ * `asetTetap` adalah NILAI BUKU seluruh alat kerja — harga perolehan dikurangi
+ * penyusutannya — dan berpenilaian bawaan 0 supaya pemanggil lama tetap jalan.
+ *
+ * Mengapa menambahkannya kembali ke laba itu benar, dan bukan menghitung ganda:
+ * harga beli alat SUDAH keluar dari kas dan sudah tercatat sebagai pengeluaran.
+ * Yang seharusnya membebani laba bukan seluruh harganya, melainkan penyusutan
+ * yang sudah berjalan. Menambahkan kembali nilai bukunya membatalkan bagian
+ * yang belum menjadi beban — sisanya, yang tetap membebani laba, persis sama
+ * dengan akumulasi penyusutannya. Pola yang sama persis dipakai `persediaan`.
+ *
+ * Keseimbangannya tetap terjaga secara aljabar:
+ *   totalAset   = (M − K) + Pers + AT
+ *   labaBerjalan = (M − modal) − K + Pers + AT
+ *   totalPasiva = modal + labaBerjalan = M − K + Pers + AT = totalAset
+ */
+export function hitungNeraca(
+  pemasukan: PemasukanEntry[],
+  pengeluaran: RealisasiEntry[],
+  inventori: InventoryRow[],
+  asetTetap = 0,
+): Neraca {
   const totalPemasukan = pemasukan.reduce((s, p) => s + p.jumlah, 0)
   const totalPengeluaran = pengeluaran.reduce((s, e) => s + e.jumlah, 0)
   const modalDisetor = pemasukan.filter(p => p.kategori === 'modal').reduce((s, p) => s + p.jumlah, 0)
   const persediaan = inventori.reduce((s, r) => s + r.nilai, 0)
+  const tetap = Number.isFinite(Number(asetTetap)) ? Math.max(0, Number(asetTetap)) : 0
   const kas = totalPemasukan - totalPengeluaran
   // pengeluaran material yang masih jadi stok dipindah dari beban ke aset persediaan
-  const labaBerjalan = (totalPemasukan - modalDisetor) - totalPengeluaran + persediaan
-  const totalAset = kas + persediaan
+  const labaBerjalan = (totalPemasukan - modalDisetor) - totalPengeluaran + persediaan + tetap
+  const totalAset = kas + persediaan + tetap
   const totalPasiva = modalDisetor + labaBerjalan
   return {
-    kas, persediaan, totalAset, modalDisetor, labaBerjalan, totalPasiva,
+    kas, persediaan, asetTetap: tetap, totalAset, modalDisetor, labaBerjalan, totalPasiva,
     seimbang: Math.abs(totalAset - totalPasiva) < 1,
   }
 }
