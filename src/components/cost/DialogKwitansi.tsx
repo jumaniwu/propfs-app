@@ -3,6 +3,7 @@ import {
   X, Download, Send, Loader2, ShieldCheck, AlertTriangle, Copy, Upload, FileCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import SignaturePad from '@/components/cost/SignaturePad'
 import { useToast } from '@/hooks/use-toast'
 import { kopSaya } from '@/lib/identitasSaya'
 import { waKe } from '@/lib/waLink'
@@ -54,6 +55,7 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
   const [distributor, setDistributor] = useState<string[]>([])
   const [pesanSimpan, setPesanSimpan] = useState('')
   const [materaiPdf, setMateraiPdf] = useState<{ nama: string; data: string } | null>(null)
+  const [tandaTangan, setTandaTangan] = useState(false)
   const [beli, setBeli] = useState(0)
 
   useEffect(() => {
@@ -335,6 +337,35 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
               )}
             </div>
           )}
+
+          {/* Tanda tangan digital, sama seperti SPK. Kwitansi tanpa tanda
+              tangan hanyalah selembar angka; yang membuatnya berlaku sebagai
+              tanda terima adalah tanda tangan penerimanya. */}
+          <div className="rounded-xl border border-border p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-navy">Tanda tangan penerima</p>
+              {k.penanda_signature && (
+                <button onClick={() => { ubah('penanda_signature', null); setTandaTangan(false) }}
+                  className="text-[11px] font-bold text-muted-foreground underline">Ulangi</button>
+              )}
+            </div>
+            {k.penanda_signature ? (
+              <img data-ttd-tersimpan src={k.penanda_signature} alt="Tanda tangan"
+                className="h-20 object-contain bg-white rounded-lg border border-border" />
+            ) : tandaTangan ? (
+              <SignaturePad height={150} onChange={d => ubah('penanda_signature', d)} />
+            ) : (
+              <button data-buka-ttd onClick={() => setTandaTangan(true)}
+                className="w-full rounded-xl border-2 border-dashed border-border py-4
+                  text-xs font-bold text-navy hover:bg-slate-50">
+                Tanda tangani sekarang
+              </button>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Ditandatangani <b className="text-navy">{k.penanda_nama || '—'}</b>
+              {k.penanda_jabatan ? `, ${k.penanda_jabatan}` : ''}.
+            </p>
+          </div>
 
           <label className="block space-y-1">
             <span className="text-[11px] font-bold text-muted-foreground">Catatan (opsional)</span>

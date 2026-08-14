@@ -19,10 +19,8 @@ const tglPanjang = (s: string) => {
  * di ponsel maupun yang mencetaknya sama-sama mengenali bentuk itu tanpa perlu
  * membaca judulnya.
  *
- * Bidang meterai DIGAMBAR meski meterainya belum terbubuh, dengan tulisan yang
- * berbeda. Menyembunyikannya berarti kwitansi wajib-meterai yang belum
- * dimeterai terlihat persis seperti yang sudah — dan yang menandatanganinya
- * tidak punya cara mengetahuinya dari dokumen yang ada di tangannya.
+ * Bidang meterai hanya digambar bila meterainya MEMANG sudah terbubuh; lihat
+ * alasannya di dalam.
  */
 export function buatKwitansiPdf(
   k: Kwitansi,
@@ -110,25 +108,25 @@ export function buatKwitansiPdf(
   doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
   doc.text(tglPanjang(k.tanggal), xTtd, yNominal - 4)
 
-  if (perluMaterai(k.jumlah)) {
-    const terbubuh = k.materai_status === 'terbubuh'
-    doc.setDrawColor(terbubuh ? 16 : 190, terbubuh ? 140 : 130, terbubuh ? 90 : 130)
+  // Bidang meterai HANYA digambar bila meterainya memang sudah terbubuh.
+  //
+  // Semula kotak kosong bertuliskan "BELUM DIBUBUHI e-METERAI" ikut tercetak.
+  // Maksudnya jujur, tetapi akibatnya buruk: kwitansi yang diunduh untuk
+  // DIBUBUHI di situs e-Meterai justru membawa tulisan itu ke dalam dokumen
+  // finalnya — meterai aslinya menempel di sebelah tulisan yang menyatakan
+  // dokumennya belum bermeterai. Yang belum bermeterai cukup tidak punya
+  // bidang meterai; itu sudah menerangkan dirinya sendiri.
+  if (perluMaterai(k.jumlah) && k.materai_status === 'terbubuh') {
+    doc.setDrawColor(16, 140, 90)
     doc.setLineWidth(0.4)
     doc.roundedRect(xTtd, yNominal + 1, 26, 26, 2, 2, 'S')
     doc.setFontSize(6)
-    doc.setTextColor(terbubuh ? 16 : 150, terbubuh ? 120 : 100, terbubuh ? 80 : 100)
-    if (terbubuh) {
-      doc.text('e-METERAI', xTtd + 13, yNominal + 10, { align: 'center' })
-      doc.text(`Rp ${TARIF_MATERAI.toLocaleString('id-ID')}`, xTtd + 13, yNominal + 15, { align: 'center' })
-      if (k.materai_sn) {
-        doc.setFontSize(4.5)
-        doc.text(doc.splitTextToSize(k.materai_sn, 24), xTtd + 13, yNominal + 20, { align: 'center' })
-      }
-    } else {
-      // Dikatakan apa adanya. Bidang meterai kosong tanpa keterangan terbaca
-      // sebagai "meterainya lepas", bukan sebagai "belum dibubuhkan".
-      doc.text(doc.splitTextToSize('BELUM DIBUBUHI e-METERAI', 22), xTtd + 13, yNominal + 11,
-        { align: 'center' })
+    doc.setTextColor(16, 120, 80)
+    doc.text('e-METERAI', xTtd + 13, yNominal + 10, { align: 'center' })
+    doc.text(`Rp ${TARIF_MATERAI.toLocaleString('id-ID')}`, xTtd + 13, yNominal + 15, { align: 'center' })
+    if (k.materai_sn) {
+      doc.setFontSize(4.5)
+      doc.text(doc.splitTextToSize(k.materai_sn, 24), xTtd + 13, yNominal + 20, { align: 'center' })
     }
     doc.setTextColor(20, 30, 40)
   }
@@ -137,6 +135,12 @@ export function buatKwitansiPdf(
   if (k.penanda_nama) {
     doc.setFontSize(10)
     doc.text('Penerima,', xNama, yNominal + 4)
+    // Tanda tangan digital, bila sudah dibubuhkan.
+    if (k.penanda_signature) {
+      try {
+        doc.addImage(k.penanda_signature, 'PNG', xNama, yNominal + 6, 40, 18)
+      } catch { /* gambar tidak terbaca — garis tanda tangan tetap tercetak */ }
+    }
     doc.setDrawColor(160, 170, 180)
     doc.line(xNama, yNominal + 26, xNama + 44, yNominal + 26)
     doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
