@@ -1,9 +1,10 @@
-// Store Modul Akuntan: pemasukan & penyesuaian inventori.
+// Store Modul Akuntan: pemasukan, penyesuaian inventori, & biaya non-proyek.
 // Persist lokal (cepat/offline) + sinkron ke Supabase (tabel akuntan_data)
 // agar data sama di semua perangkat.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PemasukanEntry, InventoryAdjustment } from '@/lib/akuntan'
+import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { supabase } from '@/lib/supabase'
 import { useCostStore } from './costStore'
 import { gabungDenganNisan, type Nisan } from '@/lib/cloudSync'
@@ -13,6 +14,20 @@ import { tandaiMenyimpan, tandaiTersimpan, tandaiGagal } from '@/lib/syncStatus'
 interface AkuntanStore {
   pemasukanEntries: PemasukanEntry[]
   inventoryAdjustments: InventoryAdjustment[]
+  /**
+   * Pengeluaran perusahaan yang BUKAN milik proyek mana pun — biaya kantor,
+   * pembelian alat, sewa, langganan.
+   *
+   * Tinggal di sini, bukan di costStore, karena costStore per-proyek dan
+   * `saveToStorage()` langsung berhenti bila tidak ada proyek aktif. Store ini
+   * memang sudah global per-pemakai, sudah bersinkron ke `akuntan_data`, dan
+   * sudah punya nisan anti-hidup-lagi.
+   *
+   * Bertipe `RealisasiEntry` apa adanya, bukan bentuk baru: `hitungLabaRugi`
+   * dan `hitungNeraca` menerimanya tanpa perubahan sedikit pun. Bentuk kedua
+   * berarti dua jalur penghitungan yang harus dijaga tetap sama selamanya.
+   */
+  biayaUmumEntries: RealisasiEntry[]
   /**
    * Catatan penghapusan yang ikut disinkronkan. Tanpa ini, entri yang dihapus
    * di satu perangkat akan dihidupkan kembali oleh data cloud dan tampil dobel.
@@ -25,6 +40,8 @@ interface AkuntanStore {
   addAdjustment: (a: Omit<InventoryAdjustment, 'id'>) => void
   deleteAdjustment: (id: string) => void
   setAdjustmentProject: (id: string, projectId?: string) => void
+  addBiayaUmum: (rows: Array<Omit<RealisasiEntry, 'id'> & { id?: string }>) => void
+  deleteBiayaUmum: (id: string) => void
   clearAkuntan: () => void
   /** Tarik data cloud & gabungkan (dipanggil saat tab Akuntan dibuka). */
   loadFromCloud: () => Promise<void>
@@ -63,7 +80,9 @@ function proyekAktifId(): string | undefined {
   try { return useCostStore.getState().projectInfo?.id } catch { return undefined }
 }
 
-type IsiAkuntan = Pick<AkuntanStore, 'pemasukanEntries' | 'inventoryAdjustments' | 'hapusan'>
+type IsiAkuntan = Pick<
+  AkuntanStore, 'pemasukanEntries' | 'inventoryAdjustments' | 'biayaUmumEntries' | 'hapusan'
+>
 
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 function pushCloud(state: IsiAkuntan) {
@@ -80,6 +99,7 @@ function pushCloud(state: IsiAkuntan) {
           data: {
             pemasukanEntries: state.pemasukanEntries,
             inventoryAdjustments: state.inventoryAdjustments,
+            biayaUmumEntries: state.biayaUmumEntries,
             hapusan: state.hapusan,
           },
           updated_at: new Date().toISOString(),
@@ -105,6 +125,7 @@ export const useAkuntanStore = create<AkuntanStore>()(
     (set, get) => ({
       pemasukanEntries: [],
       inventoryAdjustments: [],
+      biayaUmumEntries: [],
       hapusan: [],
       addPemasukan: (p) => {
         // projectId dari pemanggil diutamakan; `p` bisa memuat projectId
@@ -154,14 +175,31 @@ export const useAkuntanStore = create<AkuntanStore>()(
         }))
         pushCloud(get())
       },
+      addBiayaUmum: (rows) => {
+        const baru = (rows ?? []).map((r, i) => ({
+          ...r,
+          id: r.id || `bu-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+        })) as RealisasiEntry[]
+        if (baru.length === 0) return
+        set(s => ({ biayaUmumEntries: [...s.biayaUmumEntries, ...baru] }))
+        pushCloud(get())
+      },
+      deleteBiayaUmum: (id) => {
+        set(s => ({
+          biayaUmumEntries: s.biayaUmumEntries.filter(e => e.id !== id),
+          hapusan: [...s.hapusan, nisanBaru(id)],
+        }))
+        pushCloud(get())
+      },
       clearAkuntan: () => {
         // Semua id yang dibuang ikut dicatat, agar tidak kembali dari cloud.
         set(s => ({
-          pemasukanEntries: [], inventoryAdjustments: [],
+          pemasukanEntries: [], inventoryAdjustments: [], biayaUmumEntries: [],
           hapusan: [
             ...s.hapusan,
             ...s.pemasukanEntries.map(p => nisanBaru(p.id)),
             ...s.inventoryAdjustments.map(a => nisanBaru(a.id)),
+            ...s.biayaUmumEntries.map(e => nisanBaru(e.id)),
           ],
         }))
         pushCloud(get())
@@ -190,10 +228,15 @@ export const useAkuntanStore = create<AkuntanStore>()(
             get().inventoryAdjustments, cloud.inventoryAdjustments ?? [], a => a.id,
             get().hapusan, nisanCloud,
           )
+          const bu = gabungDenganNisan(
+            get().biayaUmumEntries, cloud.biayaUmumEntries ?? [], e => e.id,
+            get().hapusan, nisanCloud,
+          )
           const merged: IsiAkuntan = {
             pemasukanEntries: pm.entries,
             inventoryAdjustments: ia.entries,
-            // kedua panggilan memakai kumpulan nisan yang sama, jadi cukup satu
+            biayaUmumEntries: bu.entries,
+            // ketiga panggilan memakai kumpulan nisan yang sama, jadi cukup satu
             hapusan: pm.nisan,
           }
           set(merged)

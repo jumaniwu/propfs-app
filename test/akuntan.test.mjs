@@ -260,4 +260,57 @@ console.log(`akuntan-nota-do: ${ok} assert lulus (kumulatif)`)
   assert(labelBulan(null) === '', 'null aman')
 }
 
-console.log(`akuntan-tabel-sempit: ${ok} assert lulus (kumulatif)`)
+// ── PO non-proyek tidak pernah jadi stok material proyek ───────────────
+//
+// Genset dan scaffolding memang datang lewat surat jalan seperti semen,
+// tetapi bukan bahan yang habis terpakai. Kalau ikut masuk persediaan, satu
+// genset akan dihitung sebagai nilai stok proyek dan terlihat "kurang
+// dipakai" selamanya — karena memang tidak pernah habis.
+{
+  const { penerimaanInventori } = await import('../src/lib/akuntan.ts')
+
+  const POS = [
+    { id: 'po-proyek', project_name: 'Noble Cove', jenis: 'proyek',
+      items: [{ nama: 'Semen', satuan: 'sak', harga: 65_000 }] },
+    { id: 'po-alat', project_name: '', jenis: 'alat',
+      items: [{ nama: 'Genset 5000W', satuan: 'unit', harga: 12_500_000 }] },
+    { id: 'po-kantor', project_name: '', jenis: 'kantor',
+      items: [{ nama: 'Kertas A4', satuan: 'rim', harga: 55_000 }] },
+    // PO lama, sebelum kolom `jenis` ada. WAJIB tetap dihitung.
+    { id: 'po-lama', project_name: 'Noble Cove',
+      items: [{ nama: 'Besi D13', satuan: 'btg', harga: 120_000 }] },
+  ]
+  const DOS = [
+    { po_id: 'po-proyek', items: [{ nama: 'Semen', satuan: 'sak', qty: 100 }] },
+    { po_id: 'po-alat', items: [{ nama: 'Genset 5000W', satuan: 'unit', qty: 1 }] },
+    { po_id: 'po-kantor', items: [{ nama: 'Kertas A4', satuan: 'rim', qty: 10 }] },
+    { po_id: 'po-lama', items: [{ nama: 'Besi D13', satuan: 'btg', qty: 50 }] },
+  ]
+
+  const semua = penerimaanInventori(DOS, POS)
+  const nama = semua.map(r => r.nama)
+  assert(nama.includes('Semen'), 'material proyek tetap masuk stok')
+  assert(nama.includes('Besi D13'),
+    'PO lama tanpa kolom jenis TETAP masuk stok — bawaannya proyek, bukan bukan-proyek')
+  assert(!nama.includes('Genset 5000W'), 'alat kerja TIDAK pernah jadi stok material')
+  assert(!nama.includes('Kertas A4'), 'ATK kantor TIDAK pernah jadi stok material')
+  assert(semua.length === 2, 'hanya dua baris yang lolos, bukan empat')
+
+  // Penjagaannya harus tetap berlaku saat dilihat per proyek.
+  const perProyek = penerimaanInventori(DOS, POS, 'Noble Cove')
+  assert(perProyek.map(r => r.nama).sort().join(',') === 'Besi D13,Semen',
+    'lingkup satu proyek pun tidak kemasukan alat/kantor')
+
+  // Dan alat yang KEBETULAN punya nama proyek tetap ditolak: yang menentukan
+  // adalah jenisnya, bukan ada-tidaknya nama proyek.
+  const alatBernamaProyek = penerimaanInventori(
+    [{ po_id: 'x', items: [{ nama: 'Scaffolding', satuan: 'set', qty: 5 }] }],
+    [{ id: 'x', project_name: 'Noble Cove', jenis: 'alat',
+       items: [{ nama: 'Scaffolding', satuan: 'set', harga: 900_000 }] }],
+    'Noble Cove',
+  )
+  assert(alatBernamaProyek.length === 0,
+    'PO alat yang terlanjur bernama proyek tetap ditolak — jenisnya yang menentukan')
+}
+
+console.log(`akuntan-po-non-proyek: ${ok} assert lulus (kumulatif)`)

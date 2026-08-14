@@ -13,7 +13,7 @@
 // ============================================================
 import {
   doUntukEntri, statusEntri, catatanBayar, penerimaanBelumTercatat,
-  barisDariSuratJalan, ringkasUsul,
+  barisDariSuratJalan, ringkasUsul, barisDariPoKantor, poKantorBelumTercatat,
 } from '../src/lib/sinkronRealisasi.ts'
 
 let ok = 0
@@ -183,5 +183,63 @@ assert(penerimaanBelumTercatat(null, null, null, null).length === 0, 'semua null
   assert(/Rp 5.053.000/.test(r), 'menyebut nilainya')
 }
 assert(ringkasUsul([]) === '', 'tanpa usul, tanpa kalimat')
+
+// ── Biaya kantor: beban perusahaan, bukan stok proyek ──────────────────
+{
+  const PO_KANTOR = {
+    id: 'pk1', nomor: 'PO/009/08/2026', vendor_nama: 'Toko ATK Jaya',
+    jenis: 'kantor', project_name: '', tanggal: '2026-08-01', total: 550_000,
+    items: [{ nama: 'Kertas A4 80gr', satuan: 'rim', qty: 10, harga: 55_000 }],
+  }
+  const DO_KANTOR = {
+    id: 'dk1', po_id: 'pk1', nomor_nota: 'ATK-991',
+    tanggal_nota: '2026-08-03', tanggal_terima: '2026-08-03',
+    items: [{ nama: 'Kertas A4 80gr', satuan: 'rim', qty: 10 }],
+  }
+
+  const baris = barisDariPoKantor(DO_KANTOR, PO_KANTOR)
+  assert(baris.length === 1, 'satu baris barang menghasilkan satu baris biaya')
+  const b = baris[0]
+  assert(b.jumlah === 550_000, 'nilainya qty yang datang x harga PO')
+  assert(b.kategori === 'kantor', 'kategorinya kantor, mengalir sendiri ke Laba Rugi')
+
+  // Tiga hal yang membedakannya dari barisDariSuratJalan, semuanya disengaja.
+  assert(b.tipe === 'operasional',
+    'BUKAN material — hitungInventori hanya menghitung material sebagai stok')
+  assert(b.doId === undefined,
+    'tanpa doId: penanda itu mencegah stok dihitung dua kali, dan di sini tidak ada stok')
+  assert(b.keterangan.includes('PO/009/08/2026'),
+    'nomor PO ikut di keterangan — itulah bukti "sudah dicatat" bagi usul berikutnya')
+
+  assert(barisDariPoKantor({ items: [] }, PO_KANTOR).length === 0, 'surat jalan kosong aman')
+  assert(barisDariPoKantor({ items: [{ nama: 'X', qty: 0 }] }, PO_KANTOR).length === 0,
+    'qty nol tidak jadi baris biaya')
+
+  // ── Usulan: hanya PO kantor, dan hanya yang belum tercatat ──
+  const usul = poKantorBelumTercatat([DO_KANTOR], [PO_KANTOR], [], [])
+  assert(usul.length === 1, 'PO kantor yang barangnya datang diusulkan')
+  assert(usul[0].total === 550_000, 'totalnya benar')
+
+  // PO proyek TIDAK ikut ke sini — itu urusan penerimaanBelumTercatat.
+  const poProyek = { ...PO_KANTOR, id: 'pp1', jenis: 'proyek', project_name: 'Noble Cove' }
+  assert(poKantorBelumTercatat([{ ...DO_KANTOR, po_id: 'pp1' }], [poProyek], [], []).length === 0,
+    'PO proyek tidak pernah diusulkan sebagai biaya kantor')
+  // PO alat juga tidak: alat jadi aset, dan yang jadi beban hanya penyusutannya.
+  const poAlat = { ...PO_KANTOR, id: 'pa1', jenis: 'alat' }
+  assert(poKantorBelumTercatat([{ ...DO_KANTOR, po_id: 'pa1' }], [poAlat], [], []).length === 0,
+    'PO alat tidak diusulkan sebagai biaya — ia aset, bukan beban')
+
+  // Yang sudah dicatat tidak diusulkan lagi — lewat nomor nota…
+  const sudahNota = [{ id: 'x', nomorNota: 'ATK 991', keterangan: 'apa saja', jumlah: 1 }]
+  assert(poKantorBelumTercatat([DO_KANTOR], [PO_KANTOR], sudahNota, []).length === 0,
+    'nomor nota yang sudah dipakai (beda spasi pun) menghentikan usulan')
+  // …maupun lewat nomor PO di keterangannya.
+  const sudahPo = [{ id: 'y', nomorNota: '', keterangan: 'Kertas A4 80gr — dari PO/009/08/2026', jumlah: 1 }]
+  assert(poKantorBelumTercatat([DO_KANTOR], [PO_KANTOR], sudahPo, []).length === 0,
+    'nomor PO di keterangan juga dianggap bukti sudah tercatat')
+
+  assert(poKantorBelumTercatat(null, null, null, null).length === 0, 'masukan null aman')
+  assert(poKantorBelumTercatat([DO_KANTOR], [], [], []).length === 0, 'tanpa PO-nya tidak diusulkan')
+}
 
 console.log(`sinkron-realisasi: ${ok} assert lulus`)
