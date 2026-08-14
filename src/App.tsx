@@ -48,6 +48,7 @@ const VendorDaftarPage = lazy(() => import('./pages/VendorDaftarPage'))
 const VendorItemPage = lazy(() => import('./pages/VendorItemPage'))
 const PoViewPage = lazy(() => import('./pages/PoViewPage'))
 const InvoiceKirimPage = lazy(() => import('./pages/InvoiceKirimPage'))
+const KwitansiViewPage = lazy(() => import('./pages/KwitansiViewPage'))
 const SiteplanPage = lazy(() => import('./pages/SiteplanPage'))
 const CostReportPage = lazy(() => import('./pages/CostReportPage'))
 const PaymentPage = lazy(() => import('./pages/PaymentPage'))
@@ -152,6 +153,7 @@ export default function App() {
           {ruteToken('vendor_item', <VendorItemPage />)}
           {ruteToken('po', <PoViewPage />)}
           {ruteToken('invoice', <InvoiceKirimPage />)}
+          {ruteToken('kwitansi', <KwitansiViewPage />)}
           {/* Cari Leads: form konsultasi calon konsumen, tanpa login */}
           {ruteToken('lead', <LeadFormPage />)}
 

@@ -172,8 +172,15 @@ function storedAccessToken(url: string): string | null {
   } catch { return null }
 }
 
-/** `publik: true` memakai kunci anon saja — halaman vendor tidak punya sesi. */
-async function restFetch(
+/**
+ * `publik: true` memakai kunci anon saja — halaman vendor tidak punya sesi.
+ *
+ * Diekspor supaya modul lain (kwitansiApi) memakai jalur yang SAMA, termasuk
+ * penyegaran token dan batas waktunya. Menyalinnya akan melahirkan salinan
+ * kedua yang tertinggal begitu salah satunya diperbaiki — pola yang sudah dua
+ * kali menimbulkan cacat di repo ini.
+ */
+export async function restFetch(
   path: string, init: RequestInit = {}, ms = 15000, publik = false,
 ): Promise<Response> {
   const { url, key } = supaConf()
