@@ -39,7 +39,17 @@ export interface AlatCatat {
   /** Catat pembayaran ke Akuntan → Hutang Vendor. */
   simpanBayar(input: {
     po_id: string; tanggal: string; jumlah: number; metode: string
-    referensi: string; bukti: null; catatan: string
+    referensi: string
+    /**
+     * Foto/PDF bukti transfernya, sebagai data URI.
+     *
+     * Dulu selalu `null`: lampiran yang dikirim ke Chat AI dibaca isinya lalu
+     * DIBUANG. Yang tersisa hanya angka hasil bacaan, tanpa dokumen yang bisa
+     * ditunjukkan ketika kelak dipertanyakan — dan bukti transfer justru
+     * dokumen yang paling sering diminta kembali.
+     */
+    bukti: string | null
+    catatan: string
   }): Promise<unknown>
 }
 
@@ -126,7 +136,8 @@ export async function catatRencana(
       await alat.simpanBayar({
         po_id: po.id, tanggal: b.usul.tanggal, jumlah: b.usul.jumlah,
         metode: b.usul.metode, referensi: teks(b.usul.referensi),
-        bukti: null, catatan: teks(b.usul.catatan) || 'Otomatis dari chat AI',
+        bukti: rencana.bukti ?? null,
+        catatan: teks(b.usul.catatan) || 'Otomatis dari chat AI',
       })
       terbayar++
     }
