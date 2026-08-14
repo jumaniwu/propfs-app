@@ -1,23 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  X, Download, Send, Loader2, ShieldCheck, AlertTriangle, Copy, Upload, FileCheck,
-} from 'lucide-react'
+import { X, Save, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useToast } from '@/hooks/use-toast'
-import { kopSaya } from '@/lib/identitasSaya'
-import { waKe } from '@/lib/waLink'
-import {
-  kwitansiApi, kwitansiLink, bubuhkanMaterai,
-  type BarisKwitansi,
-} from '@/lib/kwitansiApi'
-import { unduhKwitansiPdf, kwitansiPdfBase64 } from '@/lib/kwitansiPdf'
+import { kwitansiApi, type BarisKwitansi } from '@/lib/kwitansiApi'
 import {
   KWITANSI_KOSONG, nomorKwitansi, terbilang, perluMaterai, statusMaterajAwal,
-  siapKirimKwitansi, bolehBubuhMaterai, sisaKuota, pesanWaKwitansi,
-  peringatanMaterai, TAUTAN_EMETERAI,
-  AMBANG_MATERAI, LABEL_METODE_TERIMA, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI,
-  type Kwitansi, type MetodeTerima, type KuotaMaterai,
+  siapSimpanKwitansi, AMBANG_MATERAI, LABEL_METODE_TERIMA,
+  type Kwitansi, type MetodeTerima,
 } from '@/lib/kwitansi'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
@@ -25,11 +15,19 @@ const inputCls = 'w-full rounded-xl border border-border bg-white px-3 py-2 text
   + 'focus:outline-none focus:ring-2 focus:ring-gold/40'
 
 /**
- * Membuat kwitansi dari satu penerimaan yang sudah tercatat.
+ * Formulir kwitansi — mengisi dan MENYIMPAN, tidak lebih.
  *
  * Nominal dan uraiannya diambil dari entri pemasukannya, tidak diketik ulang.
  * Mengetik ulang adalah tempat lahirnya kwitansi yang angkanya berbeda dari
  * pembukuan — dan yang ketahuan belakangan hanya kalau ada yang membandingkan.
+ *
+ * Unduh PDF, kirim ke konsumen, dan pembubuhan meterai TIDAK ada di sini.
+ * Ketiganya dikerjakan dari daftar kwitansi terbit, sesudah kwitansinya
+ * tersimpan — sama seperti SPK. Alasannya bukan kerapian: ketiga tindakan itu
+ * masuk akal berkali-kali dan pada waktu yang berbeda-beda (meterai dibubuhkan
+ * di situs lain, konsumen dikirimi ulang minggu depan), sedangkan formulir ini
+ * hanya masuk akal sekali. Menggabungkannya memaksa formulir tetap terbuka
+ * untuk pekerjaan yang bukan miliknya.
  */
 export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }: {
   awal: { pemasukanId: string; tanggal: string; sumber: string; jumlah: number }
@@ -48,23 +46,15 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
     penanda_nama: namaSaya,
     materai_status: statusMaterajAwal(awal.jumlah),
   }))
-  const [baris, setBaris] = useState<BarisKwitansi | null>(null)
-  const [kuota, setKuota] = useState<KuotaMaterai>({ dibeli: 0, terpakai: 0 })
-  const [proses, setProses] = useState('')
-  const [pesanMaterai, setPesanMaterai] = useState('')
-  const [distributor, setDistributor] = useState<string[]>([])
+  const [proses, setProses] = useState(false)
   const [pesanSimpan, setPesanSimpan] = useState('')
   const [rinciSimpan, setRinciSimpan] = useState(false)
-  const [materaiPdf, setMateraiPdf] = useState<{ nama: string; data: string } | null>(null)
   const [tandaTangan, setTandaTangan] = useState(false)
-  const [beli, setBeli] = useState(0)
 
   useEffect(() => {
     void (async () => {
-      const api = kwitansiApi()
-      setKuota(await api.kuota().catch(() => ({ dibeli: 0, terpakai: 0 })))
       // Nomor urut diambil dari jumlah kwitansi bulan ini yang sudah ada.
-      const semua = await api.list().catch(() => [] as BarisKwitansi[])
+      const semua = await kwitansiApi().list().catch(() => [] as BarisKwitansi[])
       const bl = awal.tanggal.slice(0, 7)
       const urut = semua.filter(x => (x.tanggal ?? '').startsWith(bl)).length + 1
       setK(s => (s.nomor ? s : { ...s, nomor: nomorKwitansi(urut, new Date(awal.tanggal)) }))
@@ -72,183 +62,53 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
   }, [awal.tanggal])
 
   const wajib = perluMaterai(k.jumlah)
-  const merek = useMemo(() => kopSaya(), [])
-  const siap = siapKirimKwitansi(k)
-  // Penyedia dianggap belum siap sampai perantara mengatakan sebaliknya.
-  // Menganggapnya siap lalu gagal berarti kuota terpotong untuk apa-apa.
-  const [penyediaSiap, setPenyediaSiap] = useState(true)
-  const bolehBubuh = bolehBubuhMaterai(k, kuota, penyediaSiap)
+  const siap = useMemo(() => siapSimpanKwitansi(k), [k])
 
   const ubah = <K extends keyof Kwitansi>(key: K, v: Kwitansi[K]) =>
     setK(s => ({ ...s, [key]: v, ...(key === 'jumlah' ? { materai_status: statusMaterajAwal(v) } : {}) }))
 
-  /** Simpan sekali; sesudahnya kembalikan baris yang sama. */
-  async function pastikanTersimpan(): Promise<BarisKwitansi> {
-    if (baris) return baris
-    const b = await kwitansiApi().buat({
-      ...k,
-      pemasukan_id: awal.pemasukanId,
-      perlu_materai: wajib,
-    })
-    setBaris(b)
-    return b
-  }
-
-  /**
-   * Unduh PDF — TIDAK menunggu penyimpanan.
-   *
-   * Sebelumnya ia memanggil `pastikanTersimpan()` lebih dulu, sehingga satu
-   * galat server (403 karena migrasinya belum dijalankan) MEMBATALKAN unduhan
-   * yang sebenarnya seluruhnya dikerjakan di dalam peramban. Pekerjaan lokal
-   * tidak boleh digantungkan pada jaringan.
-   *
-   * Penyimpanannya tetap dijalankan, di belakang, dan kegagalannya dilaporkan
-   * sebagai catatan — bukan sebagai kegagalan mengunduh.
-   */
-  function unduh() {
-    unduhKwitansiPdf(k, merek)
-    void pastikanTersimpan().catch(e => {
-      setPesanSimpan(`PDF sudah terunduh, tetapi kwitansinya belum tersimpan di server: ${pesan(e)}`)
-    })
-  }
-
-  async function bubuh() {
-    setProses('materai')
-    setPesanMaterai('')
-    let b: BarisKwitansi | null = null
-    let terpotong = false
+  async function simpan() {
+    if (!siap.boleh || proses) return
+    setProses(true)
+    setPesanSimpan('')
     try {
-      b = await pastikanTersimpan()
-
-      // Kuota dipotong LEBIH DULU, lalu dikembalikan bila gagal. Urutan
-      // sebaliknya membuka celah: dua pembubuhan bersamaan sama-sama lolos
-      // pemeriksaan sisa, lalu salah satunya ditolak Peruri setelah
-      // dokumennya terlanjur ditandai bermeterai.
-      terpotong = await kwitansiApi().pakaiKuota(b.id)
-      if (!terpotong) {
-        setPesanMaterai('Kuota e-Meterai sudah habis. Beli dulu kuotanya di distributor resmi.')
-        return
-      }
-
-      const hasil = await bubuhkanMaterai({
-        pdfBase64: kwitansiPdfBase64(k, merek),
-        nomor: k.nomor,
-        tanggal: k.tanggal,
+      await kwitansiApi().buat({ ...k, pemasukan_id: awal.pemasukanId, perlu_materai: wajib })
+      toast({
+        title: 'Kwitansi tersimpan',
+        description: 'Unduh PDF, bubuhkan meterai, dan kirim ke konsumen dari daftar di bawah.',
       })
-
-      if (!hasil.ok) {
-        await kwitansiApi().kembalikanKuota(b.id, hasil.pesan ?? 'gagal').catch(() => {})
-        terpotong = false
-        setPenyediaSiap(!hasil.belumDipasang)
-        setDistributor(hasil.distributor ?? [])
-        setPesanMaterai(hasil.pesan ?? 'Pembubuhan gagal.')
-        await kwitansiApi().ubah(b.id, {
-          materai_status: 'gagal', materai_galat: (hasil.pesan ?? '').slice(0, 300),
-        } as Partial<BarisKwitansi>).catch(() => {})
-        return
-      }
-
-      await kwitansiApi().ubah(b.id, {
-        materai_status: 'terbubuh', materai_sn: hasil.sn ?? '',
-        materai_at: new Date().toISOString(),
-      } as Partial<BarisKwitansi>)
-      setK(s => ({ ...s, materai_status: 'terbubuh', materai_sn: hasil.sn ?? '' }))
-      setKuota(q => ({ ...q, terpakai: q.terpakai + 1 }))
-      toast({ title: '✅ e-Meterai terbubuh' })
-    } catch (e) {
-      if (b && terpotong) await kwitansiApi().kembalikanKuota(b.id, pesan(e)).catch(() => {})
-      setPesanMaterai(pesan(e))
-    } finally { setProses('') }
-  }
-
-  /**
-   * Terima PDF yang sudah dibubuhi meterai.
-   *
-   * Yang diunggah menggantikan berkas yang dikirim ke konsumen. Ukurannya
-   * dibatasi karena ia disimpan bersama barisnya; PDF satu halaman bermeterai
-   * jauh di bawah batas ini, dan yang jauh di atasnya bukan kwitansi.
-   */
-  async function pilihMateraiPdf(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    setPesanMaterai('')
-    if (f.size > 3 * 1024 * 1024) {
-      setPesanMaterai('Berkasnya lebih dari 3 MB. Kwitansi satu halaman semestinya jauh di bawah itu.')
-      return
-    }
-    const data = await new Promise<string>((selesai, gagal) => {
-      const r = new FileReader()
-      r.onload = () => selesai(String(r.result ?? ''))
-      r.onerror = () => gagal(r.error)
-      r.readAsDataURL(f)
-    })
-    setMateraiPdf({ nama: f.name, data })
-    setK(s => ({ ...s, materai_status: 'terbubuh', materai_pdf: data }))
-    void simpanMaterai(data)
-  }
-
-  /** Simpan versi bermeterai; kegagalannya tidak menghapus yang sudah diunggah. */
-  async function simpanMaterai(data: string) {
-    setProses('manual')
-    try {
-      const b = await pastikanTersimpan()
-      await kwitansiApi().ubah(b.id, {
-        materai_status: 'terbubuh', materai_pdf: data,
-        materai_at: new Date().toISOString(),
-      } as Partial<BarisKwitansi>)
-      toast({ title: 'PDF bermeterai tersimpan' })
-    } catch (e) {
-      setPesanSimpan(`PDF bermeterai belum tersimpan di server: ${pesan(e)}`)
-    } finally { setProses('') }
-  }
-
-  async function kirim() {
-    if (!siap.boleh) return
-    setProses('kirim')
-    try {
-      const b = await pastikanTersimpan()
-      await kwitansiApi().tandaiTerkirim(b.id)
-      const tautan = kwitansiLink(b.view_token)
-      window.open(waKe(k.penerima_wa, pesanWaKwitansi(k, tautan)), '_blank')
-      toast({ title: 'Kwitansi dikirim', description: 'Tautannya sudah bisa dibuka konsumen.' })
       onTutup()
     } catch (e) {
-      toast({ title: 'Gagal mengirim', description: pesan(e), variant: 'destructive' })
-    } finally { setProses('') }
-  }
-
-  async function tambahKuota() {
-    if (beli <= 0) return
-    setProses('kuota')
-    try {
-      await kwitansiApi().tambahKuota(beli, 'dicatat manual setelah pembelian di distributor')
-      setKuota(q => ({ ...q, dibeli: q.dibeli + beli }))
-      setBeli(0)
-      toast({ title: `${beli} e-Meterai ditambahkan ke kuota` })
-    } catch (e) {
-      toast({ title: 'Gagal', description: pesan(e), variant: 'destructive' })
-    } finally { setProses('') }
+      setPesanSimpan(e instanceof Error ? e.message : String(e))
+    } finally { setProses(false) }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onTutup}>
+    // z-[60], di ATAS navigasi bawah yang ber-z-50. Dengan z-50 keduanya seri,
+    // dan urutan DOM memenangkan navigasi — bilah tombol dialog ini tertutup
+    // olehnya di ponsel, sehingga terbaca sebagai "tidak bisa digulung".
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center
+      p-0 sm:p-4" onClick={onTutup}>
       <div onClick={e => e.stopPropagation()}
         className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh]
-          overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-border px-5 py-3 flex items-center
-          justify-between">
-          <div>
+          flex flex-col overflow-hidden">
+        {/* Tiga baris: kepala tetap, isi yang menggulung, kaki tetap. Dulu
+            seluruh dialog yang menggulung sementara kaki dan kepalanya
+            `sticky` — dan `sticky` di dalam kotak yang juga menggulung sendiri
+            adalah tempat lahirnya bilah yang menutupi isinya. */}
+        <div className="border-b border-border px-5 py-3 flex items-center justify-between shrink-0">
+          <div className="min-w-0">
             <p className="font-bold text-navy">Kwitansi Digital</p>
-            <p className="text-[11px] text-muted-foreground">{k.nomor || 'menyiapkan nomor…'}</p>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {k.nomor || 'menyiapkan nomor…'}
+            </p>
           </div>
-          <button onClick={onTutup} className="p-1.5 hover:bg-slate-100 rounded-lg">
+          <button onClick={onTutup} className="p-1.5 hover:bg-slate-100 rounded-lg shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 space-y-4">
           <div className="grid grid-cols-2 gap-2">
             <label className="col-span-2 space-y-1">
               <span className="text-[11px] font-bold text-muted-foreground">Telah terima dari</span>
@@ -294,49 +154,19 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
             <p className="text-xs italic text-muted-foreground mt-0.5">{terbilang(k.jumlah)}</p>
           </div>
 
-          {/* ── e-Meterai: unduh → bubuhkan sendiri → unggah kembali ──── */}
+          {/* Kewajiban meterai DIKATAKAN di sini, tetapi tidak dikerjakan di
+              sini: pembubuhannya menyeberang ke situs lain, jadi ia menunggu
+              sampai kwitansinya tersimpan dan punya baris sendiri. */}
           {wajib && (
-            <div className={`rounded-xl border p-3 space-y-2 ${
-              k.materai_status === 'terbubuh'
-                ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-1.5 text-sm font-bold text-navy">
-                  <ShieldCheck className="w-4 h-4" /> e-Meterai
-                </p>
-                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full
-                  ${TONE_STATUS_MATERAI[k.materai_status]}`}>
-                  {LABEL_STATUS_MATERAI[k.materai_status]}
-                </span>
-              </div>
-              <p className="text-[11px] leading-relaxed text-muted-foreground">
+            <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50
+              p-3 text-[11px] leading-relaxed text-amber-900">
+              <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
+              <span className="flex-1 min-w-0">
                 Nominal di atas Rp {AMBANG_MATERAI.toLocaleString('id-ID')}{' '}
-                <b>wajib bermeterai</b> menurut UU No. 10/2020. Unduh PDF-nya, bubuhkan
-                e-Meterai sendiri, lalu unggah kembali di sini — yang dikirim ke konsumen
-                adalah versi yang bermeterai.
-              </p>
-
-              {k.materai_status === 'terbubuh' && materaiPdf ? (
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-200
-                  bg-white p-2">
-                  <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="text-xs truncate flex-1">{materaiPdf.nama}</span>
-                  <button onClick={() => { setMateraiPdf(null); ubah('materai_status', 'menunggu') }}
-                    className="p-1 hover:bg-slate-100 rounded-lg"><X className="w-3.5 h-3.5" /></button>
-                </div>
-              ) : (
-                <label data-unggah-materai className="flex items-center justify-center gap-2
-                  rounded-lg border-2 border-dashed border-amber-300 bg-white py-3 cursor-pointer
-                  text-xs font-bold text-navy">
-                  <Upload className="w-4 h-4" /> Unggah PDF yang sudah bermeterai
-                  <input type="file" accept="application/pdf" className="hidden"
-                    onChange={e => void pilihMateraiPdf(e)} />
-                </label>
-              )}
-              {pesanMaterai && (
-                <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200
-                  rounded-lg p-2">{pesanMaterai}</p>
-              )}
-            </div>
+                <b>wajib bermeterai</b> menurut UU No. 10/2020. Simpan dulu kwitansinya —
+                pembubuhan meterainya dikerjakan dari daftar kwitansi terbit.
+              </span>
+            </p>
           )}
 
           {/* Tanda tangan digital, sama seperti SPK. Kwitansi tanpa tanda
@@ -383,70 +213,44 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
           </label>
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-border p-4 space-y-2
-          max-h-[40vh] overflow-y-auto overscroll-contain">
-          <div className="flex gap-2">
-            <Button onClick={unduh}
-              variant="outline" className="flex-1 gap-1.5 font-bold">
-              <Download className="w-4 h-4" /> Unduh PDF
-            </Button>
-            <Button data-kirim-kwitansi onClick={() => void kirim()}
-              disabled={!siap.boleh || proses !== ''}
-              variant="gold" className="flex-1 gap-1.5 font-bold">
-              {proses === 'kirim' ? <Loader2 className="w-4 h-4 animate-spin" />
-                : <Send className="w-4 h-4" />}
-              Kirim ke Konsumen
-            </Button>
-          </div>
+        <div className="border-t border-border p-4 space-y-2 shrink-0">
+          {pesanSimpan && (
+            <div data-pesan-simpan className="rounded-lg bg-rose-50 border border-rose-200 p-2">
+              <div className="flex items-start gap-1.5">
+                <p className="flex-1 min-w-0 text-[11px] text-rose-900 break-words">
+                  Kwitansinya belum tersimpan.{' '}
+                  <button onClick={() => setRinciSimpan(v => !v)} className="font-bold underline">
+                    {rinciSimpan ? 'Tutup' : 'Kenapa?'}
+                  </button>
+                </p>
+                <button onClick={() => setPesanSimpan('')}
+                  className="p-0.5 text-rose-900/60 hover:text-rose-900 shrink-0"
+                  aria-label="Tutup pesan">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {rinciSimpan && (
+                <p className="mt-1.5 text-[11px] text-rose-900 break-words">{pesanSimpan}</p>
+              )}
+            </div>
+          )}
           {!siap.boleh && (
             <p className="flex items-start gap-1.5 text-[11px] text-amber-900">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               {siap.alasan}
             </p>
           )}
-          {/* Peringatan meterai TIDAK diulang di sini: kalimat yang sama sudah
-              tercetak di kartu e-Meterai tepat di atas. Mengulangnya membuat
-              bilah bawah tinggi sekali, mendorong isinya keluar layar, dan
-              melatih orang melewati keduanya. */}
-          {/* Kegagalan menyimpan dilaporkan sebagai CATATAN, bukan sebagai
-              kegagalan mengunduh: PDF-nya sudah ada di tangan pemakainya.
-              Ringkas dan bisa ditutup — rinciannya di balik satu ketukan,
-              sebab yang panjang justru terpotong tepi layar dan tak terbaca. */}
-          {pesanSimpan && (
-            <div data-pesan-simpan className="rounded-lg bg-amber-50 border border-amber-200 p-2">
-              <div className="flex items-start gap-1.5">
-                <p className="flex-1 min-w-0 text-[11px] text-amber-900 break-words">
-                  Belum tersimpan di server — PDF-nya tetap bisa dipakai.{' '}
-                  <button onClick={() => setRinciSimpan(v => !v)}
-                    className="font-bold underline">
-                    {rinciSimpan ? 'Tutup' : 'Kenapa?'}
-                  </button>
-                </p>
-                <button onClick={() => setPesanSimpan('')}
-                  className="p-0.5 text-amber-900/60 hover:text-amber-900 shrink-0"
-                  aria-label="Tutup pesan">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {rinciSimpan && (
-                <p className="mt-1.5 text-[11px] text-amber-900 break-words">{pesanSimpan}</p>
-              )}
-            </div>
-          )}
-          {baris && (
-            <button
-              onClick={() => {
-                navigator.clipboard?.writeText(kwitansiLink(baris.view_token))
-                toast({ title: 'Tautan kwitansi disalin' })
-              }}
-              className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground">
-              <Copy className="w-3 h-3" /> Salin tautan kwitansi
-            </button>
-          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onTutup} className="font-bold">Batal</Button>
+            <Button data-simpan-kwitansi onClick={() => void simpan()}
+              disabled={!siap.boleh || proses}
+              variant="gold" className="flex-1 gap-1.5 font-bold">
+              {proses ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Simpan Kwitansi
+            </Button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
-const pesan = (e: unknown) => (e instanceof Error ? e.message : String(e))
