@@ -225,6 +225,28 @@ export function bolehBubuhMaterai(
  * sudah dipegang konsumen tidak bisa ditarik kembali untuk dimeterai
  * belakangan. Yang bisa ditunda adalah pengirimannya, bukan meterainya.
  */
+/**
+ * Peringatan meterai — bukan penghalang.
+ *
+ * Semula kwitansi di atas ambang DITAHAN sampai meterainya terbubuh. Itu benar
+ * secara hukum, tetapi salah secara alat: pembubuhannya dikerjakan sendiri di
+ * situs e-Meterai, dan menahan dokumennya di sini berarti menahan pekerjaan
+ * yang memang harus keluar dari aplikasi ini dulu.
+ *
+ * Jadi kewajibannya tetap DIKATAKAN, di layar dan di atas kertas, tetapi yang
+ * memutuskan kapan mengirim adalah orang yang mengerjakannya.
+ */
+export function peringatanMaterai(k: Pick<Kwitansi, 'jumlah' | 'materai_status'>): string {
+  if (!perluMaterai(k?.jumlah)) return ''
+  if (k?.materai_status === 'terbubuh') return ''
+  return `Nominal di atas Rp ${AMBANG_MATERAI.toLocaleString('id-ID')} wajib bermeterai `
+    + `Rp ${TARIF_MATERAI.toLocaleString('id-ID')} (UU No. 10/2020). Unduh PDF-nya, bubuhkan `
+    + 'e-Meterai di situs resmi, lalu tandai di sini agar tercatat.'
+}
+
+/** Situs resmi tempat meterai dibubuhkan sendiri. */
+export const TAUTAN_EMETERAI = 'https://e-meterai.co.id'
+
 export function siapKirimKwitansi(k: Kwitansi): { boleh: boolean; alasan: string } {
   if (!String(k.penerima_dari ?? '').trim()) {
     return { boleh: false, alasan: 'Nama penyetor belum diisi.' }
@@ -238,14 +260,7 @@ export function siapKirimKwitansi(k: Kwitansi): { boleh: boolean; alasan: string
   if (!String(k.penanda_nama ?? '').trim()) {
     return { boleh: false, alasan: 'Nama penanda tangan belum diisi.' }
   }
-  if (perluMaterai(k.jumlah) && k.materai_status !== 'terbubuh') {
-    return {
-      boleh: false,
-      alasan: `Nominal di atas Rp ${AMBANG_MATERAI.toLocaleString('id-ID')} wajib bermeterai. `
-        + 'Bubuhkan e-Meterai dulu — kwitansi yang sudah dipegang konsumen tidak bisa '
-        + 'ditarik kembali untuk dimeterai belakangan.',
-    }
-  }
+  // Kewajiban meterai TIDAK lagi menahan pengiriman — lihat `peringatanMaterai`.
   return { boleh: true, alasan: '' }
 }
 
