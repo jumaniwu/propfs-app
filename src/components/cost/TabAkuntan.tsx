@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
+import PanelDaftarKwitansi from './PanelDaftarKwitansi'
 import { perluMaterai } from '@/lib/kwitansi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -459,6 +460,8 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSa
   const [kategori, setKategori] = useState<PemasukanEntry['kategori']>('termin')
   const [jumlah, setJumlah] = useState(0)
   const [kwitansiUntuk, setKwitansiUntuk] = useState<PemasukanEntry | null>(null)
+  /** Dinaikkan setiap dialog ditutup, supaya daftarnya ikut memuat ulang. */
+  const [kwitansiBerubah, setKwitansiBerubah] = useState(0)
 
   const total = entries.reduce((s, p) => s + p.jumlah, 0)
 
@@ -570,6 +573,11 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSa
         )}
       </div>
 
+      {/* Riwayat kwitansi yang sudah terbit — nomornya, statusnya, dan
+          tautannya. Tanpa ini, kwitansi hanya ada sebagai berkas unduhan di
+          perangkat yang membuatnya. */}
+      <PanelDaftarKwitansi muatUlang={kwitansiBerubah} />
+
       {kwitansiUntuk && (
         <DialogKwitansi
           awal={{
@@ -578,7 +586,7 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSa
           }}
           projectName={namaProyek}
           namaSaya={namaSaya}
-          onTutup={() => setKwitansiUntuk(null)}
+          onTutup={() => { setKwitansiUntuk(null); setKwitansiBerubah(n => n + 1) }}
         />
       )}
     </div>

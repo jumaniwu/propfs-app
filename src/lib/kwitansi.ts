@@ -83,6 +83,8 @@ export interface Kwitansi {
   materai_sn: string
   /** PDF yang SUDAH dibubuhi meterai, diunggah kembali oleh penerbitnya. */
   materai_pdf?: string | null
+  /** Tanda tangan digital penerima, sebagai data URL PNG. */
+  penanda_signature?: string | null
 }
 
 export const KWITANSI_KOSONG: Kwitansi = {
