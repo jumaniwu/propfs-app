@@ -81,6 +81,8 @@ export interface Kwitansi {
   catatan: string
   materai_status: StatusMaterai
   materai_sn: string
+  /** PDF yang SUDAH dibubuhi meterai, diunggah kembali oleh penerbitnya. */
+  materai_pdf?: string | null
 }
 
 export const KWITANSI_KOSONG: Kwitansi = {
@@ -241,7 +243,22 @@ export function peringatanMaterai(k: Pick<Kwitansi, 'jumlah' | 'materai_status'>
   if (k?.materai_status === 'terbubuh') return ''
   return `Nominal di atas Rp ${AMBANG_MATERAI.toLocaleString('id-ID')} wajib bermeterai `
     + `Rp ${TARIF_MATERAI.toLocaleString('id-ID')} (UU No. 10/2020). Unduh PDF-nya, bubuhkan `
-    + 'e-Meterai di situs resmi, lalu tandai di sini agar tercatat.'
+    + 'e-Meterai sendiri, lalu unggah kembali di sini.'
+}
+
+/**
+ * Berkas mana yang dikirim ke konsumen.
+ *
+ * Bila versi bermeterai sudah diunggah, ITULAH yang dikirim. Mengirim PDF
+ * bersih padahal versi bermeterainya ada berarti konsumen memegang dokumen
+ * yang lebih lemah daripada yang sudah dibayar meterainya — dan tidak ada yang
+ * akan menyadarinya sampai dokumennya dipersoalkan.
+ */
+export function berkasUntukKonsumen(
+  k: Pick<Kwitansi, 'materai_status'> & { materai_pdf?: string | null },
+): 'bermeterai' | 'bersih' {
+  return k?.materai_status === 'terbubuh' && String(k?.materai_pdf ?? '').trim()
+    ? 'bermeterai' : 'bersih'
 }
 
 /** Situs resmi tempat meterai dibubuhkan sendiri. */

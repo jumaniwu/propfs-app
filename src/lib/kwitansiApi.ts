@@ -15,6 +15,7 @@ export interface BarisKwitansi extends Kwitansi {
   penanda_signature: string | null
   perlu_materai: boolean
   materai_at: string | null
+  materai_pdf?: string | null
   materai_galat: string
   view_token: string
   terkirim_at: string | null
@@ -66,10 +67,24 @@ export interface KwitansiApi {
 
 const PESAN_MIGRASI = ' Jalankan migration_kwitansi_materai.sql di Supabase SQL Editor.'
 
+/**
+ * 403 dari PostgREST berarti kebijakan RLS menolak barisnya.
+ *
+ * Hampir selalu satu dari dua hal, dan keduanya bisa dikerjakan pemakainya —
+ * jadi keduanya disebutkan. "HTTP 403" sendirian tidak memberi tahu apa pun
+ * dan membuat orang mengira aplikasinya rusak.
+ */
+const PESAN_403 = ' Tabelnya menolak akses: jalankan migration_kwitansi_materai.sql'
+  + ' (dan migration_kwitansi_materai_pdf.sql) di Supabase SQL Editor, lalu keluar'
+  + ' dan masuk lagi.'
+
 async function json<T>(path: string, init: RequestInit, apa: string, publik = false): Promise<T> {
   const res = await restFetch(path, init, 15000, publik)
   if (!res.ok) {
-    throw new Error(`Gagal ${apa} (HTTP ${res.status}).` + (res.status === 404 ? PESAN_MIGRASI : ''))
+    throw new Error(
+      `Gagal ${apa} (HTTP ${res.status}).`
+      + (res.status === 404 ? PESAN_MIGRASI : res.status === 403 ? PESAN_403 : ''),
+    )
   }
   return await res.json() as T
 }
