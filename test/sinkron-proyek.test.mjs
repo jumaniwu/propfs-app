@@ -135,4 +135,71 @@ assert(gabungProyek([], []).gabungan.length === 0, 'dua sisi kosong aman')
 }
 assert(kalimatSinkron(ringkasSinkron([], [])) === 'Belum ada proyek.', 'belum ada proyek berbunyi wajar')
 
+
+// ── Dua perangkat menyunting proyek yang SAMA ──────────────────────────────
+//
+// Ini kejadian nyata, bukan pengandaian: laptop menampilkan 26 transaksi
+// (Rp 46,79 juta) sementara ponsel menampilkan 46 (Rp 109,42 juta) untuk
+// proyek yang sama. Dua puluh baris hilang tanpa pesan apa pun — karena
+// penggabungnya MEMILIH salah satu dokumen, bukan menyatukan isinya.
+{
+  const { gabungIsiProyek } = await import('../src/lib/sinkronProyek.ts')
+
+  const laptop = {
+    info: { id: 'p1', projectName: 'Ruko Pak Soni' },
+    updatedAt: '2026-08-14T10:00:00.000Z',
+    realisasiEntries: [
+      { id: 'a', jumlah: 1000 },
+      { id: 'b', jumlah: 2000 },
+    ],
+  }
+  const ponsel = {
+    info: { id: 'p1', projectName: 'Ruko Pak Soni' },
+    updatedAt: '2026-08-14T12:59:00.000Z',
+    realisasiEntries: [
+      { id: 'a', jumlah: 1000 },
+      { id: 'c', jumlah: 3000 },
+      { id: 'd', jumlah: 4000 },
+    ],
+  }
+
+  const satu = gabungIsiProyek(laptop, ponsel)
+  const id = satu.realisasiEntries.map(e => e.id).sort().join(',')
+  assert(id === 'a,b,c,d', `SEMUA baris kedua perangkat terbawa: ${id}`)
+  assert(satu.realisasiEntries.length === 4, 'empat baris, bukan dua atau tiga')
+
+  // Ini yang dulu terjadi: dokumen ponsel lebih baru, jadi baris "b" milik
+  // laptop lenyap.
+  assert(satu.realisasiEntries.some(e => e.id === 'b'),
+    'baris milik perangkat yang menyimpan lebih DULU tidak dibuang')
+
+  const hasil = gabungProyek([laptop], [ponsel])
+  assert(hasil.gabungan[0].realisasiEntries.length === 4,
+    'dan gabungProyek pun menyatukan isinya, bukan memilih salah satu')
+  assert(hasil.perluDorong.length === 1,
+    'hasil gabungannya didorong balik supaya cloud ikut lengkap')
+}
+{
+  const { gabungIsiProyek } = await import('../src/lib/sinkronProyek.ts')
+  // Baris yang sama disunting di kedua sisi: versi dari dokumen yang lebih
+  // baru yang menang.
+  const tua = { info: { id: 'p' }, updatedAt: '2026-08-01T00:00:00.000Z',
+    realisasiEntries: [{ id: 'x', jumlah: 100 }] }
+  const muda = { info: { id: 'p' }, updatedAt: '2026-08-02T00:00:00.000Z',
+    realisasiEntries: [{ id: 'x', jumlah: 999 }] }
+  const satu = gabungIsiProyek(tua, muda)
+  assert(satu.realisasiEntries.length === 1, 'tidak menggandakan baris dengan id sama')
+  assert(satu.realisasiEntries[0].jumlah === 999, 'versi yang lebih baru yang dipakai')
+  assert(gabungIsiProyek(muda, tua).realisasiEntries[0].jumlah === 999,
+    'urutan argumen tidak mengubah hasilnya')
+}
+{
+  const { gabungIsiProyek } = await import('../src/lib/sinkronProyek.ts')
+  const a = { info: { id: 'p' }, updatedAt: '2026-08-01T00:00:00.000Z' }
+  const b = { info: { id: 'p' }, updatedAt: '2026-08-02T00:00:00.000Z', projectName: 'baru' }
+  const satu = gabungIsiProyek(a, b)
+  assert(satu.projectName === 'baru', 'medan biasa tetap dari dokumen yang lebih baru')
+  assert(!satu.realisasiEntries, 'proyek tanpa entri tidak diberi daftar kosong karangan')
+}
+
 console.log(`sinkron-proyek: ${ok} assert lulus`)

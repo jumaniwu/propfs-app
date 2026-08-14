@@ -89,9 +89,16 @@ export function gabungProyek(
       perluDorong.push(l)
       continue
     }
-    if (waktuUbah(l) > waktuUbah(c)) {
-      peta.set(id, l)
-      perluDorong.push(l)
+    // Kedua sisi memuat proyek ini. Isinya DISATUKAN, bukan salah satunya
+    // dipilih: memilih berarti membuang entri yang hanya ada di sisi lain.
+    const satu = gabungIsiProyek(l, c)
+    peta.set(id, satu)
+    // Didorong balik HANYA bila cloud memang belum memuatnya seluruhnya:
+    // entri milik perangkat ini yang belum ada di sana, atau dokumen lokal
+    // yang memang lebih baru. Mendorong salinan yang identik hanya menghabiskan
+    // kuota dan menyalakan penanda "menyimpan" tanpa ada yang berubah.
+    if (waktuUbah(l) > waktuUbah(c) || adaYangBelumDiCloud(satu, c)) {
+      perluDorong.push(satu)
     }
   }
 
@@ -160,4 +167,78 @@ export function kalimatSinkron(r: RingkasSinkron): string {
   if (r.belumNaik > 0) bagian.push(`${r.belumNaik} proyek BELUM tersimpan di server`)
   if (r.belumTurun > 0) bagian.push(`${r.belumTurun} proyek dari server belum ditarik`)
   return bagian.join(' · ')
+}
+
+// ── Menggabungkan ISI proyek, bukan hanya memilih dokumennya ────────────────
+
+/**
+ * Baris biaya yang hidup di dalam sebuah proyek.
+ *
+ * Bentuknya sengaja sesempit mungkin: modul ini tidak boleh ikut berubah
+ * setiap kali kolom entri bertambah.
+ */
+interface EntriBerId { id?: string; [k: string]: unknown }
+
+/** Daftar yang digabung per-baris ketika dua perangkat sama-sama menyuntingnya. */
+const DAFTAR_ISI = ['realisasiEntries'] as const
+
+/**
+ * Satukan isi dua salinan proyek yang sama.
+ *
+ * INILAH CACAT YANG DIPERBAIKI. Sebelumnya `gabungProyek` memilih SELURUH
+ * dokumen milik sisi yang `updatedAt`-nya lebih baru. Akibatnya, ketika satu
+ * orang mencatat dari ponsel dan satu lagi dari laptop, yang menyimpan
+ * belakangan MENIMPA seluruh entri milik yang lain — bukan menambahinya.
+ *
+ * Itu benar-benar terjadi: laptop menampilkan 26 transaksi (Rp 46,79 juta)
+ * sementara ponsel menampilkan 46 (Rp 109,42 juta) untuk proyek yang sama.
+ * Dua puluh baris hilang tanpa pesan apa pun, dan yang melihat laptop mengira
+ * itulah seluruh datanya.
+ *
+ * Medan biasa (nama proyek, RAB, setelan) tetap diambil dari dokumen yang
+ * lebih baru — untuk itu `updatedAt` memang ada. Yang digabung per-baris hanya
+ * daftar yang sifatnya BERTAMBAH: entri biaya. Barisnya dicocokkan lewat `id`,
+ * dan versi dari dokumen yang lebih baru yang menang bila keduanya memuatnya.
+ *
+ * Batasan yang disadari: tanpa catatan penghapusan, baris yang dihapus di satu
+ * perangkat bisa hidup lagi dari salinan perangkat lain yang belum tahu. Itu
+ * dipilih dengan sadar — baris yang muncul kembali TERLIHAT dan bisa dihapus
+ * lagi, sedangkan dua puluh baris yang hilang diam-diam tidak terlihat sama
+ * sekali sampai ada yang menghitung ulang.
+ */
+/** Apakah hasil gabungan memuat baris yang belum ada pada salinan cloud. */
+function adaYangBelumDiCloud(gabung: ProyekTersimpan, cloud: ProyekTersimpan): boolean {
+  for (const medan of DAFTAR_ISI) {
+    const g = Array.isArray(gabung[medan]) ? gabung[medan] as EntriBerId[] : []
+    const c = Array.isArray(cloud[medan]) ? cloud[medan] as EntriBerId[] : []
+    if (g.length > c.length) return true
+  }
+  return false
+}
+
+export function gabungIsiProyek(
+  a: ProyekTersimpan, b: ProyekTersimpan,
+): ProyekTersimpan {
+  const [tua, muda] = waktuUbah(a) >= waktuUbah(b) ? [b, a] : [a, b]
+  const hasil: ProyekTersimpan = { ...tua, ...muda }
+
+  for (const medan of DAFTAR_ISI) {
+    const dariTua = Array.isArray(tua[medan]) ? tua[medan] as EntriBerId[] : []
+    const dariMuda = Array.isArray(muda[medan]) ? muda[medan] as EntriBerId[] : []
+    if (!dariTua.length && !dariMuda.length) continue
+
+    const peta = new Map<string, EntriBerId>()
+    // Yang tua lebih dulu supaya urutannya terjaga; yang muda menimpa isinya
+    // bila id-nya sama.
+    for (const e of dariTua) {
+      const id = String(e?.id ?? '').trim()
+      if (id) peta.set(id, e)
+    }
+    for (const e of dariMuda) {
+      const id = String(e?.id ?? '').trim()
+      if (id) peta.set(id, e)
+    }
+    hasil[medan] = [...peta.values()]
+  }
+  return hasil
 }

@@ -30,6 +30,26 @@ interface AkuntanStore {
   loadFromCloud: () => Promise<void>
 }
 
+/**
+ * Tunggu sampai pemilik datanya diketahui.
+ *
+ * `dataOwnerId()` bersandar pada sesi yang dimuat SETELAH halaman terbuka.
+ * Sebelumnya `loadFromCloud` langsung `return` bila ia masih null, dan tidak
+ * pernah dicoba lagi — di laptop yang baru dibuka, cloud tidak pernah dibaca
+ * sama sekali, dan yang terlihat hanya "Belum ada pemasukan tercatat".
+ *
+ * costStore sudah memperbaiki cacat yang sama persis; akuntanStore tidak ikut.
+ */
+async function tungguPemilik(maksMs = 6000): Promise<string | null> {
+  const mulai = Date.now()
+  for (;;) {
+    const id = userId()
+    if (id) return id
+    if (Date.now() - mulai >= maksMs) return null
+    await new Promise(r => setTimeout(r, 200))
+  }
+}
+
 function userId(): string | null {
   // Sama seperti costStore: anggota tim membaca data pemilik workspace aktif.
   return dataOwnerId()
@@ -51,7 +71,7 @@ function pushCloud(state: IsiAkuntan) {
   tandaiMenyimpan()
   pushTimer = setTimeout(() => {
     void (async () => {
-      const user_id = userId()
+      const user_id = await tungguPemilik()
       // Belum login: data tetap aman di localStorage, jadi tidak dianggap gagal.
       if (!user_id) { tandaiTersimpan(); return }
       try {
@@ -147,8 +167,14 @@ export const useAkuntanStore = create<AkuntanStore>()(
         pushCloud(get())
       },
       loadFromCloud: async () => {
-        const user_id = userId()
-        if (!user_id) return
+        const user_id = await tungguPemilik()
+        if (!user_id) {
+          // Dilaporkan, bukan didiamkan. Daftar kosong yang sebenarnya
+          // "belum sempat dibaca" terlihat persis sama dengan "memang belum
+          // ada isinya" — dan itulah yang membuat orang mengira datanya hilang.
+          tandaiGagal('Sesi belum siap — data akuntan belum sempat ditarik dari cloud.')
+          return
+        }
         try {
           const { data, error } = await supabase
             .from('akuntan_data').select('data').eq('user_id', user_id).maybeSingle()
