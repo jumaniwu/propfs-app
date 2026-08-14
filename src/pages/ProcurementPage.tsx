@@ -43,7 +43,8 @@ import {
   ringkasKatalog, hargaVendorUntuk, teksTerm, pesanWaPo, katalogDariNota, tokoBelumJadiVendor,
   profilAwal,
   LABEL_STATUS_PO, TONE_STATUS_PO, LABEL_STATUS_VENDOR, TONE_STATUS_VENDOR, LABEL_TERM,
-  type Vendor, type VendorItem, type PurchaseOrder, type PoItem,
+  jenisPo, poNonProyek, siapTerbitPo, LABEL_JENIS_PO, TONE_JENIS_PO, KETERANGAN_JENIS_PO,
+  type Vendor, type VendorItem, type PurchaseOrder, type PoItem, type JenisPo,
 } from '@/lib/procurement'
 
 type Sub = 'vendor' | 'katalog' | 'po' | 'terima' | 'invoice'
@@ -851,7 +852,11 @@ function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSa
                 : `${requests.length} request material sudah disetujui dan belum penuh terpesan.`}
             </p>
           </div>
-          {bolehUbah && requests.length > 0 && (
+          {/* SELALU ada selama boleh mengubah. Dulu tombol ini hanya muncul
+              bila ada Material Request yang menunggu — sehingga pembelian yang
+              memang tidak punya request (genset, ATK kantor) tidak punya pintu
+              masuk sama sekali. */}
+          {bolehUbah && (
             <Button onClick={() => setBuatOpen(true)} size="sm"
               className="gap-1.5 bg-gold text-navy hover:bg-gold/90 font-bold shrink-0">
               <Plus className="w-4 h-4" /> Buat PO
@@ -885,7 +890,8 @@ function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSa
         <div className="bg-white rounded-2xl border border-border p-12 text-center">
           <FileText className="w-10 h-10 mx-auto opacity-30 mb-3" />
           <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            Belum ada purchase order. PO dibuat dari request material yang sudah disetujui.
+            Belum ada purchase order. PO proyek dibuat dari request material yang sudah
+            disetujui; PO alat kerja dan biaya kantor barangnya diketik langsung.
           </p>
         </div>
       ) : (
@@ -911,6 +917,22 @@ interface BarisPilih {
   pilih: boolean
 }
 
+/**
+ * Baris barang yang diketik langsung, untuk PO alat kerja & biaya kantor.
+ *
+ * Tidak punya `request_id` dan tidak punya `sisa`: tidak ada Material Request
+ * yang menjadi asalnya, jadi tidak ada batas atas yang bisa diperiksa. Yang
+ * menjaganya hanya `siapTerbitPo`.
+ */
+interface BarisManual {
+  nama: string
+  satuan: string
+  qty: number
+  harga: number
+}
+
+const BARIS_MANUAL_KOSONG: BarisManual = { nama: '', satuan: 'unit', qty: 1, harga: 0 }
+
 function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSukses }: {
   requests: MaterialRequest[]
   vendors: Vendor[]
@@ -926,11 +948,14 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
   const [ppnPct, setPpnPct] = useState(0)
   const [catatan, setCatatan] = useState('')
   const [kirim, setKirim] = useState(false)
+  const [jenis, setJenis] = useState<JenisPo>('proyek')
   const [baris, setBaris] = useState<BarisPilih[]>(() => requests.map(r => ({
     request_id: r.id, nama: r.nama, satuan: r.satuan,
     sisa: sisaQty(r), qty: sisaQty(r), harga: 0, pilih: false,
   })))
+  const [manual, setManual] = useState<BarisManual[]>([{ ...BARIS_MANUAL_KOSONG }])
 
+  const nonProyek = jenis !== 'proyek'
   const vendor = vendors.find(v => v.id === vendorId)
 
   /** Nama proyek yang terbaca dari barang-barang yang sedang dipilih. */
@@ -951,31 +976,61 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
       const h = hargaVendorUntuk(items, vendorId, b.nama)
       return h > 0 ? { ...b, harga: h } : b
     }))
+    // Baris manual ikut terisi, tetapi HANYA yang harganya masih nol —
+    // angka yang sudah diketik orang tidak boleh ditimpa katalog.
+    setManual(list => list.map(b => {
+      if (b.harga > 0) return b
+      const h = hargaVendorUntuk(items, vendorId, b.nama)
+      return h > 0 ? { ...b, harga: h } : b
+    }))
   }, [vendorId, items])
 
   const set = (i: number, patch: Partial<BarisPilih>) =>
     setBaris(list => list.map((b, n) => (n === i ? { ...b, ...patch } : b)))
+  const setM = (i: number, patch: Partial<BarisManual>) =>
+    setManual(list => list.map((b, n) => (n === i ? { ...b, ...patch } : b)))
 
   const dipilih = baris.filter(b => b.pilih && b.qty > 0)
-  const total = useMemo(
-    () => hitungTotalPo(dipilih.map(b => ({
+  const manualIsi = manual.filter(b => b.nama.trim() || b.qty > 0 || b.harga > 0)
+
+  /** Baris PO apa adanya, apa pun jenisnya — satu bentuk untuk hilir. */
+  const barisPo = useMemo<PoItem[]>(() => (nonProyek
+    ? manual.map(b => ({
+      nama: b.nama.trim(), satuan: b.satuan.trim() || 'unit',
+      qty: b.qty, harga: b.harga, subtotal: 0,
+    }))
+    : dipilih.map(b => ({
       request_id: b.request_id, nama: b.nama, satuan: b.satuan,
       qty: b.qty, harga: b.harga, subtotal: 0,
-    })), ppnPct),
-    [dipilih, ppnPct],
-  )
+    }))
+  ), [nonProyek, manual, dipilih])
+
+  const total = useMemo(() => hitungTotalPo(barisPo, ppnPct), [barisPo, ppnPct])
+  const siapManual = useMemo(() => siapTerbitPo(barisPo), [barisPo])
+  const jumlahBarang = nonProyek ? manualIsi.length : dipilih.length
+  const bolehTerbit = !!vendorId && (nonProyek ? siapManual.boleh : dipilih.length > 0)
 
   async function terbitkan() {
     if (!vendor) { toast({ title: 'Pilih vendor dulu', variant: 'destructive' }); return }
-    if (dipilih.length === 0) { toast({ title: 'Pilih minimal satu barang', variant: 'destructive' }); return }
-    const lewat = dipilih.find(b => b.qty > b.sisa)
-    if (lewat) {
-      toast({
-        title: 'Qty melebihi sisa',
-        description: `${lewat.nama}: sisa yang belum dipesan hanya ${angka(lewat.sisa)} ${lewat.satuan}.`,
-        variant: 'destructive',
-      })
-      return
+
+    if (nonProyek) {
+      // Tidak ada Material Request yang menjaga baris ini, jadi `siapTerbitPo`
+      // adalah satu-satunya penjaganya.
+      if (!siapManual.boleh) {
+        toast({ title: 'Belum bisa diterbitkan', description: siapManual.alasan, variant: 'destructive' })
+        return
+      }
+    } else {
+      if (dipilih.length === 0) { toast({ title: 'Pilih minimal satu barang', variant: 'destructive' }); return }
+      const lewat = dipilih.find(b => b.qty > b.sisa)
+      if (lewat) {
+        toast({
+          title: 'Qty melebihi sisa',
+          description: `${lewat.nama}: sisa yang belum dipesan hanya ${angka(lewat.sisa)} ${lewat.satuan}.`,
+          variant: 'destructive',
+        })
+        return
+      }
     }
 
     setKirim(true)
@@ -990,7 +1045,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         // yatim: surat jalannya tercatat tapi barangnya tidak pernah sampai ke
         // stok proyek mana pun. Material Request yang dipesan tahu proyeknya,
         // jadi itu yang dipakai sebagai cadangan.
-        project_name: proyekPo,
+        // PO non-proyek memang tidak punya proyek — itu keadaan yang sah,
+        // bukan kolom yang lupa diisi. Yang membedakannya adalah `jenis`.
+        project_name: nonProyek ? '' : proyekPo,
+        jenis,
         butuh_tanggal: butuh || null,
         term: vendor.term,
         term_hari: vendor.term_hari,
@@ -1001,7 +1059,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         total: total.total,
         catatan,
       })
-      toast({ title: '✅ PO diterbitkan', description: 'Tanda tangani, lalu mintakan persetujuan sebelum dikirim ke vendor.' })
+      toast({
+        title: `✅ PO ${LABEL_JENIS_PO[jenis]} diterbitkan`,
+        description: 'Tanda tangani, lalu mintakan persetujuan sebelum dikirim ke vendor.',
+      })
       onSukses()
     } catch (e) {
       toast({ title: 'Gagal menerbitkan PO', description: e instanceof Error ? e.message : String(e), variant: 'destructive' })
@@ -1023,10 +1084,87 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         </p>
       )}
 
-      {/* Pilih barang dari request */}
+      {/* Untuk apa PO ini */}
       <div className="space-y-2">
-        <p className="text-xs font-bold text-navy">1. Pilih barang yang dipesan</p>
-        {baris.map((b, i) => (
+        <p className="text-xs font-bold text-navy">1. Untuk apa PO ini</p>
+        <div className="grid grid-cols-3 gap-2">
+          {(Object.keys(LABEL_JENIS_PO) as JenisPo[]).map(j => (
+            <button key={j} type="button" data-jenis-po={j} onClick={() => setJenis(j)}
+              className={`rounded-xl border-2 px-2 py-2.5 text-[11px] font-bold transition-colors ${
+                jenis === j ? 'border-navy bg-navy/[0.04] text-navy'
+                  : 'border-border text-muted-foreground hover:border-navy/40'}`}>
+              {LABEL_JENIS_PO[j]}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          {KETERANGAN_JENIS_PO[jenis]}
+        </p>
+      </div>
+
+      {/* Barang: dari request (PO proyek) atau diketik langsung (alat/kantor) */}
+      <div className="space-y-2">
+        <p className="text-xs font-bold text-navy">
+          {nonProyek ? '2. Barang yang dipesan' : '2. Pilih barang yang dipesan'}
+        </p>
+
+        {nonProyek && (
+          <>
+            {manual.map((b, i) => (
+              <div key={i} className="rounded-xl border border-border p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input value={b.nama} onChange={e => setM(i, { nama: e.target.value })}
+                    data-manual-nama
+                    placeholder={jenis === 'alat' ? 'mis. Genset 5000W' : 'mis. Kertas A4 80gr'}
+                    className={`${inputCls} font-semibold`} />
+                  {manual.length > 1 && (
+                    <button type="button" aria-label="Hapus baris"
+                      onClick={() => setManual(list => list.filter((_, n) => n !== i))}
+                      className="p-1.5 text-muted-foreground hover:text-rose-600 shrink-0">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Jumlah</label>
+                    <input type="number" min={0} value={b.qty || ''} data-manual-qty
+                      onChange={e => setM(i, { qty: Number(e.target.value) || 0 })}
+                      inputMode="decimal" className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Satuan</label>
+                    <input value={b.satuan} onChange={e => setM(i, { satuan: e.target.value })}
+                      placeholder="unit" className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-medium text-muted-foreground">Harga (Rp)</label>
+                    <input type="number" min={0} value={b.harga || ''} data-manual-harga
+                      onChange={e => setM(i, { harga: Number(e.target.value) || 0 })}
+                      inputMode="numeric" className={inputCls} />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button type="button" data-tambah-baris
+              onClick={() => setManual(list => [...list, { ...BARIS_MANUAL_KOSONG }])}
+              className="w-full rounded-xl border-2 border-dashed border-border py-2.5
+                text-[11px] font-bold text-navy hover:bg-slate-50">
+              + Tambah baris
+            </button>
+          </>
+        )}
+
+        {!nonProyek && baris.length === 0 && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200
+            rounded-xl p-2.5 leading-relaxed">
+            Tidak ada request material yang menunggu dipesan. PO proyek barangnya
+            selalu berasal dari request yang sudah disetujui — untuk pembelian di luar
+            proyek, pilih <b>Alat Kerja</b> atau <b>Biaya Kantor</b> di atas.
+          </p>
+        )}
+
+        {!nonProyek && baris.map((b, i) => (
           <div key={b.request_id} className={`rounded-xl border p-3 space-y-2 ${
             b.pilih ? 'border-navy bg-navy/[0.03]' : 'border-border'}`}>
             <label className="flex items-start gap-2.5 cursor-pointer">
@@ -1065,7 +1203,7 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
 
       {/* Vendor & syarat */}
       <div className="space-y-2">
-        <p className="text-xs font-bold text-navy">2. Vendor & syarat</p>
+        <p className="text-xs font-bold text-navy">3. Vendor & syarat</p>
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Vendor *</label>
@@ -1102,7 +1240,7 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
       {/* Ringkasan */}
       <div className="rounded-xl bg-slate-50 p-3 space-y-1">
         <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">{dipilih.length} barang</span>
+          <span className="text-muted-foreground">{jumlahBarang} barang</span>
           <span className="font-semibold text-navy tabular-nums">{fmt(total.subtotal)}</span>
         </div>
         {ppnPct > 0 && (
@@ -1119,21 +1257,37 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
 
       {/* PO tanpa proyek tidak bisa menyalurkan barangnya ke stok proyek mana
           pun. Diberitahukan di sini, sebelum PO terlanjur terbit. */}
-      {dipilih.length > 0 && !proyekPo && (
+      {/* Peringatan "PO yatim" HANYA untuk PO proyek. Pada PO alat/kantor,
+          tidak adanya proyek justru yang dimaksud — memperingatkannya di sana
+          berarti menyebut keadaan yang benar sebagai kesalahan. */}
+      {!nonProyek && dipilih.length > 0 && !proyekPo && (
         <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
           <b>PO ini belum punya nama proyek.</b> Barang yang datang nanti tidak akan
           masuk ke stok proyek mana pun. Buka proyeknya dulu lewat Kontraktor AI,
           lalu buat PO-nya dari sana.
         </p>
       )}
-      {dipilih.length > 0 && proyekPo && (
+      {nonProyek && (
+        <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5 leading-relaxed">
+          PO <b>{LABEL_JENIS_PO[jenis]}</b> — tidak menempel pada proyek mana pun.
+          {jenis === 'alat'
+            ? ' Barang yang datang dicatat sebagai aset perusahaan, bukan stok proyek.'
+            : ' Nilainya menjadi beban perusahaan di lingkup Umum (Non-Proyek).'}
+        </p>
+      )}
+      {nonProyek && jumlahBarang > 0 && !siapManual.boleh && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+          {siapManual.alasan}
+        </p>
+      )}
+      {!nonProyek && dipilih.length > 0 && proyekPo && (
         <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5">
           PO ini untuk proyek <b>{proyekPo}</b>
           {proyekDariRequest ? ' — diambil dari barang yang dipilih.' : ' — dari proyek yang sedang aktif.'}
         </p>
       )}
 
-      <Button onClick={terbitkan} disabled={kirim || !vendorId || dipilih.length === 0}
+      <Button onClick={terbitkan} disabled={kirim || !bolehTerbit} data-terbitkan-po
         className="w-full gap-2 bg-navy hover:bg-navy/90 font-bold h-11">
         {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
         Terbitkan PO
@@ -1240,7 +1394,18 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
     <div className="bg-white rounded-2xl border border-border p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-bold text-navy text-sm truncate">{po.nomor}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="font-bold text-navy text-sm truncate">{po.nomor}</p>
+            {/* Lencana hanya untuk yang BUKAN proyek. Menandai semuanya berarti
+                menambah satu lencana di tiap baris untuk keterangan yang sudah
+                benar tanpa diberitahu. */}
+            {poNonProyek(po) && (
+              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full
+                shrink-0 ${TONE_JENIS_PO[jenisPo(po)]}`}>
+                {LABEL_JENIS_PO[jenisPo(po)]}
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-muted-foreground truncate">
             {po.vendor_nama} · {items.length} barang · {teksTerm(po.term, po.term_hari)}
           </p>

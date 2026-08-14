@@ -7,6 +7,7 @@ import {
   katalogDariNota, tokoBelumJadiVendor, TOKO_TIDAK_DICATAT,
   milikWorkspace, profilAwal, PROFIL_VENDOR_KOSONG,
   LABEL_STATUS_PO, LABEL_TERM,
+  jenisPo, poNonProyek, siapTerbitPo, LABEL_JENIS_PO, TONE_JENIS_PO, KETERANGAN_JENIS_PO,
 } from '../src/lib/procurement.ts'
 
 let ok = 0
@@ -416,5 +417,104 @@ assert(menungguTandaTanganPo(
   [{ id: 'rc', status: 'disetujui', qty: 300, qty_dipesan: 300 }],
   [{ status: 'draft', items: [] }],
 ).length === 0, 'request yang sudah penuh terkirim tidak dihitung menunggu tanda tangan')
+
+// ── PO non-proyek: alat kerja & biaya kantor ───────────────────────────────
+//
+// Penandanya kolom `jenis`, BUKAN `project_name` yang dikosongkan.
+// `project_name` kosong sudah punya arti lain di sistem ini: cacat data yang
+// diperbaiki sendiri oleh migration_do_proyek. Menandai PO alat dengan cara
+// itu berarti menyerahkannya kepada mesin perbaikan yang akan "membetulkan"
+// sesuatu yang memang sudah benar.
+{
+  assert(jenisPo({ jenis: 'alat' }) === 'alat', 'jenis alat dikenali')
+  assert(jenisPo({ jenis: 'kantor' }) === 'kantor', 'jenis kantor dikenali')
+  assert(jenisPo({ jenis: 'proyek' }) === 'proyek', 'jenis proyek dikenali')
+
+  // PO lama tidak punya kolom ini sama sekali. Bawaannya WAJIB 'proyek' —
+  // kalau tidak, seluruh PO yang sudah ada berubah jadi bukan-proyek dan
+  // stok materialnya lenyap dari setiap proyek sekaligus.
+  assert(jenisPo({}) === 'proyek', 'PO lama tanpa kolom jenis tetap PO proyek')
+  assert(jenisPo({ jenis: null }) === 'proyek', 'null dianggap proyek')
+  assert(jenisPo({ jenis: '' }) === 'proyek', 'kosong dianggap proyek')
+  assert(jenisPo(null) === 'proyek', 'PO null aman')
+  assert(jenisPo(undefined) === 'proyek', 'PO undefined aman')
+  assert(jenisPo({ jenis: 'ngawur' }) === 'proyek', 'nilai tak dikenal jatuh ke proyek')
+  assert(jenisPo({ jenis: '  ALAT  ' }) === 'alat', 'spasi & huruf besar tetap dikenali')
+
+  assert(poNonProyek({ jenis: 'alat' }) === true, 'PO alat bukan PO proyek')
+  assert(poNonProyek({ jenis: 'kantor' }) === true, 'PO kantor bukan PO proyek')
+  assert(poNonProyek({ jenis: 'proyek' }) === false, 'PO proyek adalah PO proyek')
+  assert(poNonProyek({}) === false, 'PO lama tetap dianggap PO proyek')
+  assert(poNonProyek(null) === false, 'null aman')
+
+  // `project_name` kosong TIDAK menjadikan sebuah PO non-proyek. Inilah
+  // pemisahan yang menjaga PO yatim tetap dikenali sebagai PO yatim.
+  assert(poNonProyek({ project_name: '' }) === false,
+    'project_name kosong bukan penanda non-proyek — itu PO proyek yang yatim')
+
+  for (const j of ['proyek', 'alat', 'kantor']) {
+    assert(LABEL_JENIS_PO[j], `label jenis ${j} ada`)
+    assert(TONE_JENIS_PO[j], `tone jenis ${j} ada`)
+    assert(KETERANGAN_JENIS_PO[j], `keterangan jenis ${j} ada`)
+  }
+  assert(new Set(Object.values(LABEL_JENIS_PO)).size === 3, 'ketiga labelnya berbeda')
+}
+
+// ── siapTerbitPo: penjaga baris manual ─────────────────────────────────────
+//
+// PO proyek dijaga oleh Material Request asalnya — qty dan namanya sudah
+// dijamin di sana. PO alat/kantor tidak punya penjaga itu; hanya ini.
+{
+  const baik = [{ nama: 'Genset 5000W', satuan: 'unit', qty: 1, harga: 12_500_000, subtotal: 0 }]
+  assert(siapTerbitPo(baik).boleh === true, 'baris yang lengkap boleh diterbitkan')
+  assert(siapTerbitPo(baik).alasan === '', 'tanpa alasan penolakan')
+
+  assert(siapTerbitPo([]).boleh === false, 'tanpa barang ditolak')
+  assert(/belum ada barang/i.test(siapTerbitPo([]).alasan), 'alasannya disebutkan')
+  assert(siapTerbitPo(null).boleh === false, 'null ditolak, bukan melempar')
+  assert(siapTerbitPo(undefined).boleh === false, 'undefined ditolak, bukan melempar')
+
+  const tanpaNama = [{ nama: '   ', satuan: 'unit', qty: 1, harga: 100, subtotal: 0 }]
+  assert(siapTerbitPo(tanpaNama).boleh === false, 'nama berisi spasi saja ditolak')
+  assert(/baris 1/.test(siapTerbitPo(tanpaNama).alasan),
+    'nomor barisnya disebut, supaya yang salah bisa ditemukan')
+
+  assert(siapTerbitPo([{ ...baik[0], qty: 0 }]).boleh === false, 'qty nol ditolak')
+  assert(siapTerbitPo([{ ...baik[0], qty: -3 }]).boleh === false, 'qty minus ditolak')
+  assert(/Genset/.test(siapTerbitPo([{ ...baik[0], qty: 0 }]).alasan),
+    'nama barangnya disebut dalam alasannya')
+
+  // Harga nol SAH: pemberian vendor, atau harga yang menyusul di invoice.
+  assert(siapTerbitPo([{ ...baik[0], harga: 0 }]).boleh === true,
+    'harga nol boleh — pemberian vendor dan harga menyusul keduanya nyata')
+  assert(siapTerbitPo([{ ...baik[0], harga: -1 }]).boleh === false, 'harga minus ditolak')
+
+  // Baris kedua yang cacat tetap tertangkap.
+  assert(siapTerbitPo([baik[0], { nama: '', satuan: 'unit', qty: 2, harga: 5, subtotal: 0 }])
+    .alasan.includes('baris 2'), 'baris cacat di tengah daftar ikut tertangkap')
+}
+
+// ── bolehKirimPo TIDAK berubah untuk PO non-proyek ─────────────────────────
+//
+// Ini yang dijanjikan: satu aturan untuk semua PO. Tidak ada jalur yang lebih
+// longgar untuk disalahgunakan hanya karena barangnya untuk kantor.
+{
+  const dasar = {
+    items: [{ nama: 'Genset', satuan: 'unit', qty: 1, harga: 12_000_000, subtotal: 12_000_000 }],
+    status: 'disetujui', vendor_wa: '0812345678',
+    pembuat_signature: null, approver_signature: null,
+  }
+  for (const jenis of ['proyek', 'alat', 'kantor']) {
+    assert(bolehKirimPo({ ...dasar, jenis }).boleh === false,
+      `PO ${jenis} tanpa tanda tangan tetap ditahan`)
+    assert(bolehKirimPo({ ...dasar, jenis, pembuat_signature: 'x' }).boleh === false,
+      `PO ${jenis} tanpa approval tetap ditahan`)
+    assert(bolehKirimPo({ ...dasar, jenis, pembuat_signature: 'x', approver_signature: 'y' })
+      .boleh === true, `PO ${jenis} yang lengkap boleh dikirim`)
+  }
+  assert(bolehKirimPo({ ...dasar, jenis: 'alat', project_name: '' ,
+    pembuat_signature: 'x', approver_signature: 'y' }).boleh === true,
+    'PO alat tanpa nama proyek tetap boleh dikirim — proyek memang bukan syaratnya')
+}
 
 console.log(`✅ procurement: ${ok} assertion lolos`)

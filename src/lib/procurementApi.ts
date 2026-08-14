@@ -6,7 +6,7 @@
 // ============================================================
 
 import type {
-  Vendor, VendorItem, PurchaseOrder, StatusVendor, StatusPo, PoItem,
+  Vendor, VendorItem, PurchaseOrder, StatusVendor, StatusPo, PoItem, JenisPo,
 } from './procurement'
 import { milikWorkspace } from './procurement'
 import { dataOwnerId } from './teamApi'
@@ -20,6 +20,12 @@ export interface BuatPoInput {
   vendor_nama: string
   vendor_wa: string
   project_name: string
+  /**
+   * Untuk apa PO ini dibuat. Dikirim eksplisit meski basis data punya
+   * DEFAULT 'proyek': baris yang mengandalkan default tidak bisa dibedakan
+   * dari baris yang memang sengaja diisi 'proyek'.
+   */
+  jenis: JenisPo
   butuh_tanggal: string | null
   term: 'cash' | 'term'
   term_hari: number

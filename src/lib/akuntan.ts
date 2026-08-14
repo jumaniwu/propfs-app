@@ -6,6 +6,9 @@
 
 import type { RealisasiEntry } from './ai-realisasi'
 import { pengelompokNama } from './namaMaterial.ts'
+// Satu tempat yang menjawab "PO ini milik proyek atau bukan". Menghitungnya
+// ulang di sini akan melahirkan jawaban kedua yang suatu hari berbeda.
+import { poNonProyek } from './procurement.ts'
 
 /** Proyek tempat entri dicatat; entri lama tanpa proyek masuk grup ini. */
 export const PROYEK_UMUM = '__umum__'
@@ -256,7 +259,7 @@ export function hitungInventori(
  */
 export function penerimaanInventori(
   dos: Array<{ po_id: string; items?: unknown }>,
-  pos: Array<{ id: string; project_name?: string; items?: unknown }>,
+  pos: Array<{ id: string; project_name?: string; jenis?: string | null; items?: unknown }>,
   namaProyek = '',
   requests: Array<{ id: string; project_name?: string }> = [],
 ): PenerimaanBarang[] {
@@ -282,6 +285,17 @@ export function penerimaanInventori(
     const po = poById.get(d?.po_id ?? '')
     // Tanpa PO-nya, asal barang tidak bisa dipastikan milik proyek yang mana.
     if (!po) continue
+
+    // PO alat kerja dan biaya kantor TIDAK PERNAH menjadi stok proyek.
+    //
+    // Genset dan scaffolding memang datang lewat surat jalan seperti semen,
+    // tetapi keduanya bukan bahan yang habis terpakai — mereka aset yang
+    // dipakai berulang, dan tempatnya di daftar aset, bukan di persediaan
+    // material sebuah proyek. Tanpa penjaga ini, satu genset akan tercatat
+    // sebagai stok, lalu dihitung sebagai nilai persediaan proyek, lalu
+    // terlihat "kurang dipakai" selamanya karena memang tidak pernah habis.
+    if (poNonProyek(po)) continue
+
     if (namaProyek && !cocok(po.project_name ?? '', namaProyek) && !lewatRequest(po)) continue
 
     const itemsPo = Array.isArray(po.items) ? po.items as Array<Record<string, unknown>> : []

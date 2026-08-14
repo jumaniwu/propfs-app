@@ -121,6 +121,37 @@ export interface PoItem {
   subtotal: number
 }
 
+/**
+ * Untuk apa PO ini dibuat.
+ *
+ * Penanda tersendiri, BUKAN `project_name` yang dikosongkan. `project_name`
+ * kosong sudah punya arti lain di sistem ini: cacat data. migration_do_proyek
+ * menyebut PO seperti itu "yatim" dan mengisi ulang nama proyeknya sendiri
+ * dari Material Request asal barangnya. Menandai PO alat dengan cara yang
+ * sama berarti menyerahkannya kepada mesin perbaikan yang akan "membetulkan"
+ * sesuatu yang memang sudah benar.
+ */
+export type JenisPo = 'proyek' | 'alat' | 'kantor'
+
+export const LABEL_JENIS_PO: Record<JenisPo, string> = {
+  proyek: 'Proyek',
+  alat: 'Alat Kerja',
+  kantor: 'Biaya Kantor',
+}
+
+export const TONE_JENIS_PO: Record<JenisPo, string> = {
+  proyek: 'bg-navy/10 text-navy',
+  alat: 'bg-blue-100 text-blue-700',
+  kantor: 'bg-purple-100 text-purple-700',
+}
+
+/** Keterangan singkat tiap jenis, dipakai di pemilih jenis PO. */
+export const KETERANGAN_JENIS_PO: Record<JenisPo, string> = {
+  proyek: 'Barangnya diambil dari Material Request yang sudah disetujui.',
+  alat: 'Barang modal yang dipakai berulang — jadi aset perusahaan, bukan stok proyek.',
+  kantor: 'Biaya operasional kantor — langsung jadi beban, bukan stok proyek.',
+}
+
 export interface PurchaseOrder {
   id: string
   nomor: string
@@ -128,6 +159,8 @@ export interface PurchaseOrder {
   vendor_nama: string
   vendor_wa: string
   project_name: string
+  /** Bawaan 'proyek' — PO lama tidak punya kolom ini. */
+  jenis?: JenisPo
   tanggal: string
   butuh_tanggal: string | null
   term: TermPembayaran
@@ -177,12 +210,66 @@ export function nomorPo(count: number, sekarang = new Date()): string {
   return `PO/${String(Math.max(0, count) + 1).padStart(3, '0')}/${mm}/${sekarang.getFullYear()}`
 }
 
+/**
+ * Jenis sebuah PO, dengan bawaan yang aman untuk baris lama.
+ *
+ * PO yang lahir sebelum kolom `jenis` ada tidak membawanya sama sekali.
+ * Membacanya sebagai `undefined` di setiap pemanggil berarti setiap pemanggil
+ * harus mengingat bawaannya sendiri — dan yang lupa akan memperlakukan
+ * seluruh PO lama sebagai bukan-proyek.
+ */
+export function jenisPo(po: { jenis?: string | null } | null | undefined): JenisPo {
+  const j = String(po?.jenis ?? '').trim().toLowerCase()
+  return j === 'alat' || j === 'kantor' ? j : 'proyek'
+}
+
+/**
+ * PO ini tidak menempel pada proyek mana pun.
+ *
+ * Satu tempat yang menjawabnya, dipakai antarmuka MAUPUN penghitungan stok.
+ * Kalau jawabannya dihitung ulang di dua tempat, suatu hari yang satu akan
+ * berkata "bukan proyek" sementara yang lain memasukkan gensetnya ke
+ * persediaan material sebuah proyek.
+ */
+export function poNonProyek(po: { jenis?: string | null } | null | undefined): boolean {
+  return jenisPo(po) !== 'proyek'
+}
+
 export interface TotalPo {
   subtotal: number
   ppn: number
   total: number
   /** Baris dengan subtotal yang sudah dihitung ulang. */
   items: PoItem[]
+}
+
+/**
+ * Apakah baris-baris PO layak diterbitkan.
+ *
+ * Dipakai untuk PO baris manual (alat & kantor), yang tidak punya Material
+ * Request sebagai penjaga. Pada PO proyek, qty dan nama sudah dijamin oleh
+ * request asalnya; di sini tidak ada yang menjamin apa pun kecuali ini.
+ *
+ * Harga BOLEH nol — pemberian dari vendor, atau barang yang harganya menyusul
+ * di invoice, keduanya nyata. Yang tidak boleh adalah nol qty dan nama kosong:
+ * baris seperti itu tercetak di surat pesanan sebagai baris hampa.
+ */
+export function siapTerbitPo(items: PoItem[] | null | undefined): { boleh: boolean; alasan: string } {
+  const baris = (items ?? []).filter(i => i != null)
+  if (baris.length === 0) return { boleh: false, alasan: 'Belum ada barang yang ditambahkan.' }
+
+  for (const [i, b] of baris.entries()) {
+    if (!String(b.nama ?? '').trim()) {
+      return { boleh: false, alasan: `Nama barang di baris ${i + 1} belum diisi.` }
+    }
+    if (!(Number(b.qty) > 0)) {
+      return { boleh: false, alasan: `Jumlah "${String(b.nama).trim()}" masih nol.` }
+    }
+    if (Number(b.harga) < 0) {
+      return { boleh: false, alasan: `Harga "${String(b.nama).trim()}" tidak boleh minus.` }
+    }
+  }
+  return { boleh: true, alasan: '' }
 }
 
 /**
