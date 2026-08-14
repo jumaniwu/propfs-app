@@ -22,7 +22,7 @@ assert(bit > 55, `12 karakter memberi ${bit.toFixed(1)} bit — masih di atas 55
 
 // ── POLA_TAUTAN ────────────────────────────────────────────────────────────
 const jenisSemua = Object.keys(POLA_TAUTAN)
-assert(jenisSemua.length === 9, 'sembilan jenis tautan publik terdaftar')
+assert(jenisSemua.length === 10, 'sepuluh jenis tautan publik terdaftar')
 
 for (const [jenis, p] of Object.entries(POLA_TAUTAN)) {
   assert(p.pendek.startsWith('/'), `${jenis}: jalur pendek diawali /`)

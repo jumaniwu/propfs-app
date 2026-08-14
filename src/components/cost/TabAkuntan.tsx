@@ -9,6 +9,8 @@ import {
   Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import DialogKwitansi from './DialogKwitansi'
+import { perluMaterai } from '@/lib/kwitansi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -327,6 +329,8 @@ export default function TabAkuntan(
           // di tiap baris.
           projectIdBaru={konsolidasi ? projectInfo?.id : lingkupId}
           daftarProyek={daftarProyek.map(p => ({ id: p.info.id, nama: p.info.projectName }))}
+          namaProyek={projectInfo?.projectName ?? ''}
+          namaSaya={useAuthStore.getState().profile?.full_name ?? ''}
           onAdd={addPemasukan}
           onDelete={deletePemasukan}
           onPindah={setPemasukanProject}
@@ -438,11 +442,14 @@ function SubLabaRugi({ labaRugi, neraca }: {
 }
 
 // ── Sub: Pemasukan ──────────────────────────────────────────────────────────
-function SubPemasukan({ entries, projectIdBaru, daftarProyek, onAdd, onDelete, onPindah }: {
+function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSaya,
+  onAdd, onDelete, onPindah }: {
   entries: PemasukanEntry[]
   /** Proyek yang akan ditempeli entri baru; undefined = Umum (Non Proyek). */
   projectIdBaru?: string
   daftarProyek: Array<{ id: string; nama: string }>
+  namaProyek: string
+  namaSaya: string
   onAdd: (p: Omit<PemasukanEntry, 'id'>) => void
   onDelete: (id: string) => void
   onPindah: (id: string, projectId?: string) => void
@@ -451,6 +458,7 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, onAdd, onDelete, o
   const [sumber, setSumber] = useState('')
   const [kategori, setKategori] = useState<PemasukanEntry['kategori']>('termin')
   const [jumlah, setJumlah] = useState(0)
+  const [kwitansiUntuk, setKwitansiUntuk] = useState<PemasukanEntry | null>(null)
 
   const total = entries.reduce((s, p) => s + p.jumlah, 0)
 
@@ -537,11 +545,42 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, onAdd, onDelete, o
                     <option key={pr.id} value={pr.id}>{pr.nama}</option>
                   ))}
                 </select>
+
+                {/* Kwitansi dibuat DARI entri ini, bukan diketik ulang.
+                    Mengetik ulang adalah tempat lahirnya kwitansi yang
+                    angkanya berbeda dari pembukuan — dan bedanya baru
+                    ketahuan kalau ada yang membandingkan. */}
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    data-buat-kwitansi
+                    onClick={() => setKwitansiUntuk(p)}
+                    className="text-[11px] font-bold text-navy underline">
+                    Buat kwitansi
+                  </button>
+                  {perluMaterai(p.jumlah) && (
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50
+                      border border-amber-200 rounded-full px-2 py-0.5">
+                      wajib e-Meterai
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {kwitansiUntuk && (
+        <DialogKwitansi
+          awal={{
+            pemasukanId: kwitansiUntuk.id, tanggal: kwitansiUntuk.tanggal,
+            sumber: kwitansiUntuk.sumber, jumlah: kwitansiUntuk.jumlah,
+          }}
+          projectName={namaProyek}
+          namaSaya={namaSaya}
+          onTutup={() => setKwitansiUntuk(null)}
+        />
+      )}
     </div>
   )
 }

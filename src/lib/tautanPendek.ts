@@ -33,7 +33,7 @@ export const ALFABET_TOKEN = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 export const PANJANG_TOKEN = 12
 
 export type JenisTautan =
-  | 'vendor_daftar' | 'vendor_item' | 'po' | 'invoice'
+  | 'vendor_daftar' | 'vendor_item' | 'po' | 'invoice' | 'kwitansi'
   | 'lapor' | 'progress' | 'spk_sign' | 'opname'
   | 'lead'
 
@@ -56,6 +56,9 @@ export const POLA_TAUTAN: Record<JenisTautan, PolaTautan> = {
   // HURUF BESAR bukan jalan keluar: pencocokan rute React Router tidak peka
   // huruf besar, jadi '/N' akan bertabrakan dengan '/n'.
   invoice: { pendek: '/n', lama: '/vendor/invoice' },
+  // 'r' dari receipt. Kwitansi dikirim ke konsumen — orang di luar perusahaan
+  // yang mungkin mengetiknya ulang dari layar ponsel, jadi pendeknya berarti.
+  kwitansi: { pendek: '/r', lama: '/kwitansi' },
   lapor: { pendek: '/l', lama: '/lapor' },
   progress: { pendek: '/p', lama: '/progress' },
   spk_sign: { pendek: '/s', lama: '/spk/sign' },
