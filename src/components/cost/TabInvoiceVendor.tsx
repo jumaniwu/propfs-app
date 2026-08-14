@@ -5,6 +5,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { procurementApi, type BarisInvoice } from '@/lib/procurementApi'
+import LihatBerkas from './LihatBerkas'
 import type { PurchaseOrder } from '@/lib/procurement'
 import {
   bandingkanDenganPo, LABEL_STATUS_INVOICE, TONE_STATUS_INVOICE, statusDariSelisih,
@@ -71,6 +72,7 @@ function KartuInvoice({ inv, po, bolehUbah, namaSaya, onUbah }: {
   const { toast } = useToast()
   const [buka, setBuka] = useState(false)
   const [proses, setProses] = useState(false)
+  const [lihatBerkas, setLihatBerkas] = useState(false)
 
   // Dihitung ulang di sini, bukan dibaca dari kolom status.
   //
@@ -187,10 +189,17 @@ function KartuInvoice({ inv, po, bolehUbah, namaSaya, onUbah }: {
           {inv.catatan && (
             <p className="text-[11px] text-muted-foreground">Catatan vendor: {inv.catatan}</p>
           )}
+          {/* Berkasnya BISA DIBUKA, bukan hanya disebut namanya.
+              Nomor rekening untuk transfer justru tertulis di foto nota itu;
+              menyimpan buktinya tanpa cara melihatnya sama saja tidak
+              menyimpannya. */}
           {inv.berkas_nama && (
-            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Paperclip className="w-3 h-3" /> {inv.berkas_nama} tersimpan bersama tagihannya.
-            </p>
+            <button
+              data-buka-berkas
+              onClick={() => setLihatBerkas(true)}
+              className="flex items-center gap-1.5 text-[11px] font-bold text-navy underline">
+              <Paperclip className="w-3 h-3" /> Lihat {inv.berkas_nama}
+            </button>
           )}
           {inv.diperiksa_oleh && (
             <p className="text-[11px] text-muted-foreground">
@@ -198,6 +207,14 @@ function KartuInvoice({ inv, po, bolehUbah, namaSaya, onUbah }: {
             </p>
           )}
         </div>
+      )}
+
+      {lihatBerkas && (
+        <LihatBerkas
+          nama={inv.berkas_nama}
+          muat={() => procurementApi().berkasInvoice(inv.id)}
+          onTutup={() => setLihatBerkas(false)}
+        />
       )}
 
       {bolehUbah && inv.status !== 'disetujui' && inv.status !== 'ditolak' && inv.status !== 'dibayar' && (
