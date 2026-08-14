@@ -263,6 +263,51 @@ export function berkasUntukKonsumen(
     ? 'bermeterai' : 'bersih'
 }
 
+/**
+ * Nama berkas unduhan kwitansi.
+ *
+ * Yang bermeterai diberi akhiran `-bermeterai` supaya kedua versi bisa hidup
+ * berdampingan di folder unduhan yang sama. Tanpa itu, yang kedua menimpa yang
+ * pertama — atau menjadi "(1)" yang tidak seorang pun tahu isinya yang mana,
+ * padahal justru perbedaan itulah yang penting.
+ */
+export function namaFileKwitansi(
+  k: Pick<Kwitansi, 'nomor' | 'materai_status'> & { materai_pdf?: string | null },
+): string {
+  const dasar = String(k?.nomor ?? '').trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  const inti = dasar || 'kwitansi'
+  return berkasUntukKonsumen(k ?? {}) === 'bermeterai'
+    ? `${inti}-bermeterai.pdf` : `${inti}.pdf`
+}
+
+/**
+ * Nama proyek untuk satu entri pemasukan — dari ENTRI-nya, bukan dari proyek
+ * yang kebetulan sedang terbuka.
+ *
+ * Kwitansi dulu distempel `projectInfo.projectName`, yaitu proyek terakhir
+ * yang dibuka di aplikasi. Ketika pemasukan dilihat dalam lingkup lain atau
+ * secara konsolidasi, kwitansi untuk termin proyek A tercetak atas nama
+ * proyek B. Salah proyek pada dokumen tanda terima bukan salah tampilan: ia
+ * menjadi arsip, ia dipegang konsumen, dan ia bertentangan dengan pembukuan
+ * yang mencatat termin itu di proyek yang lain.
+ *
+ * Yang tidak punya proyek mengembalikan string kosong, dan baris "Proyek"
+ * memang tidak tercetak pada PDF-nya — lebih jujur daripada menuliskan label
+ * internal seperti "Umum (Non Proyek)" pada kwitansi konsumen. Begitu pula
+ * `projectId` yang tidak ada di daftar: menebak lebih buruk daripada kosong.
+ */
+export function namaProyekEntri(
+  entri: { projectId?: string } | null | undefined,
+  daftar: ReadonlyArray<{ id: string; nama: string }> | null | undefined,
+): string {
+  const id = String(entri?.projectId ?? '').trim()
+  if (!id) return ''
+  const ketemu = (daftar ?? []).find(p => String(p?.id ?? '').trim() === id)
+  return String(ketemu?.nama ?? '').trim()
+}
+
 /** Situs resmi tempat meterai dibubuhkan sendiri. */
 export const TAUTAN_EMETERAI = 'https://e-meterai.co.id'
 
