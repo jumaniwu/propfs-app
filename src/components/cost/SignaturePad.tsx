@@ -1,14 +1,31 @@
 // Kanvas tanda tangan digital: gambar dengan jari/mouse, hasil dataURL PNG.
 import { useEffect, useRef, useState } from 'react'
-import { Eraser } from 'lucide-react'
+import { Eraser, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface Props {
-  onChange: (dataUrl: string | null) => void
+  /**
+   * Dipanggil setiap goresan selesai (pointerup).
+   *
+   * Cocok bila pemanggilnya menampung hasilnya di state lokal dan punya tombol
+   * kirimnya sendiri — seperti SpkSignPage. JANGAN dipakai untuk langsung
+   * menyimpan: goresan pertama akan terkirim sebelum tanda tangannya selesai.
+   */
+  onChange?: (dataUrl: string | null) => void
+  /**
+   * Mode konfirmasi: hasilnya baru diserahkan ketika tombol "Simpan Tanda
+   * Tangan" ditekan, bukan tiap kali jari diangkat.
+   *
+   * Tanda tangan hampir selalu lebih dari satu goresan — huruf sambung pun
+   * putus di tengah, apalagi paraf bertitik. Pemanggil yang menyimpan pada
+   * pointerup akan membekukan coretan pertama sebagai tanda tangan resmi,
+   * lalu menutup kanvasnya, dan penandatangan tidak pernah sempat selesai.
+   */
+  onSimpan?: (dataUrl: string) => void
   height?: number
 }
 
-export default function SignaturePad({ onChange, height = 180 }: Props) {
+export default function SignaturePad({ onChange, onSimpan, height = 180 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   // Dicatat di ref, BUKAN hanya di state: end() dulu membaca `empty` dari
@@ -66,7 +83,7 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
   const end = () => {
     if (!drawing.current) return
     drawing.current = false
-    onChange(adaGoresan.current ? canvasRef.current!.toDataURL('image/png') : null)
+    onChange?.(adaGoresan.current ? canvasRef.current!.toDataURL('image/png') : null)
   }
 
   const clear = () => {
@@ -79,7 +96,12 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
     ctx.restore()
     adaGoresan.current = false
     setEmpty(true)
-    onChange(null)
+    onChange?.(null)
+  }
+
+  const simpan = () => {
+    if (!adaGoresan.current) return
+    onSimpan?.(canvasRef.current!.toDataURL('image/png'))
   }
 
   return (
@@ -99,9 +121,29 @@ export default function SignaturePad({ onChange, height = 180 }: Props) {
           onPointerLeave={end}
         />
       </div>
-      <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs" onClick={clear}>
-        <Eraser className="w-3.5 h-3.5" /> Ulangi Tanda Tangan
-      </Button>
+
+      {onSimpan ? (
+        <>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={empty}
+              className="gap-1.5 text-xs" onClick={clear}>
+              <Eraser className="w-3.5 h-3.5" /> Ulangi
+            </Button>
+            <Button type="button" size="sm" data-simpan-ttd disabled={empty} onClick={simpan}
+              className="flex-1 gap-1.5 text-xs font-bold bg-navy hover:bg-navy/90">
+              <Check className="w-3.5 h-3.5" /> Simpan Tanda Tangan
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Boleh beberapa goresan. Tekan <b className="text-navy">Simpan Tanda Tangan</b>{' '}
+            setelah tanda tangannya selesai.
+          </p>
+        </>
+      ) : (
+        <Button type="button" variant="outline" size="sm" className="gap-1.5 text-xs" onClick={clear}>
+          <Eraser className="w-3.5 h-3.5" /> Ulangi Tanda Tangan
+        </Button>
+      )}
     </div>
   )
 }

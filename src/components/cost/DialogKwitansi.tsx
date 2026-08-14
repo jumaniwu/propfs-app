@@ -345,16 +345,24 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
           <div className="rounded-xl border border-border p-3 space-y-2">
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm font-bold text-navy">Tanda tangan penerima</p>
-              {k.penanda_signature && (
-                <button onClick={() => { ubah('penanda_signature', null); setTandaTangan(false) }}
+              {k.penanda_signature ? (
+                <button onClick={() => { ubah('penanda_signature', null); setTandaTangan(true) }}
                   className="text-[11px] font-bold text-muted-foreground underline">Ulangi</button>
-              )}
+              ) : tandaTangan ? (
+                <button onClick={() => setTandaTangan(false)}
+                  className="text-[11px] font-bold text-muted-foreground underline">Batal</button>
+              ) : null}
             </div>
             {k.penanda_signature ? (
               <img data-ttd-tersimpan src={k.penanda_signature} alt="Tanda tangan"
                 className="h-20 object-contain bg-white rounded-lg border border-border" />
             ) : tandaTangan ? (
-              <SignaturePad height={150} onChange={d => ubah('penanda_signature', d)} />
+              // `onSimpan`, BUKAN `onChange`. Dengan `onChange`, goresan pertama
+              // langsung tersimpan sebagai `penanda_signature`, cabang di atas
+              // ini menang pada render berikutnya, dan kanvasnya lenyap di
+              // tengah orang menandatangani — satu garis lalu selesai.
+              <SignaturePad height={150}
+                onSimpan={d => { ubah('penanda_signature', d); setTandaTangan(false) }} />
             ) : (
               <button data-buka-ttd onClick={() => setTandaTangan(true)}
                 className="w-full rounded-xl border-2 border-dashed border-border py-4
