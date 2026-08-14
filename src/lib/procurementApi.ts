@@ -115,6 +115,21 @@ export interface ProcurementApi {
   invoiceFormByToken(token: string): Promise<FormInvoicePublik | null>
   /** Vendor mengirim tagihannya. Mengembalikan id barisnya, atau null. */
   kirimInvoice(token: string, data: KirimInvoice): Promise<string | null>
+  /**
+   * Berkas asli satu tagihan, diambil SAAT DIBUKA.
+   *
+   * Sengaja terpisah dari `listInvoice`: satu foto nota ratusan kilobita, dan
+   * menariknya untuk setiap baris membuat daftar yang seharusnya ringan
+   * menjadi berat justru ketika tagihannya menumpuk. Yang dibuka biasanya
+   * satu — yang berisi nomor rekening untuk transfer.
+   */
+  berkasInvoice(id: string): Promise<BerkasInvoice | null>
+}
+
+export interface BerkasInvoice {
+  berkas_nama: string
+  berkas_mime: string
+  berkas_data: string | null
 }
 
 /** Satu tagihan sebagaimana tersimpan. */
@@ -380,6 +395,13 @@ const realApi: ProcurementApi = {
   },
   async kirimInvoice(token, data) {
     return (await rpc<string | null>('invoice_kirim', { p_token: token, p_data: data }, true)) ?? null
+  },
+  async berkasInvoice(id) {
+    const rows = await ambil<BerkasInvoice[]>(
+      `vendor_invoices?id=eq.${id}&select=berkas_nama,berkas_mime,berkas_data`,
+      'berkas tagihan',
+    )
+    return rows?.[0] ?? null
   },
 }
 
