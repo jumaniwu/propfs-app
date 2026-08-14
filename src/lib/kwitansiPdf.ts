@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { perluWatermark, TEKS_WATERMARK, type KonteksWatermark, type IdentitasLaporan } from './branding'
 import {
-  terbilang, perluMaterai, LABEL_METODE_TERIMA, TARIF_MATERAI,
+  terbilang, perluMaterai, namaFileKwitansi, LABEL_METODE_TERIMA, TARIF_MATERAI,
   type Kwitansi, type MetodeTerima,
 } from './kwitansi'
 
@@ -169,7 +169,34 @@ export function buatKwitansiPdf(
 export function unduhKwitansiPdf(
   k: Kwitansi, merek: IdentitasLaporan, konteks?: string | null | KonteksWatermark,
 ): void {
-  buatKwitansiPdf(k, merek, konteks).save(`${(k.nomor || 'kwitansi').replace(/\//g, '-')}.pdf`)
+  buatKwitansiPdf(k, merek, konteks).save(namaFileKwitansi({ ...k, materai_pdf: null }))
+}
+
+/**
+ * Unduh PDF yang SUDAH ADA — versi bermeterai yang diunggah kembali.
+ *
+ * Lewat Blob, bukan `href` berisi data URI. Berkas bermeterai bisa mendekati
+ * 3 MB, dan data URI sepanjang itu ditolak diam-diam oleh sebagian peramban
+ * ponsel: tombolnya ditekan, tidak terjadi apa-apa, dan tidak ada galat yang
+ * bisa dibaca siapa pun.
+ */
+export function unduhPdfTersimpan(data: string, nama: string): void {
+  const s = String(data ?? '').trim()
+  if (!s) return
+  const b64 = /^data:/i.test(s) ? s.slice(s.indexOf(',') + 1) : s
+  const biner = atob(b64)
+  const buf = new Uint8Array(biner.length)
+  for (let i = 0; i < biner.length; i++) buf[i] = biner.charCodeAt(i)
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nama
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Dicabut belakangan: mencabutnya seketika membatalkan unduhan yang baru
+  // saja dimulai pada sebagian peramban.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
 
 /** PDF sebagai base64 tanpa awalan data URI — inilah yang dikirim ke e-Meterai. */

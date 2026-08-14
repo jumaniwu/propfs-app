@@ -17,7 +17,8 @@ import {
   AMBANG_MATERAI, TARIF_MATERAI, perluMaterai, statusMaterajAwal, nomorKwitansi,
   terbilang, sisaKuota, bolehBubuhMaterai, siapKirimKwitansi, siapSimpanKwitansi,
   pesanWaKwitansi,
-  peringatanMaterai, TAUTAN_EMETERAI, berkasUntukKonsumen,
+  peringatanMaterai, TAUTAN_EMETERAI, berkasUntukKonsumen, namaFileKwitansi,
+  namaProyekEntri,
   KWITANSI_KOSONG, LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI, LABEL_METODE_TERIMA,
 } from '../src/lib/kwitansi.ts'
 
@@ -273,6 +274,81 @@ assert(berkasUntukKonsumen({}) === 'bersih', 'masukan kosong aman')
 {
   const p = peringatanMaterai(LENGKAP)
   assert(/unggah kembali/i.test(p), `peringatannya menyebut langkah unggahnya: ${p}`)
+}
+
+// ── Nama berkas unduhan ─────────────────────────────────────────────────
+//
+// Kedua versi harus bisa hidup berdampingan di folder unduhan yang sama.
+// Tanpa akhiran pembeda, yang kedua menimpa yang pertama — atau menjadi
+// "(1)" yang tidak seorang pun tahu isinya yang mana, padahal justru
+// perbedaan itulah yang penting.
+{
+  const BERSIH = { nomor: 'KW/2026/08/0001', materai_status: 'menunggu' }
+  const BERMETERAI = {
+    nomor: 'KW/2026/08/0001', materai_status: 'terbubuh',
+    materai_pdf: 'data:application/pdf;base64,AA',
+  }
+  assert(namaFileKwitansi(BERSIH) === 'KW-2026-08-0001.pdf',
+    `garis miring nomor tidak boleh jadi folder: ${namaFileKwitansi(BERSIH)}`)
+  assert(namaFileKwitansi(BERMETERAI) === 'KW-2026-08-0001-bermeterai.pdf',
+    `yang bermeterai dibedakan namanya: ${namaFileKwitansi(BERMETERAI)}`)
+
+  // Ditandai terbubuh tetapi berkasnya tidak ada: yang terunduh memang PDF
+  // bersih, jadi namanya TIDAK boleh mengaku bermeterai.
+  assert(namaFileKwitansi({ nomor: 'KW/1', materai_status: 'terbubuh' }) === 'KW-1.pdf',
+    'tanpa berkas bermeterai, namanya tidak mengaku bermeterai')
+
+  assert(namaFileKwitansi({ nomor: '', materai_status: 'menunggu' }) === 'kwitansi.pdf',
+    'nomor kosong tetap menghasilkan nama yang bisa dibuka')
+  assert(namaFileKwitansi({}) === 'kwitansi.pdf', 'masukan kosong aman')
+  assert(namaFileKwitansi(null) === 'kwitansi.pdf', 'null aman')
+
+  // Nomor bisa saja diketik orang. Yang keluar harus tetap satu nama berkas,
+  // bukan jalur menuju tempat lain.
+  const jahat = namaFileKwitansi({ nomor: '../../etc/passwd', materai_status: 'menunggu' })
+  assert(!jahat.includes('/') && !jahat.includes('\\'),
+    `tidak boleh ada pemisah jalur tersisa: ${jahat}`)
+  assert(jahat.endsWith('.pdf'), `tetap berakhiran .pdf: ${jahat}`)
+  assert(namaFileKwitansi({ nomor: '   ', materai_status: 'menunggu' }) === 'kwitansi.pdf',
+    'nomor berisi spasi saja dianggap kosong')
+}
+
+// ── Proyek pada kwitansi datang dari ENTRI-nya ──────────────────────────
+//
+// Dulu ia distempel dari proyek yang kebetulan sedang terbuka di aplikasi.
+// Ketika pemasukan dilihat secara konsolidasi atau dalam lingkup lain,
+// kwitansi termin Noble Cove tercetak atas nama Ruko Pak Soni. Salah proyek
+// pada dokumen tanda terima bukan salah tampilan: ia menjadi arsip, ia
+// dipegang konsumen, dan ia bertentangan dengan pembukuan yang mencatat
+// termin itu di proyek yang lain.
+{
+  const DAFTAR = [
+    { id: 'p-noble', nama: 'Noble Cove' },
+    { id: 'p-soni', nama: 'Ruko Pak Soni' },
+  ]
+  assert(namaProyekEntri({ projectId: 'p-noble' }, DAFTAR) === 'Noble Cove',
+    'nama proyek diambil dari projectId entri itu sendiri')
+  assert(namaProyekEntri({ projectId: 'p-soni' }, DAFTAR) === 'Ruko Pak Soni',
+    'entri lain memberi nama yang lain')
+
+  // Tanpa proyek: kosong, supaya baris "Proyek" tidak tercetak sama sekali.
+  // Menuliskan label internal seperti "Umum (Non Proyek)" pada kwitansi
+  // konsumen lebih buruk daripada tidak menuliskan apa pun.
+  assert(namaProyekEntri({}, DAFTAR) === '', 'entri tanpa proyek menghasilkan kosong')
+  assert(namaProyekEntri({ projectId: '' }, DAFTAR) === '', 'projectId kosong sama saja')
+  assert(namaProyekEntri({ projectId: '   ' }, DAFTAR) === '', 'spasi saja dianggap kosong')
+
+  // Proyek yang sudah tidak ada di daftar: JANGAN menebak. Nama yang salah
+  // lebih berbahaya daripada nama yang tidak ada.
+  assert(namaProyekEntri({ projectId: 'p-hilang' }, DAFTAR) === '',
+    'projectId yang tidak dikenal tidak boleh ditebak jadi proyek lain')
+  assert(namaProyekEntri({ projectId: 'p-noble' }, []) === '',
+    'daftar kosong tidak boleh melahirkan nama')
+
+  assert(namaProyekEntri(null, DAFTAR) === '', 'entri null aman')
+  assert(namaProyekEntri(undefined, DAFTAR) === '', 'entri undefined aman')
+  assert(namaProyekEntri({ projectId: 'p-noble' }, null) === '', 'daftar null aman')
+  assert(namaProyekEntri({ projectId: 'p-noble' }, undefined) === '', 'daftar undefined aman')
 }
 
 console.log(`kwitansi: ${ok} assert lulus`)

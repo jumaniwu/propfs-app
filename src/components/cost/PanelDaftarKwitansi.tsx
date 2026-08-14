@@ -7,9 +7,9 @@ import { useToast } from '@/hooks/use-toast'
 import { kopSaya } from '@/lib/identitasSaya'
 import { waKe } from '@/lib/waLink'
 import { kwitansiApi, kwitansiLink, type BarisKwitansi } from '@/lib/kwitansiApi'
-import { unduhKwitansiPdf } from '@/lib/kwitansiPdf'
+import { unduhKwitansiPdf, unduhPdfTersimpan } from '@/lib/kwitansiPdf'
 import {
-  perluMaterai, siapKirimKwitansi, pesanWaKwitansi,
+  perluMaterai, siapKirimKwitansi, pesanWaKwitansi, namaFileKwitansi,
   LABEL_STATUS_MATERAI, TONE_STATUS_MATERAI,
 } from '@/lib/kwitansi'
 import DialogUnggahMaterai from './DialogUnggahMaterai'
@@ -42,6 +42,7 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
   const [kirimId, setKirimId] = useState('')
+  const [unduhId, setUnduhId] = useState('')
   const [materaiUntuk, setMateraiUntuk] = useState<BarisKwitansi | null>(null)
 
   async function muat() {
@@ -56,6 +57,27 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
   useEffect(() => { void muat() }, [muatUlang])
 
   const merek = kopSaya()
+
+  /**
+   * Unduh yang BERMETERAI bila barisnya sudah punya.
+   *
+   * `materai_pdf` sengaja tidak ikut dimuat bersama daftar — berkasnya sampai
+   * 3 MB per baris. Jadi ia diambil di sini, saat tombolnya benar-benar
+   * ditekan. Bila ternyata kosong (baris lama yang statusnya 'terbubuh' dari
+   * jalur otomatis dulu, tanpa berkas), PDF-nya digambar seperti biasa —
+   * lebih baik memberi yang bersih daripada tidak memberi apa-apa.
+   */
+  async function unduh(k: BarisKwitansi) {
+    if (k.materai_status !== 'terbubuh') { unduhKwitansiPdf(k, merek); return }
+    setUnduhId(k.id)
+    try {
+      const pdf = await kwitansiApi().materaiPdf(k.id)
+      if (pdf) unduhPdfTersimpan(pdf, namaFileKwitansi({ ...k, materai_pdf: pdf }))
+      else unduhKwitansiPdf(k, merek)
+    } catch {
+      unduhKwitansiPdf(k, merek)
+    } finally { setUnduhId('') }
+  }
 
   /**
    * Tandai terkirim LEBIH DULU, baru buka WhatsApp.
@@ -156,10 +178,13 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
                 <div className="flex gap-2">
                   <button
                     data-unduh-riwayat
-                    onClick={() => unduhKwitansiPdf(k, merek)}
+                    onClick={() => void unduh(k)}
+                    disabled={unduhId === k.id}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border
                       border-border px-2 py-1.5 text-[11px] font-bold text-navy">
-                    <Download className="w-3 h-3" /> Unduh PDF
+                    {unduhId === k.id ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Download className="w-3 h-3" />}
+                    {k.materai_status === 'terbubuh' ? 'PDF Bermeterai' : 'Unduh PDF'}
                   </button>
                   <button
                     onClick={() => {

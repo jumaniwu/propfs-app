@@ -39,6 +39,14 @@ export interface KwitansiPublik {
   penanda_signature: string | null
   materai_status: StatusMaterai
   materai_sn: string
+  /**
+   * PDF yang sudah dibubuhi meterai — INILAH yang diunduh konsumen bila ada.
+   *
+   * Opsional karena baris ini baru dikembalikan RPC setelah
+   * migration_kwitansi_materai_publik.sql dijalankan. Selama belum, halaman
+   * konsumen jatuh kembali ke PDF yang digambar ulang, persis seperti dulu.
+   */
+  materai_pdf?: string | null
   kop_nama: string
   kop_logo: string
   kop_kontak: string
@@ -58,6 +66,14 @@ export interface KwitansiApi {
   /** Tandai sudah dikirim — sebelum itu tautannya tidak membuka apa pun. */
   tandaiTerkirim(id: string): Promise<void>
   byToken(token: string): Promise<KwitansiPublik | null>
+  /**
+   * PDF bermeterai satu baris, diambil hanya ketika benar-benar akan diunduh.
+   *
+   * Sengaja bukan bagian dari `list()`: berkasnya sampai 3 MB per baris, dan
+   * daftar kwitansi memuat ulang tiap kali ada tindakan. String kosong berarti
+   * barisnya memang belum punya versi bermeterai.
+   */
+  materaiPdf(id: string): Promise<string>
 
   kuota(): Promise<KuotaMaterai>
   tambahKuota(jumlah: number, catatan?: string): Promise<number | null>
@@ -153,6 +169,12 @@ const nyata: KwitansiApi = {
     const rows = await rpc<KwitansiPublik[]>('kwitansi_by_token', { p_token: token },
       'membuka kwitansi', true)
     return rows?.[0] ?? null
+  },
+  async materaiPdf(id) {
+    const rows = await json<Array<{ materai_pdf?: string | null }>>(
+      `kwitansi?id=eq.${id}&select=materai_pdf`, {}, 'memuat PDF bermeterai',
+    ).catch(() => [])
+    return String(rows[0]?.materai_pdf ?? '')
   },
 
   async kuota() {

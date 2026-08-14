@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
 import PanelDaftarKwitansi from './PanelDaftarKwitansi'
-import { perluMaterai } from '@/lib/kwitansi'
+import { perluMaterai, namaProyekEntri } from '@/lib/kwitansi'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -330,7 +330,6 @@ export default function TabAkuntan(
           // di tiap baris.
           projectIdBaru={konsolidasi ? projectInfo?.id : lingkupId}
           daftarProyek={daftarProyek.map(p => ({ id: p.info.id, nama: p.info.projectName }))}
-          namaProyek={projectInfo?.projectName ?? ''}
           namaSaya={useAuthStore.getState().profile?.full_name ?? ''}
           onAdd={addPemasukan}
           onDelete={deletePemasukan}
@@ -443,13 +442,12 @@ function SubLabaRugi({ labaRugi, neraca }: {
 }
 
 // ── Sub: Pemasukan ──────────────────────────────────────────────────────────
-function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSaya,
+function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
   onAdd, onDelete, onPindah }: {
   entries: PemasukanEntry[]
   /** Proyek yang akan ditempeli entri baru; undefined = Umum (Non Proyek). */
   projectIdBaru?: string
   daftarProyek: Array<{ id: string; nama: string }>
-  namaProyek: string
   namaSaya: string
   onAdd: (p: Omit<PemasukanEntry, 'id'>) => void
   onDelete: (id: string) => void
@@ -584,7 +582,11 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaProyek, namaSa
             pemasukanId: kwitansiUntuk.id, tanggal: kwitansiUntuk.tanggal,
             sumber: kwitansiUntuk.sumber, jumlah: kwitansiUntuk.jumlah,
           }}
-          projectName={namaProyek}
+          // Nama proyek diambil dari ENTRI yang diklik, bukan dari proyek yang
+          // kebetulan sedang terbuka. `namaProyek` dulu berisi
+          // `projectInfo.projectName` — proyek terakhir yang dibuka — sehingga
+          // termin Noble Cove tercetak atas nama Ruko Pak Soni.
+          projectName={namaProyekEntri(kwitansiUntuk, daftarProyek)}
           namaSaya={namaSaya}
           onTutup={() => { setKwitansiUntuk(null); setKwitansiBerubah(n => n + 1) }}
         />

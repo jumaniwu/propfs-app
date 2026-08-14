@@ -13,8 +13,11 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Download, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react'
 import { kwitansiApi, type KwitansiPublik } from '@/lib/kwitansiApi'
-import { unduhKwitansiPdf } from '@/lib/kwitansiPdf'
-import { terbilang, perluMaterai, LABEL_METODE_TERIMA, KWITANSI_KOSONG } from '@/lib/kwitansi'
+import { unduhKwitansiPdf, unduhPdfTersimpan } from '@/lib/kwitansiPdf'
+import {
+  terbilang, perluMaterai, berkasUntukKonsumen, namaFileKwitansi,
+  LABEL_METODE_TERIMA, KWITANSI_KOSONG,
+} from '@/lib/kwitansi'
 import { TANPA_WATERMARK, type IdentitasLaporan } from '@/lib/branding'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
@@ -73,6 +76,21 @@ export default function KwitansiViewPage() {
   }
 
   const wajib = perluMaterai(k.jumlah)
+  const bermeterai = berkasUntukKonsumen(k) === 'bermeterai'
+
+  /**
+   * Yang diunduh adalah berkas BERMETERAI bila ia ada.
+   *
+   * Sebelumnya tombol ini selalu menggambar ulang PDF bersih dari data
+   * barisnya — halaman ini memang tidak pernah menerima `materai_pdf` dari
+   * RPC-nya. Jadi konsumen membaca "Sudah dibubuhi e-Meterai resmi" di layar
+   * lalu menerima berkas tanpa meterai. Meterai yang sudah dibayar tidak
+   * pernah sampai ke tangan yang memerlukannya.
+   */
+  function unduh() {
+    if (bermeterai) unduhPdfTersimpan(String(k!.materai_pdf), namaFileKwitansi(k!))
+    else unduhKwitansiPdf({ ...KWITANSI_KOSONG, ...k! }, kop(k!), TANPA_WATERMARK)
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 pb-24">
@@ -138,11 +156,11 @@ export default function KwitansiViewPage() {
           )}
         </div>
 
-        <button
-          onClick={() => unduhKwitansiPdf({ ...KWITANSI_KOSONG, ...k }, kop(k), TANPA_WATERMARK)}
+        <button data-unduh-publik onClick={unduh}
           className="w-full flex items-center justify-center gap-2 rounded-xl bg-gold px-4 py-3
             text-sm font-bold text-navy">
-          <Download className="w-4 h-4" /> Unduh PDF
+          <Download className="w-4 h-4" />
+          {bermeterai ? 'Unduh PDF Bermeterai' : 'Unduh PDF'}
         </button>
       </div>
     </div>

@@ -120,6 +120,19 @@ export default function DialogKwitansi({ awal, projectName, namaSaya, onTutup }:
               <input className={inputCls} value={k.untuk_pembayaran}
                 onChange={e => ubah('untuk_pembayaran', e.target.value)} />
             </label>
+            {/* Proyek bisa dilihat DAN diperbaiki di sini.
+                Sebelumnya ia distempel diam-diam dari proyek yang sedang
+                terbuka, tidak pernah ditampilkan, dan barunya ketahuan setelah
+                PDF-nya tercetak atas nama proyek yang salah. Yang ikut tercetak
+                di dokumen orang lain harus terlihat sebelum dicetak. */}
+            <label className="col-span-2 space-y-1">
+              <span className="text-[11px] font-bold text-muted-foreground">
+                Proyek {k.project_name ? '' : '(kosongkan bila bukan proyek)'}
+              </span>
+              <input data-kw-proyek className={inputCls} value={k.project_name}
+                onChange={e => ubah('project_name', e.target.value)}
+                placeholder="Nama proyek" />
+            </label>
             <label className="space-y-1">
               <span className="text-[11px] font-bold text-muted-foreground">Tanggal</span>
               <input type="date" className={inputCls} value={k.tanggal}
