@@ -27,3 +27,16 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Proyek native Android — DIBUAT ULANG, bukan disimpan.
+#
+# Selama capacitor.config.ts memakai `server.url`, tidak ada satu baris pun
+# kode Android yang ditulis tangan: seluruh isi android/ adalah keluaran
+# `npx cap add android`. Menyimpannya berarti menyimpan ribuan berkas yang
+# tidak pernah dibaca siapa pun, sekaligus mengundang orang menyuntingnya di
+# sana — suntingan yang akan hilang diam-diam pada regenerasi berikutnya.
+android/
+
+# Kunci penanda tangan APK. Tidak pernah masuk repositori, titik.
+*.keystore
+*.jks

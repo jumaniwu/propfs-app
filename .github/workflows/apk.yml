@@ -1,0 +1,138 @@
+# ============================================================
+# Membangun APK Android PropFS
+#
+# Dijalankan MANUAL (tab Actions → Run workflow), atau otomatis saat sebuah
+# tag `v*` didorong. TIDAK berjalan di setiap push: membangun APK memakan
+# lima menit dan tidak ada yang membutuhkannya di setiap perubahan CSS.
+#
+# YANG PALING PENTING TENTANG ALUR INI: ia tidak memerlukan satu rahasia pun
+# untuk menghasilkan APK pertama. Karena `capacitor.config.ts` memakai
+# `server.url` yang menunjuk ke https://propfs.id, `webDir` hanya berisi satu
+# halaman penjelasan statis — tidak ada `npm run build`, tidak ada VITE_*,
+# dan tidak ada kunci Supabase yang ikut terpaket ke dalam berkas yang
+# nantinya dibagikan orang lewat WhatsApp.
+#
+# Penandatanganan bersifat OPSIONAL. Bila keempat rahasia keystore sudah
+# dipasang, APK ditandatangani sebagai release. Bila belum, alur ini tetap
+# menghasilkan APK debug yang bisa langsung dipasang — supaya APK pertama
+# bisa didapat hari ini juga, tanpa persiapan apa pun.
+# ============================================================
+name: Build APK Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      catatan:
+        description: 'Catatan rilis (muncul di nama artefak)'
+        required: false
+        default: ''
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # JDK 17: yang diminta Android Gradle Plugin 8.x. JDK 21 gagal merakit,
+      # dan pesan galatnya tidak menyebut versi Java sama sekali.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Pasang dependensi
+        run: npm ci
+
+      # Uji dijalankan SEBELUM merakit. APK yang dibagikan ke lapangan tidak
+      # boleh berasal dari commit yang ujinya merah — sekali terpasang di HP
+      # orang, ia tidak bisa ditarik kembali.
+      - name: Jalankan uji
+        run: |
+          gagal=0
+          for f in test/*.test.mjs; do
+            node --experimental-strip-types "$f" || gagal=$((gagal+1))
+          done
+          echo "$gagal berkas uji gagal"
+          test "$gagal" -eq 0
+
+      - name: Periksa tipe
+        run: npx tsc --noEmit -p tsconfig.app.json
+
+      # android/ tidak disimpan di repositori — ia keluaran, bukan sumber.
+      - name: Buat proyek Android
+        run: npx cap add android
+
+      - name: Buat ikon & splash
+        run: npx @capacitor/assets generate --android --assetPath assets
+
+      - name: Salin konfigurasi ke proyek Android
+        run: npx cap sync android
+
+      # ── Penandatanganan, bila keystore-nya sudah dipasang ────────────────
+      #
+      # `if` diperiksa pada string kosong, bukan pada rahasianya langsung:
+      # GitHub menyensor nilai rahasia di log, dan membandingkannya langsung
+      # di dalam `if` menghasilkan galat yang tidak bisa dibaca.
+      - name: Siapkan keystore
+        id: kunci
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/propfs.keystore
+            echo "ada=ya" >> "$GITHUB_OUTPUT"
+          else
+            echo "Keystore belum dipasang — APK debug yang dibuat."
+            echo "ada=tidak" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rakit APK release (ditandatangani)
+        if: steps.kunci.outputs.ada == 'ya'
+        working-directory: android
+        env:
+          PROPFS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PROPFS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PROPFS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$PWD/app/propfs.keystore" \
+            -Pandroid.injected.signing.store.password="$PROPFS_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$PROPFS_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$PROPFS_KEY_PASSWORD"
+
+      - name: Rakit APK debug (belum ada keystore)
+        if: steps.kunci.outputs.ada != 'ya'
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Hapus keystore dari runner
+        if: always()
+        run: rm -f android/app/propfs.keystore
+
+      - name: Kumpulkan APK
+        id: kumpul
+        run: |
+          mkdir -p keluaran
+          find android -name '*.apk' -exec cp {} keluaran/ \;
+          ls -la keluaran/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: propfs-apk-${{ steps.kunci.outputs.ada == 'ya' && 'release' || 'debug' }}-${{ github.sha }}
+          path: keluaran/*.apk
+          retention-days: 30
+          if-no-files-found: error
