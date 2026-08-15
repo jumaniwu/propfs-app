@@ -11,6 +11,7 @@ import { urutanModel } from './pilihanModel'
 import { panggilGemini } from './gemini'
 import { buatAnggaran, pantasDicobaLagi, WAKTU_HABIS } from './anggaranWaktu'
 import { riwayatUntukModel } from './riwayatChat'
+import { bersihkanBalasan } from './balasanChat'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
 
@@ -180,6 +181,10 @@ function extractEntriesFromText(text: string): RealisasiParsedResult {
     }
     clean = text.replace(jsonRegex, '').trim()
   }
+  // Bloknya sudah dibuang; kalimat yang MEMPERKENALKANNYA belum. Tanpa ini,
+  // "Berikut data JSON untuk pencatatan sistem:" tertinggal sendirian di ujung
+  // balasan, menunjuk sesuatu yang tidak ada.
+  clean = bersihkanBalasan(clean)
   return { clean, added, updated, deleted, pemasukan, pembayaran }
 }
 
@@ -220,6 +225,7 @@ Jika dari foto/teks ada info penting tidak terlihat (seperti nama toko/supplier 
 
 ### Langkah 3: JSON HARUS ADA DI AKHIR PESAN
 Lampirkan JSON transaksi HANYA di akhir pesan, dalam blok code json persis seperti contoh. Semua data yang terbaca dari PDF/Foto HARUS MASUK SINI.
+JANGAN PERNAH menyebut blok itu dalam kalimatmu. Dilarang menulis kalimat seperti "Berikut data JSON untuk pencatatan sistem:" atau "Berikut perintah JSON..." — bloknya dibaca sistem dan TIDAK PERNAH terlihat oleh pemakainya, sehingga kalimat itu hanya menunjuk sesuatu yang tidak ada di layarnya. Akhiri kalimatmu seolah blok itu tidak ada.
 
 Jika mencatat transaksi BARU, masukkan ke dalam array \`added\`.
 Jika MENGUBAH transaksi yang sudah ada (revisi), masukkan ke \`updated\` dengan mencantumkan "id" transaksi tersebut.

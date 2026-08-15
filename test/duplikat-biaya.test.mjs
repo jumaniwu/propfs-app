@@ -136,4 +136,77 @@ assert(ringkasDuplikat([]) === '', 'tanpa duplikat, tanpa kalimat')
 assert(saringEntriBaru(null, null).diterima.length === 0, 'null aman')
 assert(saringEntriBaru([], [LAMA]).diterima.length === 0, 'tanpa entri baru aman')
 
+// ── Kembar yang LOLOS di produksi, 15 Agustus 2026 ─────────────────────
+//
+// Kejadian nyata. AI mencatat pembelian kayu yang sama dua kali karena
+// keterangan yang ditulisnya berbeda kata:
+//
+//   "Kayu 2x3x14 ft untuk Ruko..."   Rp 4.445.000
+//   "Pembelian kayu 2x3x14 ft..."    Rp 4.445.000
+//
+// Tanggal sama, toko sama, nominal sama, dan 127 batang sama. Keduanya tanpa
+// nomor nota, jadi `pasti` tidak menyala; dan `mungkin` tidak pernah disaring.
+// Yang tidak pernah dipakai padahal sudah ada di setiap entri: VOLUME.
+{
+  const A = {
+    tanggal: '2026-08-15', jumlah: 4_445_000, nomorNota: '',
+    namaSupplier: 'Yohannes Ralaph Boyce', namaMaterial: 'Kayu 2x3x14 ft',
+    volume: 127, satuan: 'batang',
+  }
+  const B = { ...A, namaMaterial: 'Kayu 2x3x14 ft', nomorNota: '-' }
+
+  const c = bandingkanEntri(A, B)
+  assert(c.kembar === true, 'kembarnya terdeteksi')
+  assert(c.keyakinan === 'kuat',
+    `dengan volume yang sama, keyakinannya KUAT — bukan sekadar mungkin (${c.keyakinan})`)
+  assert(/127/.test(c.sebab), `jumlahnya disebut dalam alasannya: ${c.sebab}`)
+
+  // Dan inilah yang sesungguhnya diperbaiki: ia kini DISARING saat disimpan.
+  const { diterima, ditolak } = saringEntriBaru([{ id: 'b2', ...B }], [{ id: 'a1', ...A }])
+  assert(diterima.length === 0, 'yang kembar kuat tidak ikut tersimpan')
+  assert(ditolak.length === 1, 'dan dilaporkan sebagai ditolak, bukan hilang diam-diam')
+
+  // Nomor nota yang BERBEDA tetap membatalkan segalanya — itu bukti dua
+  // kejadian, sekuat apa pun kemiripan lainnya.
+  const beda = bandingkanEntri({ ...A, nomorNota: 'A-001' }, { ...B, nomorNota: 'A-002' })
+  assert(beda.kembar === false, 'nota berbeda tetap menang atas seluruh kemiripan')
+}
+
+// ── Yang MEMANG bisa dibeli dua kali tidak boleh ikut tersaring ────────
+//
+// Batas antara "kuat" dan "mungkin" ada di sini, dan salah menariknya berarti
+// menghapus biaya yang nyata.
+{
+  const paku = {
+    tanggal: '2026-08-15', jumlah: 120_000, nomorNota: '',
+    namaSupplier: 'Global Bangunan Seraya', namaMaterial: 'Paku kayu 2.5"',
+    volume: 1, satuan: 'box',
+  }
+  // Volume sama, tapi ini memang bisa terjadi dua kali dalam sehari — dan
+  // tetap disaring, karena seluruh buktinya cocok. Yang membedakannya dari
+  // pembelian sah adalah nomor nota; tanpa nota, tidak ada yang bisa
+  // membedakannya, jadi ia dilaporkan lewat `ditolak`.
+  const c = bandingkanEntri(paku, { ...paku })
+  assert(c.keyakinan === 'kuat', 'seluruh bukti cocok = kuat')
+
+  // Volume BERBEDA menurunkannya kembali jadi dugaan.
+  const bedaVolume = bandingkanEntri(paku, { ...paku, volume: 2, jumlah: 120_000 })
+  assert(bedaVolume.kembar === true, 'masih dianggap mirip')
+  assert(bedaVolume.keyakinan === 'mungkin',
+    'jumlah yang berbeda menurunkannya jadi dugaan — tidak disaring otomatis')
+
+  // Dan yang "mungkin" tetap tersimpan.
+  const { diterima } = saringEntriBaru(
+    [{ id: 'x', ...paku, volume: 2 }], [{ id: 'y', ...paku }],
+  )
+  assert(diterima.length === 1, 'yang cuma mungkin TETAP tersimpan, tidak ditolak diam-diam')
+
+  // Volume nol/kosong tidak boleh dianggap "sama".
+  const tanpaVolume = bandingkanEntri(
+    { ...paku, volume: 0 }, { ...paku, volume: 0 },
+  )
+  assert(tanpaVolume.keyakinan === 'mungkin',
+    'volume nol bukan bukti — dua entri tanpa jumlah tidak jadi kuat')
+}
+
 console.log(`duplikat-biaya: ${ok} assert lulus`)
