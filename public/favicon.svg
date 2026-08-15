@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="PropFS">
+  <!--
+    Lambang PropFS. Disebut di index.html sejak lama tetapi tidak pernah ada
+    di public/ — favicon situs 404 sampai berkas ini dibuat. Berkas yang sama
+    dipakai sebagai ikon aplikasi Android.
+
+    Dirancang untuk 16 px lebih dulu, bukan untuk 1024. Pada ukuran tab
+    peramban yang tersisa hanyalah siluet: kotak gelap dengan satu huruf
+    terang di tengahnya. Itu sebabnya tidak ada gradien, tidak ada bayangan,
+    dan tidak ada garis tipis — semuanya hilang di 16 px dan hanya menyisakan
+    bubur abu-abu.
+  -->
+  <rect width="1024" height="1024" rx="232" fill="#0D1B2A"/>
+  <!--
+    Huruf P digambar sebagai jalur, bukan <text>: perender favicon, generator
+    ikon Android, dan pratinjau WhatsApp tidak memuat font yang sama, dan
+    huruf yang jatuh ke font cadangan bukan lagi lambang yang sama.
+    Tebal batangnya 110 di ketiga sisi supaya tidak ada bagian yang menipis
+    lebih dulu saat dikecilkan.
+  -->
+  <path fill="#C9A84C" fill-rule="evenodd"
+        d="M300 250h250a165 165 0 0 1 0 330H410v200H300z
+           M410 360v110h140a55 55 0 0 0 0-110z"/>
+</svg>
