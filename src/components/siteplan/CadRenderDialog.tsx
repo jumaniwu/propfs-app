@@ -4,6 +4,7 @@
  * user menjawab → render bird-eye fotorealistis mengikuti denah.
  */
 import { useRef, useState } from 'react'
+import { simpanBerkas } from '@/lib/unduhBerkas'
 import { FileUp, Loader2, Download, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -132,12 +133,7 @@ export default function CadRenderDialog() {
   }
 
   function downloadView(v: CadRenderedView, i: number) {
-    const a = document.createElement('a')
-    a.href = v.dataUrl
-    a.download = `render-${v.angle}-${i + 1}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    void simpanBerkas(v.dataUrl, `render-${v.angle}-${i + 1}.png`, 'image/png')
   }
 
   const busy = phase === 'reading' || phase === 'analyzing' || phase === 'rendering'

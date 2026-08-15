@@ -21,7 +21,13 @@
 //   • `pasti`  — nomor nota sama DAN nominal sama. Dipakai untuk MENOLAK
 //     usulan baru secara otomatis: menawarkan sesuatu yang jelas kembar hanya
 //     mengundang kesalahan.
-//   • `mungkin` — tanggal + nominal + toko/barang sama, tanpa nomor nota yang
+//   • `kuat`   — tanggal + nominal + toko + nama barang + VOLUME semuanya
+//     sama, dan tidak ada nomor nota yang membantah. Ini bukan lagi dugaan:
+//     127 batang kayu 2x3 yang sama, dari orang yang sama, pada hari yang
+//     sama, dengan rupiah yang sama persis tidak dibeli dua kali. Disaring
+//     otomatis seperti `pasti`, TETAPI yang tersaring selalu dilaporkan —
+//     tidak ada yang hilang diam-diam.
+//   • `mungkin` — tanggal + nominal + toko/barang sama, tanpa volume yang
 //     menguatkan. TIDAK PERNAH dihapus sendiri: dua kotak paku Rp 120.000 dari
 //     toko yang sama pada hari yang sama memang bisa dibeli dua kali, dan
 //     menghapus salah satunya berarti menghilangkan biaya yang nyata.
@@ -52,7 +58,7 @@ export function normalNama(v: unknown): string {
 /** Nominal dibulatkan ke rupiah — pembulatan sen bukan pembeda. */
 const nominal = (v: unknown) => Math.round(Number(v) || 0)
 
-export type Keyakinan = 'pasti' | 'mungkin'
+export type Keyakinan = 'pasti' | 'kuat' | 'mungkin'
 
 export interface PasanganDuplikat {
   /** Yang lebih dulu tercatat; inilah yang dipertahankan. */
@@ -71,7 +77,7 @@ export interface PasanganDuplikat {
  * pencatatannya per barang akan dikira kembar dengan totalnya.
  */
 export function bandingkanEntri(
-  a: Pick<RealisasiEntry, 'tanggal' | 'jumlah' | 'nomorNota' | 'namaSupplier' | 'namaMaterial' | 'volume'>,
+  a: Pick<RealisasiEntry, 'tanggal' | 'jumlah' | 'nomorNota' | 'namaSupplier' | 'namaMaterial' | 'volume' | 'satuan'>,
   b: typeof a,
 ): { kembar: boolean; keyakinan: Keyakinan; sebab: string } {
   const tidak = { kembar: false, keyakinan: 'mungkin' as Keyakinan, sebab: '' }
@@ -96,6 +102,25 @@ export function bandingkanEntri(
   const tokoB = normalNama(b?.namaSupplier)
   const barangA = normalNama(a?.namaMaterial)
   const barangB = normalNama(b?.namaMaterial)
+
+  // Volume yang sama persis adalah bukti yang menentukan.
+  //
+  // Inilah yang membedakan "dua kotak paku pada hari yang sama" — yang memang
+  // mungkin — dari "127 batang kayu 2x3 yang sama pada hari yang sama", yang
+  // tidak. Jumlah barang tidak pernah dipakai sebelumnya, padahal ia sudah ada
+  // di setiap entri; kembarannya lolos justru karena keterangan yang ditulis
+  // AI berbeda kata ("Kayu 2x3x14 ft untuk Ruko" vs "Pembelian kayu 2x3x14 ft").
+  const volA = Number(a?.volume)
+  const volB = Number(b?.volume)
+  const volSama = Number.isFinite(volA) && volA > 0 && volA === volB
+
+  if (volSama && tokoA && tokoA === tokoB && barangA && barangA === barangB) {
+    return {
+      kembar: true, keyakinan: 'kuat',
+      sebab: `Tanggal, nominal, toko, barang, dan jumlahnya sama persis `
+        + `(${teks(a?.namaMaterial)}, ${volA} ${teks(a?.satuan) || 'unit'}).`,
+    }
+  }
 
   if (tokoA && tokoA === tokoB) {
     return {
@@ -142,7 +167,7 @@ export function cariDuplikat(entries: RealisasiEntry[] | null | undefined): Pasa
 
 /** Yang jelas kembar; inilah yang aman ditawarkan untuk dihapus sekaligus. */
 export function duplikatPasti(d: PasanganDuplikat[]): PasanganDuplikat[] {
-  return d.filter(p => p.keyakinan === 'pasti')
+  return d.filter(p => p.keyakinan === 'pasti' || p.keyakinan === 'kuat')
 }
 
 /** Berapa rupiah yang terhitung dua kali. */
@@ -168,9 +193,13 @@ export function ringkasDuplikat(d: PasanganDuplikat[]): string {
  * sama karena lupa. Menyaringnya di sini jauh lebih murah daripada mencarinya
  * kembali setelah laporan keuangannya salah.
  *
- * Hanya yang PASTI kembar yang disaring. Yang cuma "mungkin" tetap dimasukkan
+ * Yang disaring hanya `pasti` dan `kuat`. Yang cuma "mungkin" tetap dimasukkan
  * lalu muncul di daftar tinjauan — menolak diam-diam pembelian yang sah jauh
  * lebih merugikan daripada satu baris yang perlu diperiksa.
+ *
+ * Yang tersaring dikembalikan lewat `ditolak`, dan pemanggilnya WAJIB
+ * mengatakannya. Menyaring tanpa memberi tahu adalah cara lain kehilangan
+ * data — hanya lebih sopan.
  */
 export function saringEntriBaru(
   baru: RealisasiEntry[] | null | undefined,
@@ -186,7 +215,7 @@ export function saringEntriBaru(
     if (!b) continue
     const kembar = pembanding.some(l => {
       const c = bandingkanEntri(b, l)
-      return c.kembar && c.keyakinan === 'pasti'
+      return c.kembar && (c.keyakinan === 'pasti' || c.keyakinan === 'kuat')
     })
     if (kembar) ditolak.push(b)
     else { diterima.push(b); pembanding.push(b) }

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   PackageOpen, Loader2, RefreshCw, Search, Download, AlertTriangle,
   BarChart3, ShoppingCart, Package
@@ -84,7 +85,7 @@ export default function TabMaterialSchedule() {
         ? (((m.actualUnitPrice - m.estimatedUnitPrice) / m.estimatedUnitPrice) * 100).toFixed(1) + '%' : '',
     }))
     if (realisasiData.length > 0) xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(realisasiData), 'Realisasi Pembelian')
-    xlsx.writeFile(wb, `Material_Schedule_${new Date().toLocaleDateString('id-ID').replace(/\//g, '')}.xlsx`)
+    void simpanXlsx(xlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Material_Schedule_${new Date().toLocaleDateString('id-ID').replace(/\//g, '')}.xlsx`)
     toast({ title: '✅ Export Excel berhasil!' })
   }
 

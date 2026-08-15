@@ -4,6 +4,7 @@
  * membutuhkan handle/subclass sehingga diterima semua CAD.
  */
 import { centroid, type Point } from './geometry.ts'
+import { simpanBerkas } from '../../lib/unduhBerkas.ts'
 import type { ParcelType, SiteplanResult } from './layout.ts'
 
 // [nama layer, warna ACI]
@@ -83,13 +84,5 @@ export function buildDxf(result: SiteplanResult): string {
 
 export function downloadDxf(result: SiteplanResult, filenameBase = 'siteplan'): void {
   const blob = new Blob([buildDxf(result)], { type: 'application/dxf' })
-  const a = document.createElement('a')
-  a.href = URL.createObjectURL(blob)
-  a.download = `${filenameBase}.dxf`
-  document.body.appendChild(a)
-  a.click()
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href)
-    a.remove()
-  }, 1000)
+  void simpanBerkas(blob, `${filenameBase}.dxf`, 'application/dxf')
 }

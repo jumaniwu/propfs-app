@@ -3,6 +3,7 @@
  * bird-eye view fotorealistis kawasan dari 2-3 sudut pandang.
  */
 import { useEffect, useState } from 'react'
+import { simpanBerkas } from '@/lib/unduhBerkas'
 import { Palette, Loader2, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -85,12 +86,7 @@ export default function RenderMasterplanDialog({ result, initialFloors, sketchDa
   }
 
   function downloadView(v: RenderedView, i: number) {
-    const a = document.createElement('a')
-    a.href = v.dataUrl
-    a.download = `masterplan-${v.angle}-${i + 1}.png`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    void simpanBerkas(v.dataUrl, `masterplan-${v.angle}-${i + 1}.png`, 'image/png')
   }
 
   return (

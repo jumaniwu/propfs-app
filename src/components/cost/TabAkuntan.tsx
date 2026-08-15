@@ -4,6 +4,7 @@
 // (form opname bisa dibagikan via link untuk diisi tukang/mandor).
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   Scale, TrendingUp, PackageOpen, ClipboardList, Download,
   Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet, Wrench,
@@ -317,7 +318,7 @@ export default function TabAkuntan(
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
     const safeName = projectName.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_') || 'Proyek'
-    reportXlsx.writeFile(wb, `Laporan_Akuntan_${safeName}_${dateStr}.xlsx`)
+    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Laporan_Akuntan_${safeName}_${dateStr}.xlsx`)
     toast({ title: '✅ Laporan Akuntan diunduh!', description: '6 sheet: Neraca, Laba Rugi, Pemasukan, Pengeluaran, Inventori, Opname.' })
   }
 

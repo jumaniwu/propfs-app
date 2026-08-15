@@ -3,6 +3,7 @@
 // yang menyetujui). Mengikuti pola src/lib/spkPdf.ts agar tampilannya sebangun
 // dengan SPK yang sudah dipakai.
 import { jsPDF } from 'jspdf'
+import { simpanPdf } from './unduhBerkas.ts'
 import { teksTerm, type PurchaseOrder } from './procurement'
 import { kopSaya } from './identitasSaya'
 import type { IdentitasLaporan } from './branding'
@@ -20,8 +21,8 @@ const tgl = (s?: string | null) => {
  *   halaman PO publik: vendor membukanya tanpa login, jadi cache lokal dan
  *   sesi — keduanya milik perangkat pemakai aplikasi — tidak bisa dipakai.
  */
-export function downloadPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): void {
-  buatPoPdf(po, kop).save(`${(po.nomor || 'PO').replace(/[^\w-]+/g, '_')}.pdf`)
+export function downloadPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): Promise<boolean> {
+  return simpanPdf(buatPoPdf(po, kop), `${(po.nomor || 'PO').replace(/[^\w-]+/g, '_')}.pdf`)
 }
 
 /**

@@ -18,6 +18,7 @@
 // lalu menemukan berkasnya tidak bisa diunggah.
 // ============================================================
 
+import { simpanBerkas } from './unduhBerkas.ts'
 import {
   FORMAT_MARCOM, tataLetak, barisKontak, namaTampil, bungkusBaris, judulGambar,
   garisProyek, fotoPadaWaktu, durasiVideo, durasiPakai, DURASI_PER_FOTO, MAKS_DETIK_VIDEO,
@@ -712,14 +713,7 @@ export async function olahVideo(o: OpsiOlahVideo): Promise<HasilVideo> {
 // ── Unduh & bagikan ─────────────────────────────────────────────────────────
 
 export function unduh(isi: string | Blob, nama: string) {
-  const url = typeof isi === 'string' ? isi : URL.createObjectURL(isi)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nama
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  if (typeof isi !== 'string') setTimeout(() => URL.revokeObjectURL(url), 10000)
+  void simpanBerkas(isi, nama)
 }
 
 /** Ubah data URL menjadi File, supaya bisa dibagikan lewat Web Share. */

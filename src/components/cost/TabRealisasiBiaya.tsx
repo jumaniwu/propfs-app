@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   ReceiptIcon, Loader2, Paperclip, Send, Download, CheckCircle2,
   FileText, ImageIcon, X, TrendingDown, Wallet, BarChart3, RefreshCw,
@@ -401,7 +402,7 @@ export default function TabRealisasiBiaya() {
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
     const safeName = projectName.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_') || 'Proyek'
-    reportXlsx.writeFile(wb, `Laporan_Realisasi_${safeName}_${dateStr}.xlsx`)
+    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Laporan_Realisasi_${safeName}_${dateStr}.xlsx`)
     toast({ title: '✅ Laporan Excel berhasil diunduh!', description: 'Format laporan rapi: judul, tabel berformat, dan baris TOTAL (SUM) di tiap sheet.' })
   }
 
