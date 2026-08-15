@@ -10,6 +10,7 @@
 // bangunan yang sama, bukan kawasan baru yang kebetulan mirip.
 // ============================================================
 import { useRef, useState } from 'react'
+import { simpanBerkas } from '@/lib/unduhBerkas'
 import { Loader2, Send, Sparkles, Download, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { renderDariPrompt } from '@/lib/ai-cadrender'
@@ -80,10 +81,7 @@ export default function ChatRender3D({ ambilLayout, deskripsiLayout, namaProyek 
   }
 
   function unduh(g: string, judul: string) {
-    const a = document.createElement('a')
-    a.href = g
-    a.download = `render-${judul.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`
-    a.click()
+    void simpanBerkas(g, `render-${judul.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.png`, 'image/png')
   }
 
   return (

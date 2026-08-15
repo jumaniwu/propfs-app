@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { bukaBerkas } from '@/lib/unduhBerkas'
 import { X, ExternalLink, Download, Loader2, FileText, AlertTriangle } from 'lucide-react'
 import {
   dataUriBerkas, base64Telanjang, bisaTampilInline, adalahPdf,
@@ -61,18 +62,7 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
    */
   function bukaTabBaru() {
     if (!isi) return
-    try {
-      const biner = atob(base64Telanjang(isi.uri))
-      const buf = new Uint8Array(biner.length)
-      for (let i = 0; i < biner.length; i++) buf[i] = biner.charCodeAt(i)
-      const url = URL.createObjectURL(new Blob([buf], { type: isi.mime || 'application/octet-stream' }))
-      window.open(url, '_blank', 'noopener')
-      // Dibebaskan belakangan: mencabutnya seketika membuat tab yang baru
-      // dibuka menampilkan halaman kosong.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    } catch {
-      window.open(isi.uri, '_blank', 'noopener')
-    }
+    void bukaBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
   }
 
   return (

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   TrendingUp, Info, Download, Printer, SlidersHorizontal,
   ArrowUp, ArrowDown, Minus, Target, Clock, AlertTriangle,
@@ -162,7 +163,7 @@ export default function TabKurvaS() {
       ]
       xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(metricsData), 'Analisa SPI')
     }
-    xlsx.writeFile(wb, `KurvaS_${projectInfo?.projectName ?? 'Proyek'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '')}.xlsx`)
+    void simpanXlsx(xlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `KurvaS_${projectInfo?.projectName ?? 'Proyek'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '')}.xlsx`)
   }
 
   return (

@@ -1,6 +1,7 @@
 // Cetak SPK ke PDF A4 (jspdf) — kop kontrak, para pihak, rincian pekerjaan,
 // pasal-pasal, dan dua blok tanda tangan (Pihak Pertama & Pihak Kedua).
 import { jsPDF } from 'jspdf'
+import { simpanPdf } from './unduhBerkas.ts'
 import { spkTitle, type SpkDoc } from './spkApi'
 import { kopSaya } from './identitasSaya'
 
@@ -175,5 +176,5 @@ export function downloadSpkPdf(spk: SpkDoc): void {
   }
 
 
-  doc.save(`${spk.nomor.replace(/[^\w-]+/g, '_')}.pdf`)
+  void simpanPdf(doc, `${spk.nomor.replace(/[^\w-]+/g, '_')}.pdf`)
 }

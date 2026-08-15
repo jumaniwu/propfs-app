@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { useState, useMemo, useEffect } from 'react'
 import ExcelJS from 'exceljs'
-import { saveAs } from 'file-saver'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import IndikatorSimpan from '@/components/cost/IndikatorSimpan'
 import PilihProyek from '@/components/cost/PilihProyek'
@@ -323,7 +323,7 @@ export default function CostDashboard() {
     gtSumRow.getCell(4).numFmt = '0.00"%"'
 
     const buffer = await wb.xlsx.writeBuffer()
-    saveAs(new Blob([buffer]), `RAB_${projName}_${dateStr()}.xlsx`)
+    void simpanXlsx(buffer, `RAB_${projName}_${dateStr()}.xlsx`)
   }
 
   const exportRealisasi = async () => {
@@ -418,7 +418,7 @@ export default function CostDashboard() {
     addSumRow('EAC (Forecast Akhir)', eac, true)
 
     const buffer = await wb.xlsx.writeBuffer()
-    saveAs(new Blob([buffer]), `Realisasi_${projName}_${dateStr()}.xlsx`)
+    void simpanXlsx(buffer, `Realisasi_${projName}_${dateStr()}.xlsx`)
   }
 
   const exportMaterial = async () => {
@@ -504,7 +504,7 @@ export default function CostDashboard() {
     })
 
     const buffer = await wb.xlsx.writeBuffer()
-    saveAs(new Blob([buffer]), `MaterialSchedule_${projName}_${dateStr()}.xlsx`)
+    void simpanXlsx(buffer, `MaterialSchedule_${projName}_${dateStr()}.xlsx`)
   }
 
   const exportKurvaS = () => {

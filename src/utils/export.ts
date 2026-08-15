@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { SavedProject } from '../types/fs.types'
+import { simpanBerkas } from '@/lib/unduhBerkas'
 
 /**
  * Export project data ke JSON file
@@ -10,14 +11,8 @@ import type { SavedProject } from '../types/fs.types'
 export function exportToJSON(project: SavedProject): void {
   const data = JSON.stringify(project, null, 2)
   const blob = new Blob([data], { type: 'application/json' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `${sanitizeFilename(project.name || 'project')}_${formatDateForFile()}.json`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  void simpanBerkas(blob, `${sanitizeFilename(project.name || 'project')}_${formatDateForFile()}.json`,
+    'application/json')
 }
 
 /**

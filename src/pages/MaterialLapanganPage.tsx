@@ -5,6 +5,7 @@
 //  • Kekurangan  : rencana (Material Schedule) vs terpakai → cepat terlihat
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, PackageOpen, ShoppingCart, AlertTriangle, RefreshCw, Loader2,
@@ -154,7 +155,7 @@ export default function MaterialLapanganPage() {
     }), 'Permintaan')
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
-    reportXlsx.writeFile(wb, `Material_Lapangan_${dateStr}.xlsx`)
+    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Material_Lapangan_${dateStr}.xlsx`)
     toast({ title: '✅ Laporan material diunduh!', description: '3 sheet: Kekurangan, Penggunaan, Permintaan.' })
   }
 

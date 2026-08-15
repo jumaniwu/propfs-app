@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { simpanPdf, simpanBerkas } from './unduhBerkas.ts'
 import type { IdentitasLaporan } from './branding'
 import {
   terbilang, perluMaterai, namaFileKwitansi, LABEL_METODE_TERIMA, TARIF_MATERAI,
@@ -158,8 +159,8 @@ export function buatKwitansiPdf(
 
 export function unduhKwitansiPdf(
   k: Kwitansi, merek: IdentitasLaporan,
-): void {
-  buatKwitansiPdf(k, merek).save(namaFileKwitansi({ ...k, materai_pdf: null }))
+): Promise<boolean> {
+  return simpanPdf(buatKwitansiPdf(k, merek), namaFileKwitansi({ ...k, materai_pdf: null }))
 }
 
 /**
@@ -170,23 +171,8 @@ export function unduhKwitansiPdf(
  * ponsel: tombolnya ditekan, tidak terjadi apa-apa, dan tidak ada galat yang
  * bisa dibaca siapa pun.
  */
-export function unduhPdfTersimpan(data: string, nama: string): void {
-  const s = String(data ?? '').trim()
-  if (!s) return
-  const b64 = /^data:/i.test(s) ? s.slice(s.indexOf(',') + 1) : s
-  const biner = atob(b64)
-  const buf = new Uint8Array(biner.length)
-  for (let i = 0; i < biner.length; i++) buf[i] = biner.charCodeAt(i)
-  const url = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nama
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  // Dicabut belakangan: mencabutnya seketika membatalkan unduhan yang baru
-  // saja dimulai pada sebagian peramban.
-  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+export function unduhPdfTersimpan(data: string, nama: string): Promise<boolean> {
+  return simpanBerkas(data, nama, 'application/pdf')
 }
 
 /** PDF sebagai base64 tanpa awalan data URI — inilah yang dikirim ke e-Meterai. */

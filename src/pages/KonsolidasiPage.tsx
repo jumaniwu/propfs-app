@@ -3,6 +3,7 @@
 // nilai RAB, pemasukan, pengeluaran, laba, progress, dan deviasi.
 // ============================================================
 import { useEffect, useMemo } from 'react'
+import { simpanXlsx } from '@/lib/unduhBerkas'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -82,7 +83,7 @@ export default function KonsolidasiPage() {
     }
 
     const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
-    reportXlsx.writeFile(wb, `Laporan_Konsolidasi_${dateStr}.xlsx`)
+    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Laporan_Konsolidasi_${dateStr}.xlsx`)
     toast({ title: '✅ Laporan konsolidasi diunduh!', description: `1 sheet ringkasan + ${baris.length} sheet rincian proyek.` })
   }
 
