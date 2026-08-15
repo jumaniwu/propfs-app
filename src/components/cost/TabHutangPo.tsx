@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { downscaleImage } from '@/lib/imageUtil'
 import { penerimaanApi } from '@/lib/penerimaanApi'
+import DaftarBulanan from './DaftarBulanan'
 import {
   ringkasHutang, bayarMilikPo, teksTempo,
   LABEL_STATUS_BAYAR, TONE_STATUS_BAYAR,
@@ -107,18 +108,23 @@ export default function TabHutangPo({ pos, dos, bayar, bolehUbah, onUbah }: {
           </p>
         </div>
       ) : (
-        <div className="space-y-2.5">
-          {terlihat.map(b => (
+        <DaftarBulanan
+          baris={terlihat}
+          tanggalDari={b => b.po.tanggal}
+          nilaiDari={b => b.sisa}
+          kunci={b => b.po.id}
+          satuan="tagihan"
+          render={b => (
             <KartuTagihan
-              key={b.po.id} r={b} bayar={bayarMilikPo(b.po.id, bayar)}
+              r={b} bayar={bayarMilikPo(b.po.id, bayar)}
               bolehUbah={bolehUbah}
               formTerbuka={formPoId === b.po.id}
               onBukaForm={() => setFormPoId(b.po.id)}
               onTutupForm={() => setFormPoId(null)}
               onUbah={onUbah}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   )
@@ -162,9 +168,16 @@ function KartuTagihan({ r, bayar, bolehUbah, formTerbuka, onBukaForm, onTutupFor
           <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${TONE_STATUS_TAGIHAN[r.statusTagihan]}`}>
             {LABEL_STATUS_TAGIHAN[r.statusTagihan]}
           </span>
-          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${TONE_STATUS_BAYAR[r.statusBayar]}`}>
-            {LABEL_STATUS_BAYAR[r.statusBayar]}
-          </span>
+          {/* Lencana pembayaran hanya bila ia MENAMBAH keterangan.
+              `statusTagihan === 'lunas'` diturunkan dari `statusBayar === 'lunas'`,
+              jadi saat lunas keduanya menulis kata yang sama persis — dua
+              lencana "LUNAS" bertumpuk yang tidak memberi tahu apa pun. Yang
+              berpasangan justru berguna: "Lewat Tempo" + "Dibayar Sebagian". */}
+          {r.statusBayar !== 'lunas' && (
+            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${TONE_STATUS_BAYAR[r.statusBayar]}`}>
+              {LABEL_STATUS_BAYAR[r.statusBayar]}
+            </span>
+          )}
         </div>
       </div>
 
@@ -182,6 +195,16 @@ function KartuTagihan({ r, bayar, bolehUbah, formTerbuka, onBukaForm, onTutupFor
           <p className={`font-bold ${r.sisa > 0 ? 'text-rose-700' : 'text-navy'}`}>{fmt(r.sisa)}</p>
         </div>
       </div>
+
+      {/* Kelebihan bayar dikatakan, tidak ditelan diam-diam oleh "Sisa Rp 0". */}
+      {r.lebih > 0 && (
+        <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200
+          rounded-lg p-2 leading-relaxed">
+          <b>Terbayar {fmt(r.lebih)} lebih besar</b> daripada nilai PO-nya. Biasanya ini
+          berarti ada pembayaran yang tercatat pada PO yang salah — periksa daftar
+          pembayaran di bawah.
+        </p>
+      )}
 
       <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-3 gap-y-0.5">
         <span>📦 Barang: {LABEL_STATUS_TERIMA[r.statusTerima]}</span>

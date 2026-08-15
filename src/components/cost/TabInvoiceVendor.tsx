@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import DaftarBulanan from './DaftarBulanan'
 import {
   ReceiptText, AlertTriangle, CheckCircle2, XCircle, Loader2, ChevronDown, Paperclip,
 } from 'lucide-react'
@@ -53,12 +54,17 @@ export default function TabInvoiceVendor({ invoices, pos, bolehUbah, namaSaya, o
   }
 
   return (
-    <div className="space-y-3">
-      {invoices.map(inv => (
-        <KartuInvoice key={inv.id} inv={inv} po={poById.get(inv.po_id) ?? null}
+    <DaftarBulanan
+      baris={invoices}
+      tanggalDari={inv => inv.created_at ?? inv.jatuh_tempo}
+      nilaiDari={inv => Number(inv.total) || 0}
+      kunci={inv => inv.id}
+      satuan="tagihan"
+      render={inv => (
+        <KartuInvoice inv={inv} po={poById.get(inv.po_id) ?? null}
           bolehUbah={bolehUbah} namaSaya={namaSaya} onUbah={onUbah} />
-      ))}
-    </div>
+      )}
+    />
   )
 }
 

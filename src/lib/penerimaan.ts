@@ -170,6 +170,26 @@ export function totalDibayar(poId: string, bayar: PoPayment[] | null | undefined
   return bayarMilikPo(poId, bayar).reduce((s, p) => s + Math.max(0, angka(p.jumlah)), 0)
 }
 
+/**
+ * Kelebihan bayar: yang sudah dibayar DIKURANGI nilai PO-nya.
+ *
+ * `sisaTagihan` sengaja tidak pernah negatif — dan justru karena itu kelebihan
+ * bayar menjadi tidak terlihat sama sekali: PO Rp 240.000 yang terbayar
+ * Rp 1.999.000 tampil tenang sebagai "Sisa Rp 0 · LUNAS". Padahal selisih
+ * Rp 1.759.000 hampir selalu berarti satu hal — pembayaran tercatat pada PO
+ * yang salah — dan itu tepat jenis kesalahan yang tidak boleh diam.
+ *
+ * PO bernilai nol dikecualikan: nilainya memang belum diisi, jadi seluruh
+ * pembayarannya akan terbaca sebagai kelebihan.
+ */
+export function lebihBayar(
+  po: Pick<PurchaseOrder, 'id' | 'total'>, bayar: PoPayment[] | null | undefined,
+): number {
+  const total = angka(po?.total)
+  if (total <= 0) return 0
+  return Math.max(0, totalDibayar(po?.id ?? '', bayar) - total)
+}
+
 /** Sisa tagihan; tidak pernah negatif walau terbayar lebih. */
 export function sisaTagihan(po: Pick<PurchaseOrder, 'id' | 'total'>, bayar: PoPayment[] | null | undefined): number {
   return Math.max(0, angka(po?.total) - totalDibayar(po?.id ?? '', bayar))
@@ -258,6 +278,8 @@ export interface RingkasTagihan {
   statusTagihan: StatusTagihan
   dibayar: number
   sisa: number
+  /** Kelebihan bayar; 0 bila wajar. Lihat `lebihBayar`. */
+  lebih: number
   jatuhTempo: string | null
   /** Sisa hari menuju jatuh tempo; negatif berarti sudah lewat. null bila belum tertagih. */
   hariLagi: number | null
@@ -290,6 +312,7 @@ export function ringkasTagihan(
     statusTagihan: tagihan,
     dibayar: totalDibayar(po.id, bayar),
     sisa: sisaTagihan(po, bayar),
+    lebih: lebihBayar(po, bayar),
     jatuhTempo: tempo,
     hariLagi,
   }

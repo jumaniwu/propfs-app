@@ -26,6 +26,7 @@ import {
   type AsetAlat, type KondisiAlat,
 } from '@/lib/asetAlat'
 import { poKantorBelumTercatat, type UsulDariPo } from '@/lib/sinkronRealisasi'
+import DaftarBulanan from './DaftarBulanan'
 import { jenisPo } from '@/lib/procurement'
 import type { PurchaseOrder } from '@/lib/procurement'
 import type { DeliveryOrder, PoPayment } from '@/lib/penerimaan'
@@ -178,9 +179,15 @@ function BagianBiayaKantor({ pos, dos, bayar, bolehUbah, onUbah }: {
           Belum ada biaya kantor tercatat.
         </p>
       ) : (
-        <div className="space-y-1.5 max-h-[40vh] overflow-y-auto overscroll-contain">
-          {[...biayaUmumEntries].reverse().map(e => (
-            <div key={e.id} className="flex items-center justify-between gap-2 rounded-lg
+        <DaftarBulanan
+          baris={[...biayaUmumEntries].reverse()}
+          tanggalDari={e => e.tanggal}
+          nilaiDari={e => e.jumlah}
+          kunci={e => e.id}
+          satuan="biaya"
+          className="max-h-[40vh] overflow-y-auto overscroll-contain"
+          render={e => (
+            <div className="flex items-center justify-between gap-2 rounded-lg
               border border-border px-2.5 py-2">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-navy truncate">{e.keterangan}</p>
@@ -198,8 +205,8 @@ function BagianBiayaKantor({ pos, dos, bayar, bolehUbah, onUbah }: {
                 )}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   )
