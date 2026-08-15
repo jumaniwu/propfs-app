@@ -10,6 +10,7 @@
 import { useAuthStore } from '@/store/authStore'
 import { tautanPublik } from './tautanPendek'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
+import type { BarisAbsensi } from './absensiPekerja'
 
 export interface FieldLog {
   id: string
@@ -28,7 +29,20 @@ export interface FieldReport {
   kegiatan: string[]
   catatan: string
   photos: string[]          // data URL
+  /**
+   * Siapa saja yang bekerja hari itu. Opsional: baris laporan yang dibuat
+   * sebelum kolomnya ada tidak punya ini sama sekali.
+   */
+  absensi?: BarisAbsensi[]
   created_at?: string
+}
+
+/** Header halaman pekerja, beserta nama-nama yang pernah tercatat absen. */
+export interface FieldHeader {
+  project_name: string
+  drive_webhook: string
+  /** Saran nama untuk absensi harian; kosong bila migrasinya belum jalan. */
+  pekerja?: Array<{ nama: string; peran: string }>
 }
 
 export interface FieldApi {
@@ -45,7 +59,7 @@ export interface FieldApi {
   listReportsTerbaru(batas?: number): Promise<FieldReport[]>
   deleteReport(id: string): Promise<void>
   // publik (token)
-  getLogByReportToken(token: string): Promise<{ project_name: string; drive_webhook: string } | null>
+  getLogByReportToken(token: string): Promise<FieldHeader | null>
   submitReport(token: string, r: Omit<FieldReport, 'id' | 'log_id' | 'created_at'>): Promise<boolean>
   getOwnerView(token: string): Promise<{ project_name: string; reports: FieldReport[] } | null>
 }
@@ -153,14 +167,32 @@ const realApi: FieldApi = {
     if (!res.ok) throw new Error(`Gagal menghapus laporan (HTTP ${res.status}).`)
   },
   async getLogByReportToken(token) {
-    const data = await rpc<Array<{ project_name: string; drive_webhook: string }>>('field_log_by_report_token', { p_token: token }, true)
-    return (Array.isArray(data) ? data[0] : data) ?? null
+    const data = await rpc<FieldHeader[]>('field_log_by_report_token', { p_token: token }, true)
+    const row = (Array.isArray(data) ? data[0] : data) ?? null
+    if (!row) return null
+    // `pekerja` hanya ada setelah migrasi absensi dijalankan. Tanpanya form
+    // absensi tetap bisa dipakai — hanya tanpa saran nama.
+    return { ...row, pekerja: Array.isArray(row.pekerja) ? row.pekerja : [] }
   },
   async submitReport(token, r) {
-    return await rpc<boolean>('field_report_submit', {
+    const inti = {
       p_token: token, p_tanggal: r.tanggal, p_pelapor: r.pelapor,
       p_kegiatan: r.kegiatan, p_catatan: r.catatan, p_photos: r.photos,
-    }, true) === true
+    }
+    try {
+      return await rpc<boolean>('field_report_submit', { ...inti, p_absensi: r.absensi ?? [] }, true) === true
+    } catch (e) {
+      // Selama migrasi absensi belum dijalankan, fungsi bertujuh parameter
+      // belum ada dan Supabase menjawab 404. Laporan harian adalah pekerjaan
+      // tiap sore yang tidak boleh ikut mati karena kolom baru — kirim ulang
+      // tanpa absensi, dan katakan terus terang apa yang tidak tersimpan.
+      if (!(e instanceof Error) || !/HTTP 40[04]/.test(e.message)) throw e
+      const ok = await rpc<boolean>('field_report_submit', inti, true) === true
+      if (ok && (r.absensi?.length ?? 0) > 0) {
+        throw new Error('Laporan tersimpan, tetapi absensi belum — migrasi absensi belum dijalankan di Supabase.')
+      }
+      return ok
+    }
   },
   async getOwnerView(token) {
     const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token }, true)

@@ -1,16 +1,26 @@
 // Halaman PUBLIK (tanpa login): pekerja/mandor mengisi dari HP —
-//  1. Laporan Harian  : kegiatan hari ini, catatan progress, foto
+//  1. Laporan Harian  : absensi pekerja, kegiatan hari ini, catatan, foto
 //  2. Pakai Material  : material yang terpakai di lapangan
 //  3. Request Material: permintaan material yang kurang
 // Ketiganya memakai satu link yang sama (report_token).
+//
+// Absensi sengaja MENYATU dengan laporan harian, bukan tab keempat: mandor
+// mengisi ini sekali tiap sore, dan tanggal serta nama pelapornya sudah ada
+// di atas. Meminta ia mengirim dua kali berarti absensinya akan diisi
+// seminggu sekali dari ingatan.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import {
   Loader2, CheckCircle2, Camera, Plus, Trash2, HardHat, PackageOpen, ShoppingCart,
+  Users, UserPlus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { fieldApi, uploadToDrive } from '@/lib/fieldReports'
+import { fieldApi, uploadToDrive, type FieldHeader } from '@/lib/fieldReports'
+import {
+  STATUS_HADIR, LEMBUR_MAKS, siapKirimAbsensi, ringkasAbsensi, cariPekerja,
+  rapikanNama, type BarisAbsensi, type StatusHadir,
+} from '@/lib/absensiPekerja'
 import {
   materialApi, stokLapangan, cariMaterial,
   type Urgensi, type StokMaterial,
@@ -26,7 +36,7 @@ const angkaRingkas = (n: number) =>
 const hariIni = () => new Date().toISOString().slice(0, 10)
 const inputCls = 'w-full h-10 rounded-lg border border-input bg-background px-3 text-sm'
 
-interface Header { project_name: string; drive_webhook: string }
+type Header = FieldHeader
 
 export default function LaporHarianPage() {
   const { token = '' } = useParams()
@@ -170,12 +180,159 @@ function kirimDrive(header: Header, photos: string[], prefix: string) {
   })
 }
 
+// ── Absensi: satu blok di dalam laporan harian ──────────────────────────────
+//
+// Dibuat untuk ibu jari, bukan untuk papan ketik. Nama diketuk dari daftar
+// yang sudah pernah tercatat; statusnya empat tombol besar. Mengetik nama
+// baru tetap bisa — tukang baru harus tetap bisa masuk absen di hari
+// pertamanya, tanpa menunggu siapa pun mendaftarkannya lebih dulu.
+function BlokAbsensi({ daftar, baris, setBaris }: {
+  daftar: Array<{ nama: string; peran: string }>
+  baris: BarisAbsensi[]
+  setBaris: React.Dispatch<React.SetStateAction<BarisAbsensi[]>>
+}) {
+  const [ketik, setKetik] = useState('')
+  const [fokus, setFokus] = useState(false)
+
+  const dipakai = baris.map(b => b.nama)
+  const saran = useMemo(() => cariPekerja(daftar, ketik, dipakai),
+    [daftar, ketik, dipakai.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
+  const belumDiabsen = useMemo(() => cariPekerja(daftar, '', dipakai),
+    [daftar, dipakai.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ubah = (i: number, patch: Partial<BarisAbsensi>) =>
+    setBaris(prev => prev.map((b, j) => j === i ? { ...b, ...patch } : b))
+
+  function tambah(nama: string, peran = '') {
+    const rapi = rapikanNama(nama)
+    if (rapi.length < 2) return
+    setBaris(prev => [...prev, { nama: rapi, peran: peran || undefined, status: 'hadir' }])
+    setKetik('')
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-slate-50/70 p-3 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-bold text-navy flex items-center gap-1.5">
+          <Users className="w-3.5 h-3.5" /> Absensi Pekerja
+        </p>
+        <span className="text-[10px] text-muted-foreground">
+          {baris.length === 0 ? 'boleh dikosongkan' : ringkasAbsensi(baris)}
+        </span>
+      </div>
+
+      {baris.map((b, i) => (
+        <div key={i} className="rounded-lg bg-white border border-border p-2.5 space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-navy truncate">{b.nama}</p>
+              {b.peran && <p className="text-[10px] text-muted-foreground truncate">{b.peran}</p>}
+            </div>
+            <button type="button" aria-label={`Hapus ${b.nama}`}
+              onClick={() => setBaris(prev => prev.filter((_, j) => j !== i))}
+              className="text-muted-foreground hover:text-red-600 shrink-0 p-1">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-1.5">
+            {STATUS_HADIR.map(s => (
+              <button key={s.key} type="button" onClick={() => ubah(i, { status: s.key as StatusHadir })}
+                className={`h-9 rounded-lg border-2 text-[11px] font-bold transition-all ${
+                  b.status === s.key ? `${s.tone} shadow` : 'bg-white text-muted-foreground border-border font-medium'}`}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Lembur hanya berarti bagi yang datang. Menawarkannya kepada yang
+              izin atau alpa hanya mengundang angka yang tidak masuk akal.
+              Kolomnya pun baru muncul saat diminta: kebanyakan hari tidak ada
+              lembur sama sekali, dan sebuah proyek dengan lima belas tukang
+              tidak boleh menjadi lima belas kotak kosong untuk digulung. */}
+          {(b.status === 'hadir' || b.status === 'setengah') && (
+            b.lembur === undefined ? (
+              <button type="button" onClick={() => ubah(i, { lembur: 1 })}
+                className="text-[11px] font-semibold text-navy/70 hover:text-navy">
+                + Lembur
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] text-muted-foreground">Lembur</label>
+                <input type="number" inputMode="decimal" min="0" max={LEMBUR_MAKS} autoFocus
+                  value={b.lembur}
+                  onChange={e => {
+                    const v = Number(e.target.value)
+                    ubah(i, { lembur: e.target.value === '' ? 0 : v })
+                  }}
+                  className="w-16 h-8 rounded-lg border border-input bg-background px-2 text-sm" />
+                <span className="text-[11px] text-muted-foreground">jam</span>
+                <button type="button" onClick={() => ubah(i, { lembur: undefined })}
+                  className="text-[11px] text-muted-foreground hover:text-red-600 ml-auto">
+                  Batal
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      ))}
+
+      {/* Tambah pekerja: ketik, atau ketuk dari yang sudah pernah tercatat. */}
+      <div className="relative">
+        <div className="flex gap-1.5">
+          <input value={ketik}
+            onChange={e => { setKetik(e.target.value); setFokus(true) }}
+            onFocus={() => setFokus(true)}
+            onBlur={() => window.setTimeout(() => setFokus(false), 150)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); tambah(ketik) } }}
+            placeholder="Nama pekerja" autoComplete="off"
+            className={`flex-1 ${inputCls}`} />
+          <Button type="button" variant="outline" className="h-10 px-3 gap-1 shrink-0"
+            disabled={rapikanNama(ketik).length < 2} onClick={() => tambah(ketik)}>
+            <Plus className="w-4 h-4" /> <span className="text-xs">Tambah</span>
+          </Button>
+        </div>
+
+        {fokus && saran.length > 0 && (
+          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+            {saran.map(s => (
+              <button key={s.nama} type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => tambah(s.nama, s.peran)}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-border last:border-0">
+                <p className="text-sm text-navy font-semibold truncate">{s.nama}</p>
+                {s.peran && <p className="text-[11px] text-muted-foreground truncate">{s.peran}</p>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Kebanyakan hari, yang masuk adalah orang yang sama dengan kemarin.
+          Satu ketukan untuk itu, lalu yang tidak masuk tinggal diubah. */}
+      {belumDiabsen.length > 0 && (
+        <Button type="button" variant="outline" size="sm" className="w-full h-9 gap-1.5 text-xs border-dashed"
+          onClick={() => setBaris(prev => [
+            ...prev,
+            ...belumDiabsen.map(d => ({
+              nama: d.nama, peran: d.peran || undefined, status: 'hadir' as StatusHadir,
+            })),
+          ])}>
+          <UserPlus className="w-3.5 h-3.5" />
+          Hadirkan semua ({belumDiabsen.length})
+        </Button>
+      )}
+    </div>
+  )
+}
+
 // ── 1. Laporan harian ───────────────────────────────────────────────────────
 function FormLaporan({ token, header, onDone }: {
   token: string; header: Header; onDone: (msg: string) => void
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
   const [pelapor, setPelapor] = useState('')
+  const [absensi, setAbsensi] = useState<BarisAbsensi[]>([])
   const [kegiatan, setKegiatan] = useState<string[]>([''])
   const [catatan, setCatatan] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
@@ -189,14 +346,26 @@ function FormLaporan({ token, header, onDone }: {
     if (pelapor.trim().length < 2 || keg.length === 0) {
       setError('Isi nama pelapor dan minimal 1 kegiatan.'); return
     }
+    // Absensi yang cacat dihentikan DI SINI, bukan di server: nama kembar
+    // menjadi hari kerja ganda di rekap upah, dan pemakainya harus tahu
+    // sebelum menekan kirim, bukan sesudahnya.
+    const periksa = siapKirimAbsensi(absensi)
+    if (!periksa.ok) { setError(periksa.pesan); return }
+
     setSubmitting(true); setError('')
     try {
       const ok = await fieldApi().submitReport(token, {
         tanggal, pelapor: pelapor.trim(), kegiatan: keg, catatan: catatan.trim(), photos,
+        absensi,
       })
       if (!ok) throw new Error('Gagal mengirim — link tidak berlaku.')
       kirimDrive(header, photos, `${tanggal}_${pelapor.trim()}`)
-      onDone(`Laporan tanggal ${tanggal} sudah masuk. Terima kasih.`)
+      const jumlah = absensi.filter(a => a.status === 'hadir' || a.status === 'setengah').length
+      onDone(
+        `Laporan tanggal ${tanggal} sudah masuk`
+        + (jumlah > 0 ? `, dengan ${jumlah} pekerja tercatat masuk` : '')
+        + '. Terima kasih.',
+      )
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setSubmitting(false) }
@@ -214,6 +383,8 @@ function FormLaporan({ token, header, onDone }: {
           <input value={pelapor} onChange={e => setPelapor(e.target.value)} placeholder="mis. Pak Yono" className={inputCls} />
         </div>
       </div>
+
+      <BlokAbsensi daftar={header.pekerja ?? []} baris={absensi} setBaris={setAbsensi} />
 
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">Kegiatan Hari Ini</label>

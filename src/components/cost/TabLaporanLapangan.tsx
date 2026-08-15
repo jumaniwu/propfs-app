@@ -1,11 +1,17 @@
 // ============================================================
 // Tab LAPORAN LAPANGAN — Kontraktor AI
 // Buat "buku laporan" per proyek → 1 link untuk pekerja upload laporan
-// harian (kerja/progress/foto), 1 link untuk owner lihat kalender progres.
+// harian (absensi/kerja/progress/foto), 1 link untuk owner lihat kalender
+// progres.
+//
+// Laporan yang masuk dibaca dengan dua cara yang berbeda, jadi ada dua
+// tampilan: KEJADIAN per hari (apa yang dikerjakan) dan REKAP per pekerja
+// (siapa masuk berapa hari). Yang kedua itulah dasar orang dibayar.
 // ============================================================
 import { useEffect, useState } from 'react'
 import {
-  HardHat, Plus, RefreshCw, Loader2, Link2, Send, CalendarDays, Trash2, Image as ImageIcon,
+  HardHat, Plus, RefreshCw, Loader2, Link2, Send, CalendarDays, Trash2,
+  Image as ImageIcon, ExternalLink, Users, ListChecks,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -16,6 +22,8 @@ import {
   fieldApi, laporLink, progresLink, waShare, getDriveWebhook,
   type FieldLog, type FieldReport,
 } from '@/lib/fieldReports'
+import ChipAbsensi from './ChipAbsensi'
+import PanelRekapAbsensi from './PanelRekapAbsensi'
 import PhotoLightbox from '@/components/PhotoLightbox'
 
 export default function TabLaporanLapangan() {
@@ -28,6 +36,7 @@ export default function TabLaporanLapangan() {
   const [openLog, setOpenLog] = useState<FieldLog | null>(null)
   const [reports, setReports] = useState<FieldReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
+  const [tampilan, setTampilan] = useState<'harian' | 'absensi'>('harian')
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
 
   const load = () => {
@@ -91,8 +100,9 @@ export default function TabLaporanLapangan() {
       </div>
 
       <p className="text-xs text-muted-foreground max-w-2xl">
-        Buat buku laporan → bagikan <b>Link Pekerja</b> (mereka upload kegiatan & foto tiap hari dari HP tanpa login) →
-        bagikan <b>Link Owner</b> (lihat kalender progres harian, lengkap dengan foto).
+        Buat buku laporan → bagikan <b>Link Pekerja</b> (mandor mengisi absensi, kegiatan & foto
+        tiap hari dari HP tanpa login) → bagikan <b>Link Owner</b> (lihat kalender progres harian,
+        lengkap dengan foto). Kehadiran yang masuk direkap per pekerja di <b>Rekap Absensi</b>.
       </p>
 
       {error && (
@@ -120,13 +130,22 @@ export default function TabLaporanLapangan() {
 
               {/* Link pekerja */}
               <div className="rounded-xl bg-slate-50 border border-border p-2.5 space-y-1.5">
-                <p className="text-[11px] font-bold text-navy">👷 Link Pekerja (upload laporan)</p>
+                <p className="text-[11px] font-bold text-navy">👷 Link Pekerja (absensi & laporan)</p>
                 <div className="flex gap-1.5 flex-wrap">
                   <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => copy(laporLink(log.report_token), 'Link pekerja')}>
                     <Link2 className="w-3 h-3" /> Salin
                   </Button>
                   <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => shareWaLapor(log)}>
                     <Send className="w-3 h-3" /> WhatsApp
+                  </Button>
+                  {/* Membuka linknya sendiri, tanpa harus menyalin lalu
+                      menempelkannya ke bilah alamat. Admin kantor memakai ini
+                      untuk mengisikan absensi hari-hari yang terlewat, dan
+                      untuk memastikan formnya memang terbuka sebelum linknya
+                      disebarkan ke mandor. */}
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    onClick={() => window.open(laporLink(log.report_token), '_blank', 'noopener')}>
+                    <ExternalLink className="w-3 h-3" /> Buka
                   </Button>
                 </div>
               </div>
@@ -141,7 +160,8 @@ export default function TabLaporanLapangan() {
                   <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => shareWaProgres(log)}>
                     <Send className="w-3 h-3" /> WhatsApp
                   </Button>
-                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => window.open(progresLink(log.view_token), '_blank')}>
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                    onClick={() => window.open(progresLink(log.view_token), '_blank', 'noopener')}>
                     <CalendarDays className="w-3 h-3" /> Buka
                   </Button>
                 </div>
@@ -155,15 +175,31 @@ export default function TabLaporanLapangan() {
         </div>
       )}
 
-      {/* Panel laporan masuk */}
+      {/* Panel laporan masuk — dua cara membaca data yang sama */}
       {openLog && (
         <div className="bg-white rounded-3xl border border-border p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-navy text-sm">Laporan Masuk — {openLog.project_name}</h3>
-            <button onClick={() => setOpenLog(null)} className="text-xs text-muted-foreground hover:text-navy">Tutup</button>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-bold text-navy text-sm truncate">Laporan Masuk — {openLog.project_name}</h3>
+            <button onClick={() => setOpenLog(null)} className="text-xs text-muted-foreground hover:text-navy shrink-0">Tutup</button>
           </div>
+
+          <div className="flex gap-1.5">
+            {([
+              ['harian', 'Laporan Harian', ListChecks],
+              ['absensi', 'Rekap Absensi', Users],
+            ] as const).map(([key, label, Icon]) => (
+              <button key={key} onClick={() => setTampilan(key)}
+                className={`flex-1 h-9 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                  tampilan === key ? 'bg-navy text-white' : 'bg-slate-100 text-muted-foreground hover:bg-slate-200'}`}>
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+
           {reportsLoading ? (
             <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : tampilan === 'absensi' ? (
+            <PanelRekapAbsensi laporan={reports} namaProyek={openLog.project_name} />
           ) : reports.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
           ) : (
@@ -175,6 +211,7 @@ export default function TabLaporanLapangan() {
                     <button onClick={async () => { await fieldApi().deleteReport(r.id); openReports(openLog) }}
                       className="text-muted-foreground hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
+                  <ChipAbsensi absensi={r.absensi} />
                   <ul className="text-xs text-slate-700 list-disc pl-4">
                     {r.kegiatan.map((k, j) => <li key={j}>{k}</li>)}
                   </ul>
