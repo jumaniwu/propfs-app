@@ -35,6 +35,14 @@ export interface BuatPoInput {
   ppn: number
   total: number
   catatan: string
+
+  // Alamat pengiriman, DISALIN ke dalam PO. Lihat lib/revisiPo.ts —
+  // bawaannya ditarik dari alamat proyek, tetapi yang tersimpan adalah apa
+  // yang akhirnya tertulis di formulir.
+  kirim_nama: string
+  kirim_wa: string
+  kirim_alamat: string
+  kirim_catatan: string
 }
 
 /** Profil vendor yang dikirim dari halaman registrasi publik. */
@@ -79,7 +87,22 @@ export interface ProcurementApi {
    * nomor WA vendor: salinannya bisa kosong bila PO dibuat sebelum nomor
    * vendornya diisi, dan itu tidak boleh membuat PO tak pernah bisa dikirim.
    */
-  updatePo(id: string, patch: Partial<Pick<PurchaseOrder, 'vendor_wa' | 'vendor_nama' | 'catatan'>>): Promise<void>
+  updatePo(id: string, patch: Partial<Pick<PurchaseOrder,
+    'vendor_wa' | 'vendor_nama' | 'catatan'
+    | 'kirim_nama' | 'kirim_wa' | 'kirim_alamat' | 'kirim_catatan'>>): Promise<void>
+  /**
+   * Revisi PO: turunkan jumlah ke barang yang benar-benar datang.
+   *
+   * Satu panggilan, bukan dua PATCH: menyimpan riwayat lalu mengganti item
+   * adalah dua tulisan yang TIDAK BOLEH berhasil separuh. Kalau koneksi putus
+   * di antaranya, yang tersisa adalah PO dengan angka baru tanpa jejak angka
+   * lamanya — persis keadaan yang membuat selisih tidak bisa dijelaskan ke
+   * vendor. Server yang menjaganya (po_revisi), dalam satu transaksi.
+   */
+  revisiPo(id: string, isi: {
+    items: PoItem[]; subtotal: number; ppn: number; total: number
+    alasan: string; oleh: string
+  }): Promise<{ revisi_ke: number; status: StatusPo }>
   /** Tanda tangan pembuat atau persetujuan; status ikut disesuaikan. */
   signPo(id: string, peran: 'pembuat' | 'approver', data: {
     nama: string; jabatan: string; signature: string; catatan?: string
@@ -312,6 +335,16 @@ const realApi: ProcurementApi = {
     'purchase_orders', milikWorkspace({ ...input, status: 'draft' }, dataOwnerId()), 'purchase order',
   ),
   updatePo: (id, patch) => ubah(`purchase_orders?id=eq.${id}`, patch, 'purchase order'),
+
+  revisiPo: (id, isi) => rpc<{ revisi_ke: number; status: StatusPo }>('po_revisi', {
+    p_po_id: id,
+    p_items: isi.items,
+    p_subtotal: isi.subtotal,
+    p_ppn: isi.ppn,
+    p_total: isi.total,
+    p_alasan: isi.alasan,
+    p_oleh: isi.oleh,
+  }),
 
   async signPo(id, peran, data, status) {
     const patch = peran === 'pembuat'

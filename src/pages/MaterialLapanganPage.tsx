@@ -16,6 +16,7 @@ import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import PilihProyek from '@/components/cost/PilihProyek'
 import { saringProyek, SEMUA_PROYEK } from '@/lib/lingkupProyek'
 import PhotoLightbox from '@/components/PhotoLightbox'
+import DaftarBulanan from '@/components/cost/DaftarBulanan'
 import { useCostStore } from '@/store/costStore'
 import { useAuthStore } from '@/store/authStore'
 import { useToast } from '@/hooks/use-toast'
@@ -222,23 +223,37 @@ export default function MaterialLapanganPage() {
                 <Kosong ikon={<PackageOpen className="w-10 h-10" />}
                   teks="Belum ada pemakaian material dicatat. Minta pekerja mengisi lewat Link Pekerja → tab 'Pakai Material'." />
               ) : (
-                <div className="bg-white rounded-2xl border border-border overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs min-w-[700px]">
-                      <thead className="bg-slate-50 text-muted-foreground">
-                        <tr>
-                          <th className="text-left font-bold px-4 py-2.5">Tanggal</th>
-                          <th className="text-left font-bold px-3 py-2.5">Material</th>
-                          <th className="text-right font-bold px-3 py-2.5">Jumlah</th>
-                          <th className="text-left font-bold px-3 py-2.5">Lokasi</th>
-                          <th className="text-left font-bold px-3 py-2.5">Pelapor</th>
-                          <th className="text-left font-bold px-3 py-2.5">Foto</th>
-                          <th className="px-3 py-2.5" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {usage.map(u => (
-                          <tr key={u.id} className="border-t border-border align-top">
+                // Dikelompokkan per bulan pemakaiannya. Daftar ini bertambah
+                // tiap hari dan tidak pernah menyusut; setelah setahun,
+                // mencari pemakaian bulan lalu berarti menggulung melewati
+                // ratusan baris yang sudah selesai urusannya.
+                <DaftarBulanan
+                  baris={usage}
+                  tanggalDari={u => u.tanggal}
+                  kunci={u => u.id}
+                  satuan="catatan"
+                  bungkus={isi => (
+                    <div className="bg-white rounded-2xl border border-border overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs min-w-[700px]">
+                          <thead className="bg-slate-50 text-muted-foreground">
+                            <tr>
+                              <th className="text-left font-bold px-4 py-2.5">Tanggal</th>
+                              <th className="text-left font-bold px-3 py-2.5">Material</th>
+                              <th className="text-right font-bold px-3 py-2.5">Jumlah</th>
+                              <th className="text-left font-bold px-3 py-2.5">Lokasi</th>
+                              <th className="text-left font-bold px-3 py-2.5">Pelapor</th>
+                              <th className="text-left font-bold px-3 py-2.5">Foto</th>
+                              <th className="px-3 py-2.5" />
+                            </tr>
+                          </thead>
+                          <tbody>{isi}</tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  render={u => (
+                          <tr className="border-t border-border align-top">
                             <td className="px-4 py-2.5 whitespace-nowrap">{u.tanggal}</td>
                             <td className="px-3 py-2.5 font-semibold text-navy">
                               {u.nama}
@@ -260,11 +275,8 @@ export default function MaterialLapanganPage() {
                               </button>
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                  )}
+                />
               )
             )}
 
@@ -284,9 +296,14 @@ export default function MaterialLapanganPage() {
                   <Kosong ikon={<ShoppingCart className="w-10 h-10" />}
                     teks="Belum ada permintaan material." />
                 ) : (
-                <div className="grid md:grid-cols-2 gap-3">
-                  {requests.map(r => (
-                    <div key={r.id} className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
+                <DaftarBulanan
+                  baris={requests}
+                  tanggalDari={r => r.tanggal}
+                  kunci={r => r.id}
+                  satuan="permintaan"
+                  bungkus={isi => <div className="grid md:grid-cols-2 gap-3">{isi}</div>}
+                  render={r => (
+                    <div className="bg-white rounded-2xl border border-border p-4 space-y-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-bold text-navy text-sm truncate">{r.nama}</p>
@@ -369,8 +386,8 @@ export default function MaterialLapanganPage() {
                         </button>
                       </div>
                     </div>
-                  ))}
-                  </div>
+                  )}
+                />
                 )}
               </>
             )}

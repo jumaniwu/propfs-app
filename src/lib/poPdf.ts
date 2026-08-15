@@ -5,6 +5,7 @@
 import { jsPDF } from 'jspdf'
 import { simpanPdf } from './unduhBerkas.ts'
 import { teksTerm, type PurchaseOrder } from './procurement'
+import { nomorPoTampil, revisiKe, adaAlamatKirim } from './revisiPo.ts'
 import { kopSaya } from './identitasSaya'
 import type { IdentitasLaporan } from './branding'
 
@@ -22,7 +23,7 @@ const tgl = (s?: string | null) => {
  *   sesi — keduanya milik perangkat pemakai aplikasi — tidak bisa dipakai.
  */
 export function downloadPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): Promise<boolean> {
-  return simpanPdf(buatPoPdf(po, kop), `${(po.nomor || 'PO').replace(/[^\w-]+/g, '_')}.pdf`)
+  return simpanPdf(buatPoPdf(po, kop), `${nomorPoTampil(po).replace(/[^\w-]+/g, '_')}.pdf`)
 }
 
 /**
@@ -83,39 +84,134 @@ export function buatPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): jsPDF {
   doc.line(M, tinggiKop, W - M, tinggiKop)
   doc.setLineWidth(0.2)
 
+  const rev = revisiKe(po)
+
   doc.setTextColor(13, 27, 42)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13)
   doc.text('PURCHASE ORDER', W / 2, tinggiKop + 8, { align: 'center' })
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
   doc.setTextColor(90, 102, 115)
-  doc.text(`Nomor: ${po.nomor}`, W / 2, tinggiKop + 13, { align: 'center' })
+  doc.text(`Nomor: ${nomorPoTampil(po)}`, W / 2, tinggiKop + 13, { align: 'center' })
+
+  y = tinggiKop + 19
+
+  // ── Pita REVISI ──
+  //
+  // Setelah revisi, DUA cetakan PO dengan nomor pokok yang sama beredar di
+  // meja orang. Penanda -Rev di nomor saja tidak cukup: nomor dibaca sekilas,
+  // dan yang membedakan keduanya hanya empat karakter di ujungnya. Pita ini
+  // yang membuat perbedaannya tidak bisa dilewatkan mata — vendor yang salah
+  // memakai cetakan lama akan mengirim barang dengan jumlah yang salah.
+  if (rev > 0) {
+    doc.setFillColor(254, 243, 199)
+    doc.setDrawColor(217, 168, 60)
+    doc.setLineWidth(0.4)
+    doc.rect(M, y, contentW, 9, 'FD')
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+    doc.setTextColor(146, 100, 12)
+    doc.text(`DOKUMEN REVISI KE-${rev} — menggantikan seluruh cetakan sebelumnya`,
+      W / 2, y + 5.9, { align: 'center' })
+    doc.setLineWidth(0.2)
+    y += 13
+  } else {
+    y += 2
+  }
 
   doc.setTextColor(20, 30, 40)
-  y = tinggiKop + 21
 
   // ── Dua kolom: kepada vendor & data PO ──
+  //
+  // Label dan nilainya digambar sebagai DUA KOLOM, bukan satu baris teks
+  // dengan spasi penyeimbang. Helvetica bukan huruf berjarak tetap: "Tanggal
+  //      : " dan "Pembayaran   : " punya lebar yang berbeda, jadi titik duanya
+  // menjejak zigzag. Terlihat jelas begitu halamannya dipandang, tidak pernah
+  // terlihat dari membaca kodenya.
   const colW = contentW / 2
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
   doc.text('KEPADA:', M, y)
   doc.text('DATA PESANAN:', M + colW, y)
-  y += 4.5
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
+  y += 4.8
+  const atasKolom = y
 
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
   const kiri = [
     po.vendor_nama || '-',
-    po.vendor_wa ? `WA: ${po.vendor_wa}` : '',
+    po.vendor_wa ? `WA ${po.vendor_wa}` : '',
   ].filter(Boolean)
-  const kanan = [
-    `Tanggal      : ${tgl(po.tanggal)}`,
-    `Dibutuhkan   : ${tgl(po.butuh_tanggal)}`,
-    `Pembayaran   : ${teksTerm(po.term, po.term_hari)}`,
-    po.project_name ? `Proyek       : ${po.project_name}` : '',
-  ].filter(Boolean)
+  const barisKiri = kiri.flatMap(t => doc.splitTextToSize(t, colW - 6) as string[])
+  barisKiri.forEach((t, i) => doc.text(t, M, y + i * 4.3))
 
-  const barisKiri = kiri.flatMap(t => doc.splitTextToSize(t, colW - 4) as string[])
-  barisKiri.forEach((t, i) => doc.text(t, M, y + i * 4.2))
-  kanan.forEach((t, i) => doc.text(t, M + colW, y + i * 4.2))
-  y += Math.max(barisKiri.length, kanan.length) * 4.2 + 6
+  const kanan: Array<[string, string]> = [
+    ['Tanggal', tgl(po.tanggal)],
+    ['Dibutuhkan', tgl(po.butuh_tanggal)],
+    ['Pembayaran', teksTerm(po.term, po.term_hari)],
+    ...(po.project_name ? [['Proyek', po.project_name] as [string, string]] : []),
+    // "Revisi ke" TIDAK dicantumkan di sini. Nomornya sudah berakhiran -Rev1
+    // dan pitanya sudah menyebutkannya dengan huruf besar; baris ketiga hanya
+    // membuat blok data terbaca seperti formulir yang mengulang-ulang dirinya.
+  ]
+  const labelW = 22
+  kanan.forEach(([label, nilai], i) => {
+    const dasar = y + i * 4.3
+    doc.setTextColor(90, 102, 115)
+    doc.text(label, M + colW, dasar)
+    doc.text(':', M + colW + labelW - 2, dasar)
+    doc.setTextColor(20, 30, 40)
+    const potong = doc.splitTextToSize(nilai, colW - labelW - 2) as string[]
+    doc.text(potong[0] ?? '-', M + colW + labelW, dasar)
+  })
+
+  y = atasKolom + Math.max(barisKiri.length, kanan.length) * 4.3 + 5
+
+  // ── Dikirim ke ──
+  //
+  // PO selama ini tidak menyebutkan ke mana barangnya diantar, dan sopir vendor
+  // menelepon menanyakannya — atau lebih buruk, membongkar di proyek yang
+  // salah. Diletakkan SEBELUM tabel barang, bukan di catatan kaki: yang
+  // membacanya adalah orang gudang yang menyiapkan muatan, dan ia berhenti
+  // membaca begitu sampai di daftar barang.
+  if (adaAlamatKirim(po)) {
+    const isi: Array<[string, string]> = [
+      ...(po.kirim_alamat ? [['Alamat', String(po.kirim_alamat)] as [string, string]] : []),
+      ...(po.kirim_nama || po.kirim_wa
+        ? [['Penerima', [po.kirim_nama, po.kirim_wa].filter(Boolean).join(' — ')] as [string, string]]
+        : []),
+      ...(po.kirim_catatan ? [['Catatan', String(po.kirim_catatan)] as [string, string]] : []),
+    ]
+
+    // Tinggi kotak dihitung DULU dari teks yang sudah dipotong, baru
+    // digambar — kalau kotaknya digambar lebih dulu dengan tinggi tebakan,
+    // alamat panjang akan menembus keluar bingkainya.
+    doc.setFontSize(8.5)
+    const labelKirimW = 20
+    const potongan = isi.map(([label, nilai]) =>
+      [label, doc.splitTextToSize(nilai, contentW - labelKirimW - 8) as string[]] as [string, string[]])
+    const tinggiIsi = potongan.reduce((t, [, baris]) => t + baris.length * 4.3, 0)
+    const tinggiKotak = tinggiIsi + 9.5
+
+    ensure(tinggiKotak + 4)
+    doc.setFillColor(246, 249, 252)
+    doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3)
+    doc.rect(M, y, contentW, tinggiKotak, 'FD')
+    doc.setLineWidth(0.2)
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
+    doc.setTextColor(13, 27, 42)
+    doc.text('DIKIRIM KE', M + 3, y + 5)
+
+    let yk = y + 9.6
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5)
+    for (const [label, baris] of potongan) {
+      doc.setTextColor(90, 102, 115)
+      doc.text(label, M + 3, yk)
+      doc.setTextColor(20, 30, 40)
+      baris.forEach((t, i) => doc.text(t, M + 3 + labelKirimW, yk + i * 4.3))
+      yk += baris.length * 4.3
+    }
+
+    y += tinggiKotak + 5
+    doc.setTextColor(20, 30, 40)
+  }
 
   // ── Tabel barang ──
   //
@@ -276,6 +372,23 @@ export function buatPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): jsPDF {
   doc.setLineWidth(0.2)
   doc.setFont('helvetica', 'normal')
   y += 6
+
+  // ── Alasan revisi ──
+  //
+  // Vendor memegang cetakan lama dengan jumlah yang berbeda. Tanpa kalimat ini
+  // ia hanya melihat dua dokumen yang bertentangan, dan yang terjadi
+  // berikutnya adalah telepon.
+  if (rev > 0 && po.revisi_alasan) {
+    ensure(16)
+    y += 2
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+    doc.setTextColor(146, 100, 12)
+    doc.text(`Alasan revisi ke-${rev}:`, M, y); y += 4
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+    const isi = doc.splitTextToSize(String(po.revisi_alasan), contentW) as string[]
+    doc.text(isi, M, y); y += isi.length * 4 + 2
+    doc.setTextColor(20, 30, 40)
+  }
 
   // ── Catatan ──
   if (po.catatan) {
