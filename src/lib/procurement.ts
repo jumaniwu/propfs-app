@@ -184,6 +184,25 @@ export interface PurchaseOrder {
   view_token: string
   terkirim_at?: string | null
   created_at?: string
+
+  // ── Revisi ────────────────────────────────────────────────────────────────
+  // Semuanya opsional: PO yang lahir sebelum migration_po_revisi_pengiriman
+  // tidak membawa kolom ini sama sekali. Logikanya di lib/revisiPo.ts.
+  /** Berapa kali PO ini direvisi. 0 atau kosong = belum pernah. */
+  revisi_ke?: number | null
+  /** Keadaan SEBELUM tiap revisi, supaya selisihnya selalu bisa dijelaskan. */
+  revisi_riwayat?: unknown
+  /** Alasan revisi terakhir. */
+  revisi_alasan?: string | null
+
+  // ── Alamat pengiriman ─────────────────────────────────────────────────────
+  // DISALIN ke dalam PO, bukan dibaca dari proyek saat dicetak: alamat proyek
+  // yang diperbaiki bulan depan tidak boleh diam-diam mengubah isi surat yang
+  // sudah diterima vendor tahun lalu.
+  kirim_nama?: string | null
+  kirim_wa?: string | null
+  kirim_alamat?: string | null
+  kirim_catatan?: string | null
 }
 
 export const LABEL_STATUS_PO: Record<StatusPo, string> = {
@@ -674,17 +693,33 @@ export function hargaVendorUntuk(
  * mengirim tagihannya. Kegagalan yang tidak terlihat seperti kegagalan.
  */
 export function pesanWaPo(
-  po: Pick<PurchaseOrder, 'nomor' | 'vendor_nama' | 'total' | 'term' | 'term_hari'>,
+  po: Pick<PurchaseOrder, 'nomor' | 'vendor_nama' | 'total' | 'term' | 'term_hari'>
+    & Partial<Pick<PurchaseOrder,
+      'revisi_ke' | 'kirim_alamat' | 'kirim_nama' | 'kirim_wa'>>,
   linkPo: string,
   linkInvoice?: string | null,
 ): string {
   const rp = (n: number) => `Rp ${Math.round(Number(n) || 0).toLocaleString('id-ID')}`
+  const revisi = Number(po.revisi_ke) > 0
+  const alamat = String(po.kirim_alamat ?? '').trim()
+  const penerima = [String(po.kirim_nama ?? '').trim(), String(po.kirim_wa ?? '').trim()]
+    .filter(Boolean).join(' — ')
   return [
-    `Halo ${po.vendor_nama}, berikut Purchase Order dari kami:`,
+    revisi
+      // Vendor sudah memegang cetakan PO yang lama. Kalau pesan revisinya
+      // dibuka sama persis seperti pesan pertama, ia akan membacanya sebagai
+      // pesanan kedua dan mengirim barangnya dua kali.
+      ? `Halo ${po.vendor_nama}, ada REVISI pada Purchase Order kami — mohon pakai yang ini, bukan yang sebelumnya:`
+      : `Halo ${po.vendor_nama}, berikut Purchase Order dari kami:`,
     '',
-    `Nomor    : ${po.nomor}`,
+    `Nomor    : ${po.nomor}${revisi ? `-Rev${Math.floor(Number(po.revisi_ke))}` : ''}`,
     `Total    : ${rp(po.total)}`,
     `Pembayaran: ${teksTerm(po.term, po.term_hari)}`,
+    // Alamat pengiriman ikut di pesan WA, bukan hanya di PDF: sopir yang
+    // mengantar sering hanya menerima teruskan pesan ini, tanpa pernah
+    // membuka lampirannya.
+    ...(alamat ? ['', `Dikirim ke:`, alamat] : []),
+    ...(penerima ? [`Penerima : ${penerima}`] : []),
     '',
     'Rincian & PDF bisa dibuka di:',
     linkPo,

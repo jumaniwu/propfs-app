@@ -11,6 +11,7 @@
 import { useMemo, useRef, useState } from 'react'
 import {
   Truck, Camera, Loader2, Plus, X, Trash2, Sparkles, AlertTriangle, PackageCheck,
+  FileWarning,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -23,6 +24,9 @@ import {
   type DeliveryOrder, type DoItem,
 } from '@/lib/penerimaan'
 import type { PurchaseOrder } from '@/lib/procurement'
+import { bolehRevisiPo, nomorPoTampil, poDirevisi, revisiKe } from '@/lib/revisiPo'
+import DaftarBulanan from './DaftarBulanan'
+import DialogRevisiPo from './DialogRevisiPo'
 
 const inputCls = 'w-full h-10 rounded-lg border border-input bg-white px-3 text-sm text-navy'
 const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -31,14 +35,16 @@ const hariIni = () => new Date().toISOString().slice(0, 10)
 /** Hanya PO yang sudah dikirim ke vendor yang barangnya masuk akal datang. */
 const STATUS_BISA_TERIMA = new Set(['terkirim', 'selesai'])
 
-export default function TabPenerimaan({ pos, dos, bolehUbah, onUbah }: {
+export default function TabPenerimaan({ pos, dos, namaSaya, bolehUbah, onUbah }: {
   pos: PurchaseOrder[]
   dos: DeliveryOrder[]
+  namaSaya: string
   bolehUbah: boolean
   onUbah: () => void
 }) {
   const { toast } = useToast()
   const [formPoId, setFormPoId] = useState<string | null>(null)
+  const [revisiPoId, setRevisiPoId] = useState<string | null>(null)
 
   const poTerkirim = useMemo(
     () => pos.filter(p => STATUS_BISA_TERIMA.has(p.status)),
@@ -68,19 +74,31 @@ export default function TabPenerimaan({ pos, dos, bolehUbah, onUbah }: {
     )
   }
 
-  return (
-    <div className="space-y-3">
-      {poTerkirim.map(po => {
+  const poRevisi = poTerkirim.find(p => p.id === revisiPoId) ?? null
+
+  // Dikelompokkan per BULAN PO-nya, sama seperti daftar PO, tagihan, dan
+  // pemasukan. Daftar ini tumbuh dan tidak pernah menyusut; setelah setahun,
+  // mencari penerimaan bulan lalu berarti menggulung melewati ratusan kartu
+  // yang sudah selesai urusannya.
+  const kartu = (po: PurchaseOrder) => {
         const milik = doMilikPo(po.id, dos)
         const st = statusTerima(po.items, milik)
         const rincian = ringkasTerima(po.items, milik)
         const kurang = rincian.filter(r => r.kurang > 0)
+        const bisaRevisi = bolehRevisiPo(po)
 
         return (
-          <div key={po.id} className="bg-white rounded-2xl border border-border p-4 space-y-3">
+          <div className="bg-white rounded-2xl border border-border p-4 space-y-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="font-bold text-navy text-sm truncate">{po.nomor}</p>
+                <p className="font-bold text-navy text-sm truncate">
+                  {nomorPoTampil(po)}
+                  {poDirevisi(po) && (
+                    <span className="ml-1.5 text-[9px] font-black uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
+                      Revisi {revisiKe(po)}
+                    </span>
+                  )}
+                </p>
                 <p className="text-[11px] text-muted-foreground truncate">
                   {po.vendor_nama}{po.project_name && ` · ${po.project_name}`}
                 </p>
@@ -166,15 +184,56 @@ export default function TabPenerimaan({ pos, dos, bolehUbah, onUbah }: {
                   onSukses={() => { setFormPoId(null); onUbah() }}
                 />
               ) : (
-                <Button size="sm" onClick={() => setFormPoId(po.id)}
-                  className="h-8 text-[11px] gap-1.5 bg-navy hover:bg-navy/90 font-bold">
-                  <Plus className="w-3.5 h-3.5" /> Catat Barang Datang
-                </Button>
+                <div className="flex gap-2 flex-wrap">
+                  <Button size="sm" onClick={() => setFormPoId(po.id)}
+                    className="h-8 text-[11px] gap-1.5 bg-navy hover:bg-navy/90 font-bold">
+                    <Plus className="w-3.5 h-3.5" /> Catat Barang Datang
+                  </Button>
+                  {/* Revisi ditawarkan HANYA saat ada yang kurang — di sinilah
+                      selisihnya terlihat, dan menawarkannya pada PO yang sudah
+                      lengkap hanya mengundang orang mengutak-atik angka yang
+                      sudah benar. */}
+                  {kurang.length > 0 && bisaRevisi.boleh && (
+                    <Button size="sm" variant="outline" onClick={() => setRevisiPoId(po.id)}
+                      className="h-8 text-[11px] gap-1.5 font-bold border-amber-300 text-amber-800 hover:bg-amber-50">
+                      <FileWarning className="w-3.5 h-3.5" /> Revisi PO
+                    </Button>
+                  )}
+                </div>
               )
+            )}
+
+            {/* Kenapa revisi ada, ditulis di tempat orang bertanya-tanya. */}
+            {kurang.length > 0 && bisaRevisi.boleh && formPoId !== po.id && (
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Kalau sisanya memang tidak jadi dikirim, <b>revisi PO</b> supaya tagihan
+                vendor tidak selamanya terbaca kurang bayar.
+              </p>
             )}
           </div>
         )
-      })}
+  }
+
+  return (
+    <div className="space-y-3">
+      <DaftarBulanan
+        baris={poTerkirim}
+        tanggalDari={po => po.tanggal}
+        nilaiDari={po => po.total}
+        kunci={po => po.id}
+        satuan="PO"
+        render={kartu}
+      />
+
+      {poRevisi && (
+        <DialogRevisiPo
+          po={poRevisi}
+          dos={doMilikPo(poRevisi.id, dos)}
+          namaSaya={namaSaya}
+          onTutup={() => setRevisiPoId(null)}
+          onSukses={() => { setRevisiPoId(null); onUbah() }}
+        />
+      )}
     </div>
   )
 }

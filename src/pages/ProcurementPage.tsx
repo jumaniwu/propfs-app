@@ -20,6 +20,11 @@ import { subSah } from '@/lib/posisiKerja'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import DaftarBulanan from '@/components/cost/DaftarBulanan'
+import {
+  alamatKirimAwal, siapAlamatKirim, alamatBerbedaDariProyek,
+  nomorPoTampil, poDirevisi, ALAMAT_KOSONG, type AlamatKirim,
+} from '@/lib/revisiPo'
+import { getBrandingCache } from '@/lib/branding'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
@@ -65,6 +70,13 @@ export default function ProcurementPage() {
 
   const [params, setParams] = useSearchParams()
   const [sub, setSub] = useState<Sub>(() => subSah(params.get('sub'), SUB_SAH, 'vendor'))
+  // Profil perusahaan dari cache lokal — dipakai HANYA sebagai bawaan alamat
+  // pengiriman PO alat & kantor. Kalau belum pernah diisi, kolomnya kosong dan
+  // pemakainya mengetik sendiri; itu keadaan yang sah, bukan galat.
+  const perusahaan = useMemo(() => {
+    const b = getBrandingCache()
+    return { nama: b.nama, alamat: b.alamat, telepon: b.telepon }
+  }, [])
 
   // Sub-menu ikut dicatat di alamat. Tanpa ini, memuat ulang halaman selalu
   // melompat kembali ke sub-menu pertama — dan pekerjaan yang sedang dilihat
@@ -203,7 +215,8 @@ export default function ProcurementPage() {
                 bolehUbah={bolehUbah} onUbah={muat} />
             )}
             {sub === 'terima' && (
-              <TabPenerimaan pos={pos} dos={dos} bolehUbah={bolehUbah} onUbah={muat} />
+              <TabPenerimaan pos={pos} dos={dos} namaSaya={profile?.full_name ?? ''}
+                bolehUbah={bolehUbah} onUbah={muat} />
             )}
             {sub === 'invoice' && (
               <TabInvoiceVendor invoices={invoices} pos={pos} bolehUbah={bolehApprove}
@@ -213,6 +226,8 @@ export default function ProcurementPage() {
               <TabPo
                 pos={pos} requests={siapDipesan} vendors={vendorAktif} semuaVendor={vendors} items={items}
                 projectName={projectInfo?.projectName ?? ''}
+                lokasiProyek={projectInfo?.location ?? ''}
+                perusahaan={perusahaan}
                 namaSaya={profile?.full_name ?? ''}
                 bolehUbah={bolehUbah} bolehApprove={bolehApprove}
                 onUbah={muat} />
@@ -824,7 +839,10 @@ function FormBarangManual({ vendors, onBatal, onSukses }: {
 }
 
 // ══ TAB PURCHASE ORDER ══════════════════════════════════════════════════════
-function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSaya, bolehUbah, bolehApprove, onUbah }: {
+function TabPo({
+  pos, requests, vendors, semuaVendor, items, projectName, lokasiProyek, perusahaan,
+  namaSaya, bolehUbah, bolehApprove, onUbah,
+}: {
   pos: PurchaseOrder[]
   requests: MaterialRequest[]
   /** Vendor aktif — hanya ini yang boleh dipilih saat membuat PO. */
@@ -833,6 +851,10 @@ function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSa
   semuaVendor: Vendor[]
   items: VendorItem[]
   projectName: string
+  /** Alamat proyek aktif — bawaan alamat pengiriman PO proyek. */
+  lokasiProyek: string
+  /** Profil perusahaan — bawaan alamat pengiriman PO alat & kantor. */
+  perusahaan: { nama: string; alamat: string; telepon: string }
   namaSaya: string
   bolehUbah: boolean
   bolehApprove: boolean
@@ -881,7 +903,8 @@ function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSa
       {buatOpen && (
         <FormPo
           requests={requests} vendors={vendors} items={items}
-          projectName={projectName} jumlahPo={pos.length}
+          projectName={projectName} lokasiProyek={lokasiProyek}
+          perusahaan={perusahaan} namaSaya={namaSaya} jumlahPo={pos.length}
           onBatal={() => setBuatOpen(false)}
           onSukses={() => { setBuatOpen(false); onUbah() }} />
       )}
@@ -939,11 +962,19 @@ interface BarisManual {
 
 const BARIS_MANUAL_KOSONG: BarisManual = { nama: '', satuan: 'unit', qty: 1, harga: 0 }
 
-function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSukses }: {
+function FormPo({
+  requests, vendors, items, projectName, lokasiProyek, perusahaan, namaSaya,
+  jumlahPo, onBatal, onSukses,
+}: {
   requests: MaterialRequest[]
   vendors: Vendor[]
   items: VendorItem[]
   projectName: string
+  /** Alamat proyek aktif — bawaan alamat pengiriman PO proyek. */
+  lokasiProyek: string
+  /** Profil perusahaan — bawaan alamat pengiriman PO alat & kantor. */
+  perusahaan: { nama: string; alamat: string; telepon: string }
+  namaSaya: string
   jumlahPo: number
   onBatal: () => void
   onSukses: () => void
@@ -960,6 +991,13 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
     sisa: sisaQty(r), qty: sisaQty(r), harga: 0, pilih: false,
   })))
   const [manual, setManual] = useState<BarisManual[]>([{ ...BARIS_MANUAL_KOSONG }])
+
+  // Alamat pengiriman. `disentuh` menandai apakah pemakainya sudah mengubahnya
+  // sendiri — kalau belum, alamatnya ikut berpindah saat jenis PO diganti.
+  // Kalau sudah, tidak ada yang boleh menimpanya diam-diam: alamat yang
+  // diketik tangan selalu lebih tahu daripada bawaan.
+  const [kirim2, setKirim2] = useState<AlamatKirim>(ALAMAT_KOSONG)
+  const [alamatDisentuh, setAlamatDisentuh] = useState(false)
 
   const nonProyek = jenis !== 'proyek'
   const vendor = vendors.find(v => v.id === vendorId)
@@ -1011,6 +1049,28 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
     }))
   ), [nonProyek, manual, dipilih])
 
+  // Bawaan alamat kirim, mengikuti jenis PO: proyek → alamat proyek,
+  // alat/kantor → alamat kantor. Berhenti menimpa begitu pemakainya menyentuh
+  // salah satu kolomnya sendiri.
+  const bawaanAlamat = useMemo(() => alamatKirimAwal({
+    jenis,
+    proyek: { projectName: proyekPo, location: lokasiProyek },
+    perusahaan,
+  }), [jenis, proyekPo, lokasiProyek, perusahaan])
+
+  useEffect(() => {
+    if (alamatDisentuh) return
+    setKirim2(a => ({ ...a, alamat: bawaanAlamat.alamat, wa: a.wa || bawaanAlamat.wa }))
+  }, [bawaanAlamat, alamatDisentuh])
+
+  const ubahAlamat = (patch: Partial<AlamatKirim>) => {
+    setAlamatDisentuh(true)
+    setKirim2(a => ({ ...a, ...patch }))
+  }
+  const periksaAlamat = useMemo(() => siapAlamatKirim(kirim2), [kirim2])
+  const alamatBeda = !nonProyek
+    && alamatBerbedaDariProyek(kirim2.alamat, lokasiProyek)
+
   const total = useMemo(() => hitungTotalPo(barisPo, ppnPct), [barisPo, ppnPct])
   const siapManual = useMemo(() => siapTerbitPo(barisPo), [barisPo])
   const jumlahBarang = nonProyek ? manualIsi.length : dipilih.length
@@ -1039,6 +1099,13 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
       }
     }
 
+    // Alamat boleh kosong, tetapi tidak boleh separuh: nama tanpa nomor tidak
+    // menolong sopir yang tersesat di depan gerbang.
+    if (!periksaAlamat.boleh) {
+      toast({ title: 'Alamat pengiriman belum lengkap', description: periksaAlamat.alasan, variant: 'destructive' })
+      return
+    }
+
     setKirim(true)
     try {
       await procurementApi().createPo({
@@ -1064,6 +1131,10 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
         ppn: total.ppn,
         total: total.total,
         catatan,
+        kirim_nama: kirim2.nama.trim(),
+        kirim_wa: kirim2.wa.trim(),
+        kirim_alamat: kirim2.alamat.trim(),
+        kirim_catatan: kirim2.catatan.trim(),
       })
       toast({
         title: `✅ PO ${LABEL_JENIS_PO[jenis]} diterbitkan`,
@@ -1238,9 +1309,68 @@ function FormPo({ requests, vendors, items, projectName, jumlahPo, onBatal, onSu
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Catatan</label>
             <input value={catatan} onChange={e => setCatatan(e.target.value)}
-              placeholder="mis. kirim ke gudang proyek" className={inputCls} />
+              placeholder="mis. barang harap dipisah per lantai" className={inputCls} />
           </div>
         </div>
+      </div>
+
+      {/* ── 4. Dikirim ke ──────────────────────────────────────────────────
+          PO selama ini tidak menyebutkan ke mana barangnya diantar. Sopir
+          vendor menelepon menanyakannya, atau lebih buruk: membongkar di
+          proyek yang salah.
+
+          Alamatnya sudah pernah diketik sekali sebagai lokasi proyek, jadi di
+          sini ia hanya ditarik — dan yang diketik ulang itulah yang salah
+          ketik. Tetap bisa diubah: pengiriman sering ke gudang atau titik
+          kumpul yang bukan alamat resmi mana pun. */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-bold text-navy flex items-center gap-1.5">
+            <Truck className="w-3.5 h-3.5" /> 4. Dikirim ke
+          </p>
+          {alamatDisentuh && !!bawaanAlamat.alamat && (
+            <button type="button"
+              onClick={() => { setAlamatDisentuh(false); setKirim2(a => ({ ...a, alamat: bawaanAlamat.alamat })) }}
+              className="text-[10px] font-semibold text-navy/70 hover:text-navy underline">
+              Pakai alamat {nonProyek ? 'kantor' : 'proyek'}
+            </button>
+          )}
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">Nama penerima</label>
+            <input value={kirim2.nama} onChange={e => ubahAlamat({ nama: e.target.value })}
+              placeholder={namaSaya || 'mis. Pak Indra'} className={inputCls} />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground">No. HP penerima</label>
+            <input value={kirim2.wa} onChange={e => ubahAlamat({ wa: e.target.value })}
+              inputMode="tel" placeholder="mis. 0812-3456-7890" className={inputCls} />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-medium text-muted-foreground">Alamat pengiriman</label>
+          <textarea value={kirim2.alamat} onChange={e => ubahAlamat({ alamat: e.target.value })} rows={2}
+            placeholder={nonProyek ? 'Alamat kantor' : 'Ditarik dari alamat proyek'}
+            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-xs" />
+          {alamatBeda && (
+            <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 leading-relaxed">
+              Alamat ini <b>berbeda</b> dari alamat proyek ({lokasiProyek}). Wajar bila barangnya
+              memang diantar ke gudang atau titik kumpul — tuliskan patokannya di bawah
+              supaya sopirnya tidak tersesat.
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-medium text-muted-foreground">Patokan / catatan pengiriman</label>
+          <input value={kirim2.catatan} onChange={e => ubahAlamat({ catatan: e.target.value })}
+            placeholder="mis. lewat gerbang belakang, bongkar sebelum jam 16.00" className={inputCls} />
+        </div>
+
+        {!periksaAlamat.boleh && <p className="text-[10px] text-red-600">{periksaAlamat.alasan}</p>}
       </div>
 
       {/* Ringkasan */}
@@ -1400,8 +1530,15 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
     <div className="bg-white rounded-2xl border border-border p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <p className="font-bold text-navy text-sm truncate">{po.nomor}</p>
+          <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+            <p className="font-bold text-navy text-sm truncate">{nomorPoTampil(po)}</p>
+            {/* Penanda revisi. Dua cetakan PO dengan nomor yang sama beredar
+                di meja orang setelah revisi — inilah yang membedakannya. */}
+            {poDirevisi(po) && (
+              <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full shrink-0">
+                Direvisi
+              </span>
+            )}
             {/* Lencana hanya untuk yang BUKAN proyek. Menandai semuanya berarti
                 menambah satu lencana di tiap baris untuk keterangan yang sudah
                 benar tanpa diberitahu. */}

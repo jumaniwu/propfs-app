@@ -9,7 +9,7 @@
 // per daftar: aturan "bulan mana yang terbuka" harus sama di seluruh aplikasi,
 // dan salinan kedua akan berbeda diam-diam begitu salah satunya diperbaiki.
 // ============================================================
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ChevronDown, CalendarRange } from 'lucide-react'
 import {
   kelompokPerBulan, pilihanBulan, saringBulan, SEMUA_BULAN,
@@ -18,7 +18,8 @@ import {
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 
 export default function DaftarBulanan<T>({
-  baris, tanggalDari, nilaiDari, kunci, render, kosong, satuan = 'baris', className = '',
+  baris, tanggalDari, nilaiDari, kunci, render, bungkus, kosong,
+  satuan = 'baris', className = '',
 }: {
   baris: readonly T[]
   /** Tanggal yang menentukan bulannya, mis. `po.tanggal`. */
@@ -27,6 +28,14 @@ export default function DaftarBulanan<T>({
   nilaiDari?: (b: T) => number
   kunci: (b: T, i: number) => string
   render: (b: T) => React.ReactNode
+  /**
+   * Pembungkus baris satu bulan. Diberikan bila barisnya BUKAN kartu berdiri
+   * sendiri melainkan `<tr>` — HTML tidak mengizinkan `<div>` di antara
+   * `<tbody>` dan `<tr>`, dan peramban akan melemparkan baris-baris itu keluar
+   * dari tabelnya. Dengan `bungkus`, pemanggilnya menyediakan
+   * `<table><tbody>…</tbody></table>` sendiri.
+   */
+  bungkus?: (isi: React.ReactNode) => React.ReactNode
   /** Ditampilkan bila tidak ada baris sama sekali. */
   kosong?: React.ReactNode
   satuan?: string
@@ -41,6 +50,11 @@ export default function DaftarBulanan<T>({
   )
   const opsi = useMemo(() => pilihanBulan(kelompok), [kelompok])
   const tampil = useMemo(() => saringBulan(kelompok, pilihan), [kelompok, pilihan])
+
+  /** Baris satu bulan, dibungkus sesuai bentuknya: kartu atau tabel. */
+  const isiBulan = (b2: readonly T[]): React.ReactNode => (bungkus
+    ? bungkus(b2.map((b, i) => <Fragment key={kunci(b, i)}>{render(b)}</Fragment>))
+    : b2.map((b, i) => <div key={kunci(b, i)}>{render(b)}</div>))
 
   if (baris.length === 0) return <>{kosong ?? null}</>
 
@@ -82,20 +96,19 @@ export default function DaftarBulanan<T>({
                   </p>
                 </div>
               )}
-              {k.baris.map((b, i) => <div key={kunci(b, i)}>{render(b)}</div>)}
+              {isiBulan(k.baris)}
             </div>
           )
-          : <BulanTerlipat key={k.bulan} k={k} kunci={kunci} render={render}
+          : <BulanTerlipat key={k.bulan} k={k} isi={isiBulan}
               satuan={satuan} adaNilai={!!nilaiDari} />
       ))}
     </div>
   )
 }
 
-function BulanTerlipat<T>({ k, kunci, render, satuan, adaNilai }: {
+function BulanTerlipat<T>({ k, isi, satuan, adaNilai }: {
   k: { bulan: string; label: string; baris: T[]; total: number }
-  kunci: (b: T, i: number) => string
-  render: (b: T) => React.ReactNode
+  isi: (baris: readonly T[]) => React.ReactNode
   satuan: string
   adaNilai: boolean
 }) {
@@ -119,7 +132,7 @@ function BulanTerlipat<T>({ k, kunci, render, satuan, adaNilai }: {
       {buka && (
         <div className="p-3 pt-0 space-y-2 border-t border-border">
           <div className="h-1" />
-          {k.baris.map((b, i) => <div key={kunci(b, i)}>{render(b)}</div>)}
+          {isi(k.baris)}
         </div>
       )}
     </div>
