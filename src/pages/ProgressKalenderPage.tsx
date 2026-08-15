@@ -5,6 +5,8 @@ import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, ChevronLeft, ChevronRight, CalendarDays, ImageIcon } from 'lucide-react'
 import { fieldApi, type FieldReport } from '@/lib/fieldReports'
+import ChipAbsensi from '@/components/cost/ChipAbsensi'
+import { rekapAbsensi, totalRekap, bulat } from '@/lib/absensiPekerja'
 import PhotoLightbox from '@/components/PhotoLightbox'
 
 const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab']
@@ -57,6 +59,16 @@ export default function ProgressKalenderPage() {
   const shift = (delta: number) => setCursor(c => {
     const d = new Date(c.y, c.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }
   })
+
+  // Rekap kehadiran untuk BULAN YANG SEDANG DILIHAT, bukan seluruh riwayat:
+  // angkanya harus berpindah bersama panah bulan, kalau tidak ia menjawab
+  // pertanyaan yang tidak sedang ditanyakan.
+  const awalanBulan = `${cursor.y}-${String(cursor.m + 1).padStart(2, '0')}`
+  const rekapBulan = useMemo(
+    () => rekapAbsensi((data?.reports ?? []).filter(r => (r.tanggal || '').startsWith(awalanBulan))),
+    [data, awalanBulan],
+  )
+  const totalBulan = useMemo(() => totalRekap(rekapBulan), [rekapBulan])
 
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-3">
@@ -117,6 +129,43 @@ export default function ProgressKalenderPage() {
               </div>
             </div>
 
+            {/* Rekap kehadiran bulan yang sedang dilihat */}
+            {rekapBulan.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-border p-4 space-y-3">
+                {/* Bertumpuk di layar sempit: berdampingan, judul dan
+                    ringkasannya sama-sama patah di tengah kata. */}
+                <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-0.5 sm:gap-2">
+                  <p className="font-bold text-navy text-sm">Kehadiran {BULAN[cursor.m]} {cursor.y}</p>
+                  <p className="text-[10px] text-muted-foreground shrink-0">
+                    {totalBulan.pekerja} pekerja · {bulat(totalBulan.hok)} HOK
+                    {totalBulan.jamLembur > 0 && ` · ${bulat(totalBulan.jamLembur)} jam lembur`}
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  {rekapBulan.map(r => (
+                    <div key={r.kunci} className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-navy truncate">{r.nama}</p>
+                        {r.peran && <p className="text-[10px] text-muted-foreground truncate">{r.peran}</p>}
+                      </div>
+                      {/* Batang sepanjang HOK terbanyak — siapa yang paling
+                          banyak di lapangan terbaca tanpa membandingkan angka. */}
+                      <div className="w-24 sm:w-40 h-1.5 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                        <div className="h-full bg-navy rounded-full"
+                          style={{ width: `${Math.min(100, (r.hok / Math.max(1, rekapBulan[0].hok)) * 100)}%` }} />
+                      </div>
+                      <span className="text-xs font-black text-navy tabular-nums w-10 text-right shrink-0">
+                        {bulat(r.hok)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  HOK = hari orang kerja. Hadir sehari penuh 1, setengah hari 0,5.
+                </p>
+              </div>
+            )}
+
             {/* Detail hari terpilih */}
             {selected && (
               <div className="bg-white rounded-2xl shadow-sm border border-border p-4 space-y-3">
@@ -129,6 +178,7 @@ export default function ProgressKalenderPage() {
                       <p className="text-xs font-semibold text-navy">👷 {r.pelapor}</p>
                       <p className="text-[10px] text-muted-foreground">{r.created_at ? new Date(r.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''}</p>
                     </div>
+                    <ChipAbsensi absensi={r.absensi} />
                     <ul className="text-xs text-slate-700 space-y-0.5 list-disc pl-4">
                       {r.kegiatan.map((k, j) => <li key={j}>{k}</li>)}
                     </ul>
