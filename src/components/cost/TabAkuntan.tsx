@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
 import PanelDaftarKwitansi from './PanelDaftarKwitansi'
 import SubNonProyek from './SubNonProyek'
+import DaftarBulanan from './DaftarBulanan'
 import { asetApi } from '@/lib/asetApi'
 import { totalAsetTetap, type AsetAlat } from '@/lib/asetAlat'
 import { perluMaterai, namaProyekEntri } from '@/lib/kwitansi'
@@ -652,54 +653,61 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
           <p className="text-xs text-muted-foreground py-6 text-center">Belum ada pemasukan tercatat.</p>
         ) : (
           <div className="space-y-2 max-h-[50vh] overflow-y-auto overscroll-contain">
-            {[...entries].reverse().map(p => (
-              <div key={p.id} className="border border-border rounded-xl p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-navy truncate">{p.sumber}</p>
-                    <p className="text-[11px] text-muted-foreground">📅 {p.tanggal} · {p.kategori}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-sm font-bold text-emerald-700">{fmt(p.jumlah)}</span>
-                    <button onClick={() => onDelete(p.id)} className="p-1.5 text-muted-foreground hover:text-red-600">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+            <DaftarBulanan
+              baris={[...entries].reverse()}
+              tanggalDari={p => p.tanggal}
+              nilaiDari={p => p.jumlah}
+              kunci={p => p.id}
+              satuan="pemasukan"
+              render={p => (
+            <div className="border border-border rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-navy truncate">{p.sumber}</p>
+                  <p className="text-[11px] text-muted-foreground">📅 {p.tanggal} · {p.kategori}</p>
                 </div>
-                {/* Pemindahan proyek langsung di sini — entri lama yang masuk
-                    "Umum" tidak perlu dihapus lalu diketik ulang. */}
-                <select
-                  value={p.projectId ?? ''}
-                  onChange={e => onPindah(p.id, e.target.value || undefined)}
-                  aria-label={`Proyek untuk ${p.sumber}`}
-                  className={`w-full h-8 rounded-lg border px-2 text-[11px] font-semibold ${
-                    p.projectId ? 'border-border text-navy' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
-                  <option value="">{LABEL_PROYEK_UMUM}</option>
-                  {daftarProyek.map(pr => (
-                    <option key={pr.id} value={pr.id}>{pr.nama}</option>
-                  ))}
-                </select>
-
-                {/* Kwitansi dibuat DARI entri ini, bukan diketik ulang.
-                    Mengetik ulang adalah tempat lahirnya kwitansi yang
-                    angkanya berbeda dari pembukuan — dan bedanya baru
-                    ketahuan kalau ada yang membandingkan. */}
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    data-buat-kwitansi
-                    onClick={() => setKwitansiUntuk(p)}
-                    className="text-[11px] font-bold text-navy underline">
-                    Buat kwitansi
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-bold text-emerald-700">{fmt(p.jumlah)}</span>
+                  <button onClick={() => onDelete(p.id)} className="p-1.5 text-muted-foreground hover:text-red-600">
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                  {perluMaterai(p.jumlah) && (
-                    <span className="text-[10px] font-bold text-amber-800 bg-amber-50
-                      border border-amber-200 rounded-full px-2 py-0.5">
-                      wajib e-Meterai
-                    </span>
-                  )}
                 </div>
               </div>
-            ))}
+              {/* Pemindahan proyek langsung di sini — entri lama yang masuk
+                  "Umum" tidak perlu dihapus lalu diketik ulang. */}
+              <select
+                value={p.projectId ?? ''}
+                onChange={e => onPindah(p.id, e.target.value || undefined)}
+                aria-label={`Proyek untuk ${p.sumber}`}
+                className={`w-full h-8 rounded-lg border px-2 text-[11px] font-semibold ${
+                  p.projectId ? 'border-border text-navy' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+                <option value="">{LABEL_PROYEK_UMUM}</option>
+                {daftarProyek.map(pr => (
+                  <option key={pr.id} value={pr.id}>{pr.nama}</option>
+                ))}
+              </select>
+
+              {/* Kwitansi dibuat DARI entri ini, bukan diketik ulang.
+                  Mengetik ulang adalah tempat lahirnya kwitansi yang
+                  angkanya berbeda dari pembukuan — dan bedanya baru
+                  ketahuan kalau ada yang membandingkan. */}
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  data-buat-kwitansi
+                  onClick={() => setKwitansiUntuk(p)}
+                  className="text-[11px] font-bold text-navy underline">
+                  Buat kwitansi
+                </button>
+                {perluMaterai(p.jumlah) && (
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-50
+                    border border-amber-200 rounded-full px-2 py-0.5">
+                    wajib e-Meterai
+                  </span>
+                )}
+              </div>
+            </div>
+              )}
+            />
           </div>
         )}
       </div>

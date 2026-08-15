@@ -19,6 +19,7 @@ import { useSearchParams } from 'react-router-dom'
 import { subSah } from '@/lib/posisiKerja'
 import { Button } from '@/components/ui/button'
 import KontraktorHeader from '@/components/cost/KontraktorHeader'
+import DaftarBulanan from '@/components/cost/DaftarBulanan'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
@@ -895,12 +896,17 @@ function TabPo({ pos, requests, vendors, semuaVendor, items, projectName, namaSa
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {pos.map(po => (
-            <KartuPo key={po.id} po={po} namaSaya={namaSaya} vendors={semuaVendor}
+        <DaftarBulanan
+          baris={pos}
+          tanggalDari={po => po.tanggal}
+          nilaiDari={po => po.total}
+          kunci={po => po.id}
+          satuan="PO"
+          render={po => (
+            <KartuPo po={po} namaSaya={namaSaya} vendors={semuaVendor}
               bolehUbah={bolehUbah} bolehApprove={bolehApprove} onUbah={onUbah} />
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   )

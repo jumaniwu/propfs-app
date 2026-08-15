@@ -17,6 +17,7 @@ import {
 import { roleSaatIni, teamApi, type Workspace } from '@/lib/teamApi'
 import { useAuthStore } from '@/store/authStore'
 import DialogUnggahMaterai from './DialogUnggahMaterai'
+import DaftarBulanan from './DaftarBulanan'
 import DialogKwitansi from './DialogKwitansi'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
@@ -173,12 +174,18 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
           Belum ada kwitansi terbit. Buat dari baris pemasukan di atas.
         </p>
       ) : (
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto overscroll-contain pr-0.5">
-          {daftar.map(k => {
+        <DaftarBulanan
+          baris={daftar}
+          tanggalDari={k => k.tanggal}
+          nilaiDari={k => k.jumlah}
+          kunci={k => k.id}
+          satuan="kwitansi"
+          className="max-h-[60vh] overflow-y-auto overscroll-contain pr-0.5"
+          render={k => {
             const perlu = perluMaterai(k.jumlah)
             const belumMaterai = perlu && k.materai_status !== 'terbubuh'
             return (
-              <div key={k.id} className="rounded-xl border border-border p-3 space-y-2 min-w-0">
+              <div className="rounded-xl border border-border p-3 space-y-2 min-w-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-navy break-words">{k.nomor}</p>
@@ -284,8 +291,8 @@ export default function PanelDaftarKwitansi({ muatUlang = 0 }: { muatUlang?: num
                 )}
               </div>
             )
-          })}
-        </div>
+          }}
+        />
       )}
 
       {/* Alasan penolakan dikatakan sekali di kaki panel, bukan pada tiap
