@@ -8,15 +8,19 @@
 // mengisi ini sekali tiap sore, dan tanggal serta nama pelapornya sudah ada
 // di atas. Meminta ia mengirim dua kali berarti absensinya akan diisi
 // seminggu sekali dari ingatan.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import {
   Loader2, CheckCircle2, Camera, Plus, Trash2, HardHat, PackageOpen, ShoppingCart,
-  Users, UserPlus,
+  Users, UserPlus, UserCog, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { fieldApi, uploadToDrive, type FieldHeader } from '@/lib/fieldReports'
+import {
+  JENIS_UPAH, siapDaftarPekerja, barisDariPekerja, belumDiabsen,
+  type JenisUpah, type PekerjaLapangan,
+} from '@/lib/pekerjaLapangan'
 import {
   STATUS_HADIR, LEMBUR_MAKS, siapKirimAbsensi, ringkasAbsensi, cariPekerja,
   rapikanNama, type BarisAbsensi, type StatusHadir,
@@ -27,7 +31,7 @@ import {
 } from '@/lib/materialApi'
 import { downscaleImage } from '@/lib/imageUtil'
 
-type Tab = 'laporan' | 'pakai' | 'request'
+type Tab = 'laporan' | 'pakai' | 'request' | 'pekerja'
 
 /** Angka ringkas untuk layar HP: tanpa desimal bila bulat. */
 const angkaRingkas = (n: number) =>
@@ -54,8 +58,24 @@ export default function LaporHarianPage() {
       .finally(() => setLoading(false))
   }, [token])
 
+  // Daftar pekerja dimuat sekali dan dibagi ke dua tab: yang mendaftarkan
+  // (Pekerja) dan yang memakai (Laporan Harian). Satu sumber, supaya pekerja
+  // yang baru didaftarkan langsung bisa diabsen tanpa memuat ulang halaman.
+  const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
+  const muatPekerja = useCallback(() => {
+    if (!token) return
+    fieldApi().listPekerja(token).then(setPekerja).catch(() => setPekerja([]))
+  }, [token])
+  useEffect(() => { muatPekerja() }, [muatPekerja])
+  // Header juga membawa daftarnya; dipakai supaya tab Laporan Harian sudah
+  // terisi bahkan sebelum panggilan kedua selesai.
+  useEffect(() => {
+    if (header?.pekerja?.length) setPekerja(p => (p.length ? p : header.pekerja!))
+  }, [header])
+
   const TABS: Array<[Tab, string, JSX.Element]> = [
     ['laporan', 'Laporan Harian', <HardHat key="i" className="w-4 h-4" />],
+    ['pekerja', 'Pekerja', <UserCog key="i" className="w-4 h-4" />],
     ['pakai', 'Pakai Material', <PackageOpen key="i" className="w-4 h-4" />],
     ['request', 'Request Material', <ShoppingCart key="i" className="w-4 h-4" />],
   ]
@@ -85,10 +105,10 @@ export default function LaporHarianPage() {
             </div>
 
             {/* Tab */}
-            <div className="flex border-b border-border">
+            <div className="grid grid-cols-4 border-b border-border">
               {TABS.map(([key, label, icon]) => (
                 <button key={key} onClick={() => { setTab(key); setDone('') }}
-                  className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-bold transition-colors ${
+                  className={`flex flex-col items-center gap-1 py-2.5 text-[9px] font-bold transition-colors ${
                     tab === key ? 'text-navy border-b-2 border-navy bg-navy/5' : 'text-muted-foreground'}`}>
                   {icon}
                   <span className="text-center leading-tight">{label}</span>
@@ -107,7 +127,12 @@ export default function LaporHarianPage() {
               </div>
             ) : (
               <>
-                {tab === 'laporan' && <FormLaporan token={token} header={header} onDone={setDone} />}
+                {tab === 'laporan' && (
+                  <FormLaporan token={token} header={header} pekerja={pekerja} onDone={setDone} />
+                )}
+                {tab === 'pekerja' && (
+                  <FormPekerja token={token} pekerja={pekerja} onUbah={muatPekerja} />
+                )}
                 {tab === 'pakai' && <FormPakaiMaterial token={token} header={header} onDone={setDone} />}
                 {tab === 'request' && <FormRequestMaterial token={token} header={header} onDone={setDone} />}
               </>
@@ -180,35 +205,24 @@ function kirimDrive(header: Header, photos: string[], prefix: string) {
   })
 }
 
-// ── Absensi: satu blok di dalam laporan harian ──────────────────────────────
+// ── Absensi: daftar pekerja terdaftar, tidak diketik ───────────────────────
 //
-// Dibuat untuk ibu jari, bukan untuk papan ketik. Nama diketuk dari daftar
-// yang sudah pernah tercatat; statusnya empat tombol besar. Mengetik nama
-// baru tetap bisa — tukang baru harus tetap bisa masuk absen di hari
-// pertamanya, tanpa menunggu siapa pun mendaftarkannya lebih dulu.
-function BlokAbsensi({ daftar, baris, setBaris }: {
-  daftar: Array<{ nama: string; peran: string }>
+// Dulu blok ini meminta nama DIKETIK setiap hari. Di lapangan itu berarti
+// mandor mengetik lima belas nama tiap sore, dari HP, dengan tangan yang baru
+// selesai memegang semen — dan rekap upahnya lalu memecah "Yono", "yono",
+// "Pak Yono" menjadi tiga orang.
+//
+// Sekarang pekerja didaftarkan sekali di tab Pekerja, dan yang tersisa di
+// sini hanyalah mengetuk: siapa masuk, siapa tidak, dan fotonya sebagai bukti.
+function BlokAbsensi({ pekerja, baris, setBaris }: {
+  pekerja: PekerjaLapangan[]
   baris: BarisAbsensi[]
   setBaris: React.Dispatch<React.SetStateAction<BarisAbsensi[]>>
 }) {
-  const [ketik, setKetik] = useState('')
-  const [fokus, setFokus] = useState(false)
-
-  const dipakai = baris.map(b => b.nama)
-  const saran = useMemo(() => cariPekerja(daftar, ketik, dipakai),
-    [daftar, ketik, dipakai.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
-  const belumDiabsen = useMemo(() => cariPekerja(daftar, '', dipakai),
-    [daftar, dipakai.join('|')]) // eslint-disable-line react-hooks/exhaustive-deps
+  const belum = useMemo(() => belumDiabsen(pekerja, baris), [pekerja, baris])
 
   const ubah = (i: number, patch: Partial<BarisAbsensi>) =>
     setBaris(prev => prev.map((b, j) => j === i ? { ...b, ...patch } : b))
-
-  function tambah(nama: string, peran = '') {
-    const rapi = rapikanNama(nama)
-    if (rapi.length < 2) return
-    setBaris(prev => [...prev, { nama: rapi, peran: peran || undefined, status: 'hadir' }])
-    setKetik('')
-  }
 
   return (
     <div className="rounded-xl border border-border bg-slate-50/70 p-3 space-y-3">
@@ -221,8 +235,15 @@ function BlokAbsensi({ daftar, baris, setBaris }: {
         </span>
       </div>
 
+      {pekerja.length === 0 && baris.length === 0 && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
+          Belum ada pekerja terdaftar. Buka tab <b>Pekerja</b> di atas untuk mendaftarkan
+          mereka sekali di awal — setelah itu absensi harian tinggal diketuk.
+        </p>
+      )}
+
       {baris.map((b, i) => (
-        <div key={i} className="rounded-lg bg-white border border-border p-2.5 space-y-2">
+        <div key={b.pekerja_id || `${b.nama}-${i}`} className="rounded-lg bg-white border border-border p-2.5 space-y-2">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-navy truncate">{b.nama}</p>
@@ -236,99 +257,117 @@ function BlokAbsensi({ daftar, baris, setBaris }: {
           </div>
 
           <div className="grid grid-cols-4 gap-1.5">
-            {STATUS_HADIR.map(s => (
-              <button key={s.key} type="button" onClick={() => ubah(i, { status: s.key as StatusHadir })}
+            {STATUS_HADIR.map(st => (
+              <button key={st.key} type="button" onClick={() => ubah(i, { status: st.key as StatusHadir })}
                 className={`h-9 rounded-lg border-2 text-[11px] font-bold transition-all ${
-                  b.status === s.key ? `${s.tone} shadow` : 'bg-white text-muted-foreground border-border font-medium'}`}>
-                {s.label}
+                  b.status === st.key ? `${st.tone} shadow` : 'bg-white text-muted-foreground border-border font-medium'}`}>
+                {st.label}
               </button>
             ))}
           </div>
 
-          {/* Lembur hanya berarti bagi yang datang. Menawarkannya kepada yang
-              izin atau alpa hanya mengundang angka yang tidak masuk akal.
-              Kolomnya pun baru muncul saat diminta: kebanyakan hari tidak ada
-              lembur sama sekali, dan sebuah proyek dengan lima belas tukang
-              tidak boleh menjadi lima belas kotak kosong untuk digulung. */}
           {(b.status === 'hadir' || b.status === 'setengah') && (
-            b.lembur === undefined ? (
-              <button type="button" onClick={() => ubah(i, { lembur: 1 })}
-                className="text-[11px] font-semibold text-navy/70 hover:text-navy">
-                + Lembur
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <label className="text-[11px] text-muted-foreground">Lembur</label>
-                <input type="number" inputMode="decimal" min="0" max={LEMBUR_MAKS} autoFocus
-                  value={b.lembur}
-                  onChange={e => {
-                    const v = Number(e.target.value)
-                    ubah(i, { lembur: e.target.value === '' ? 0 : v })
-                  }}
-                  className="w-16 h-8 rounded-lg border border-input bg-background px-2 text-sm" />
-                <span className="text-[11px] text-muted-foreground">jam</span>
-                <button type="button" onClick={() => ubah(i, { lembur: undefined })}
-                  className="text-[11px] text-muted-foreground hover:text-red-600 ml-auto">
-                  Batal
-                </button>
-              </div>
-            )
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Foto orangnya hari itu — bukti hadir, bukan potret. */}
+              <FotoAbsen foto={b.foto} onFoto={f => ubah(i, { foto: f })} nama={b.nama} />
+              {b.lembur === undefined ? (
+                <button type="button" onClick={() => ubah(i, { lembur: 1 })}
+                  className="text-[11px] font-semibold text-navy/70 hover:text-navy">+ Lembur</button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-muted-foreground">Lembur</label>
+                  <input type="number" inputMode="decimal" min="0" max={LEMBUR_MAKS} value={b.lembur}
+                    onChange={e => ubah(i, { lembur: e.target.value === '' ? 0 : Number(e.target.value) })}
+                    className="w-14 h-8 rounded-lg border border-input bg-background px-2 text-sm" />
+                  <span className="text-[11px] text-muted-foreground">jam</span>
+                  <button type="button" onClick={() => ubah(i, { lembur: undefined })}
+                    className="text-[11px] text-muted-foreground hover:text-red-600">Batal</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       ))}
 
-      {/* Tambah pekerja: ketik, atau ketuk dari yang sudah pernah tercatat. */}
-      <div className="relative">
-        <div className="flex gap-1.5">
-          <input value={ketik}
-            onChange={e => { setKetik(e.target.value); setFokus(true) }}
-            onFocus={() => setFokus(true)}
-            onBlur={() => window.setTimeout(() => setFokus(false), 150)}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); tambah(ketik) } }}
-            placeholder="Nama pekerja" autoComplete="off"
-            className={`flex-1 ${inputCls}`} />
-          <Button type="button" variant="outline" className="h-10 px-3 gap-1 shrink-0"
-            disabled={rapikanNama(ketik).length < 2} onClick={() => tambah(ketik)}>
-            <Plus className="w-4 h-4" /> <span className="text-xs">Tambah</span>
-          </Button>
-        </div>
-
-        {fokus && saran.length > 0 && (
-          <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-border rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
-            {saran.map(s => (
-              <button key={s.nama} type="button"
-                onMouseDown={e => e.preventDefault()}
-                onClick={() => tambah(s.nama, s.peran)}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-border last:border-0">
-                <p className="text-sm text-navy font-semibold truncate">{s.nama}</p>
-                {s.peran && <p className="text-[11px] text-muted-foreground truncate">{s.peran}</p>}
+      {/* Yang belum diabsen: diketuk satu per satu, atau sekaligus. */}
+      {belum.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Belum diabsen ({belum.length})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {belum.map(p => (
+              <button key={p.id} type="button" data-tambah-pekerja={p.id}
+                onClick={() => setBaris(prev => [...prev, barisDariPekerja(p)])}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-white pl-1 pr-2.5 py-1
+                  text-[11px] font-semibold text-navy hover:border-navy/40">
+                {p.foto
+                  ? <img src={p.foto} alt="" className="w-6 h-6 rounded-full object-cover" />
+                  : <span className="w-6 h-6 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-black text-navy">
+                      {p.nama.charAt(0).toUpperCase()}
+                    </span>}
+                {p.nama}
               </button>
             ))}
           </div>
-        )}
-      </div>
-
-      {/* Kebanyakan hari, yang masuk adalah orang yang sama dengan kemarin.
-          Satu ketukan untuk itu, lalu yang tidak masuk tinggal diubah. */}
-      {belumDiabsen.length > 0 && (
-        <Button type="button" variant="outline" size="sm" className="w-full h-9 gap-1.5 text-xs border-dashed"
-          onClick={() => setBaris(prev => [
-            ...prev,
-            ...belumDiabsen.map(d => ({
-              nama: d.nama, peran: d.peran || undefined, status: 'hadir' as StatusHadir,
-            })),
-          ])}>
-          <UserPlus className="w-3.5 h-3.5" />
-          Hadirkan semua ({belumDiabsen.length})
-        </Button>
+          <Button type="button" variant="outline" size="sm" className="w-full h-9 gap-1.5 text-xs border-dashed"
+            onClick={() => setBaris(prev => [...prev, ...belum.map(barisDariPekerja)])}>
+            <UserPlus className="w-3.5 h-3.5" /> Hadirkan semua ({belum.length})
+          </Button>
+        </div>
       )}
     </div>
   )
 }
 
+/** Foto bukti hadir. Dikecilkan keras — ini bukti, bukan potret. */
+function FotoAbsen({ foto, onFoto, nama }: {
+  foto?: string
+  onFoto: (f: string | undefined) => void
+  nama: string
+}) {
+  const ref = useRef<HTMLInputElement>(null)
+  const [sibuk, setSibuk] = useState(false)
+
+  async function pilih(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setSibuk(true)
+    try {
+      // 320 px, mutu 0,6. Lima belas pekerja kali tiga puluh hari harus tetap
+      // muat di satu kolom jsonb yang masih bisa dibaca HP di lapangan.
+      onFoto(await downscaleImage(f, 320, 0.6))
+    } finally { setSibuk(false) }
+  }
+
+  if (foto) {
+    return (
+      <div className="relative">
+        <img src={foto} alt={`Foto ${nama}`} className="w-10 h-10 rounded-lg object-cover border border-border" />
+        <button type="button" aria-label={`Hapus foto ${nama}`} onClick={() => onFoto(undefined)}
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center">
+          <X className="w-3 h-3" />
+        </button>
+      </div>
+    )
+  }
+  return (
+    <>
+      <button type="button" onClick={() => ref.current?.click()} disabled={sibuk}
+        aria-label={`Foto ${nama}`}
+        className="h-8 px-2.5 rounded-lg border border-dashed border-border bg-white flex items-center gap-1.5
+          text-[11px] font-semibold text-muted-foreground hover:border-navy/40 hover:text-navy">
+        {sibuk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />} Foto
+      </button>
+      <input ref={ref} type="file" accept="image/*" capture="environment" hidden onChange={pilih} />
+    </>
+  )
+}
+
 // ── 1. Laporan harian ───────────────────────────────────────────────────────
-function FormLaporan({ token, header, onDone }: {
-  token: string; header: Header; onDone: (msg: string) => void
+function FormLaporan({ token, header, pekerja, onDone }: {
+  token: string; header: Header; pekerja: PekerjaLapangan[]; onDone: (msg: string) => void
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
   const [pelapor, setPelapor] = useState('')
@@ -384,7 +423,7 @@ function FormLaporan({ token, header, onDone }: {
         </div>
       </div>
 
-      <BlokAbsensi daftar={header.pekerja ?? []} baris={absensi} setBaris={setAbsensi} />
+      <BlokAbsensi pekerja={pekerja} baris={absensi} setBaris={setAbsensi} />
 
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">Kegiatan Hari Ini</label>
@@ -799,6 +838,197 @@ function FormRequestMaterial({ token, header, onDone }: {
       <Button className="w-full h-12 font-bold bg-navy hover:bg-navy/90" disabled={submitting} onClick={submit}>
         {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Kirim Permintaan'}
       </Button>
+    </div>
+  )
+}
+
+// ══ Tab PEKERJA — pengawas mendaftarkan siapa saja yang bekerja di sini ═════
+//
+// Didaftarkan SEKALI di awal, lewat link yang sudah dipegang pengawas — tidak
+// ada link kedua yang harus disebarkan. Setelah ini, absensi harian berhenti
+// menjadi pekerjaan mengetik.
+function FormPekerja({ token, pekerja, onUbah }: {
+  token: string
+  pekerja: PekerjaLapangan[]
+  onUbah: () => void
+}) {
+  const [nama, setNama] = useState('')
+  const [peran, setPeran] = useState('')
+  const [noHp, setNoHp] = useState('')
+  const [jenis, setJenis] = useState<JenisUpah>('harian')
+  const [upah, setUpah] = useState('')
+  const [foto, setFoto] = useState<string>('')
+  const [kirim, setKirim] = useState(false)
+  const [galat, setGalat] = useState('')
+  const [pesan, setPesan] = useState('')
+  const fotoRef = useRef<HTMLInputElement>(null)
+
+  const calon = {
+    nama, peran, no_hp: noHp, jenis,
+    upah_harian: Number(upah.replace(/\D/g, '')) || 0,
+  }
+  const periksa = siapDaftarPekerja(calon, pekerja)
+
+  async function pilihFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    try { setFoto(await downscaleImage(f, 400, 0.7)) } catch { setGalat('Foto tidak terbaca.') }
+  }
+
+  async function simpan() {
+    if (!periksa.boleh) { setGalat(periksa.alasan); return }
+    setKirim(true); setGalat(''); setPesan('')
+    try {
+      await fieldApi().daftarPekerja(token, {
+        nama: rapikanNama(nama), peran: rapikanNama(peran), no_hp: noHp.trim(),
+        jenis, upah_harian: calon.upah_harian, foto,
+      })
+      setPesan(`${rapikanNama(nama)} terdaftar. Namanya sudah muncul di absensi harian.`)
+      setNama(''); setPeran(''); setNoHp(''); setUpah(''); setFoto('')
+      onUbah()
+    } catch (e) {
+      setGalat(e instanceof Error ? e.message : String(e))
+    } finally { setKirim(false) }
+  }
+
+  async function nonaktifkan(p: PekerjaLapangan) {
+    if (!window.confirm(`Keluarkan ${p.nama} dari daftar pekerja proyek ini?\n\nAbsensinya yang sudah lewat TIDAK dihapus — upah yang belum dibayar tetap terhitung.`)) return
+    try {
+      await fieldApi().nonaktifkanPekerja(token, p.id)
+      onUbah()
+    } catch (e) {
+      setGalat(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  return (
+    <div className="p-4 sm:p-5 space-y-4 text-sm">
+      <p className="text-[11px] text-muted-foreground bg-blue-50 border border-blue-100 rounded-xl p-2.5 leading-relaxed">
+        Daftarkan pekerja <b>sekali di awal</b>. Setelah itu absensi harian tinggal
+        diketuk — tidak perlu mengetik nama lagi tiap sore.
+      </p>
+
+      {/* ── Yang sudah terdaftar ── */}
+      {pekerja.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold text-muted-foreground">
+            Sudah terdaftar ({pekerja.length})
+          </p>
+          {pekerja.map(p => (
+            <div key={p.id} data-pekerja={p.id}
+              className="flex items-center gap-2.5 rounded-xl border border-border p-2.5">
+              {p.foto
+                ? <img src={p.foto} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                : <span className="w-9 h-9 rounded-full bg-navy/10 flex items-center justify-center text-xs font-black text-navy shrink-0">
+                    {p.nama.charAt(0).toUpperCase()}
+                  </span>}
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-navy truncate">{p.nama}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {[p.peran, p.jenis === 'borongan'
+                    ? 'Borongan'
+                    : p.upah_harian > 0
+                      ? `Rp ${p.upah_harian.toLocaleString('id-ID')}/hari`
+                      : 'Upah belum diisi'].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <button onClick={() => nonaktifkan(p)} aria-label={`Keluarkan ${p.nama}`}
+                className="text-muted-foreground hover:text-red-600 shrink-0 p-1">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Tambah ── */}
+      <div className="rounded-xl border-2 border-gold/40 bg-slate-50/60 p-3 space-y-3">
+        <p className="text-xs font-bold text-navy">Tambah Pekerja</p>
+
+        <div className="flex items-center gap-3">
+          {foto
+            ? <img src={foto} alt="" className="w-14 h-14 rounded-xl object-cover border border-border" />
+            : <span className="w-14 h-14 rounded-xl bg-navy/5 border border-dashed border-border flex items-center justify-center">
+                <Camera className="w-5 h-5 text-muted-foreground" />
+              </span>}
+          <div className="flex-1 space-y-1">
+            <Button type="button" variant="outline" size="sm" className="h-8 text-[11px] gap-1.5"
+              onClick={() => fotoRef.current?.click()}>
+              <Camera className="w-3.5 h-3.5" /> {foto ? 'Ganti Foto' : 'Foto Pekerja'}
+            </Button>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              Untuk mengenali nama di daftar absen — di proyek besar, "Adi" bisa
+              berarti tiga orang.
+            </p>
+          </div>
+          <input ref={fotoRef} type="file" accept="image/*" capture="user" hidden onChange={pilihFoto} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className="block col-span-2">
+            <span className="block text-[11px] font-medium text-muted-foreground mb-1">Nama *</span>
+            <input value={nama} onChange={e => { setNama(e.target.value); setGalat('') }}
+              placeholder="mis. Pak Yono" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] font-medium text-muted-foreground mb-1">Peran</span>
+            <input value={peran} onChange={e => setPeran(e.target.value)}
+              placeholder="Tukang batu" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="block text-[11px] font-medium text-muted-foreground mb-1">No. HP</span>
+            <input value={noHp} onChange={e => setNoHp(e.target.value)} inputMode="tel"
+              placeholder="0812…" className={inputCls} />
+          </label>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="block text-[11px] font-medium text-muted-foreground">Cara dibayar</span>
+          <div className="grid grid-cols-2 gap-2">
+            {JENIS_UPAH.map(j => (
+              <button key={j.key} type="button" onClick={() => setJenis(j.key)}
+                data-jenis={j.key}
+                className={`rounded-xl border-2 p-2.5 text-left transition ${
+                  jenis === j.key ? 'border-navy bg-navy/5' : 'border-border bg-white'}`}>
+                <p className="text-[11px] font-black text-navy">{j.label}</p>
+                <p className="text-[9px] text-muted-foreground leading-tight mt-0.5">{j.untuk}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Upah harian hanya berarti untuk yang dibayar harian. Menampilkannya
+            pada borongan mengundang angka yang lalu tidak pernah dipakai — dan
+            angka yang tidak dipakai adalah angka yang menyesatkan. */}
+        {jenis === 'harian' && (
+          <label className="block">
+            <span className="block text-[11px] font-medium text-muted-foreground mb-1">
+              Upah per hari <span className="text-muted-foreground/70">— boleh diisi nanti</span>
+            </span>
+            <input value={upah} inputMode="numeric"
+              onChange={e => setUpah(e.target.value.replace(/\D/g, ''))}
+              placeholder="mis. 150000" className={inputCls} />
+            {calon.upah_harian > 0 && (
+              <span className="block text-[10px] text-muted-foreground mt-1">
+                Rp {calon.upah_harian.toLocaleString('id-ID')} per hari kerja
+              </span>
+            )}
+          </label>
+        )}
+
+        {galat && <p className="text-[11px] text-red-600">{galat}</p>}
+        {pesan && <p className="text-[11px] text-emerald-700 font-semibold">{pesan}</p>}
+
+        <Button className="w-full h-11 font-bold bg-navy hover:bg-navy/90 gap-2"
+          disabled={kirim || !periksa.boleh} onClick={simpan}>
+          {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+          Daftarkan Pekerja
+        </Button>
+        {!periksa.boleh && nama.trim().length > 0 && (
+          <p className="text-[11px] text-muted-foreground">{periksa.alasan}</p>
+        )}
+      </div>
     </div>
   )
 }
