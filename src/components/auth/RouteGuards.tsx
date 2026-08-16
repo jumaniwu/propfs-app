@@ -4,6 +4,8 @@ import { useAuthStore } from '@/store/authStore'
 import { sesiTim } from '@/lib/teamApi'
 import { rutaTagihan, RUTA_LANGGANAN } from '@/lib/berandaMasuk'
 import { useRutaMasuk } from '@/hooks/useRutaMasuk'
+import { tujuanAwal } from '@/lib/pintuAwal'
+import { diAndroid } from '@/lib/unduhBerkas'
 import type { AppFeature } from '@/lib/supabase'
 
 /** Beranda sesi tim: karyawan selalu mendarat di modul Kontraktor AI. */
@@ -96,6 +98,34 @@ export function AuthRoute({ children }: Props) {
 export function OpenRoute({ children }: Props) {
   // Do NOT block on isLoading — landing page should always render immediately
   return <>{children}</>
+}
+
+/**
+ * Alamat pokok `/` — halaman jualan di peramban, pintu masuk di dalam APK.
+ *
+ * Orang yang sudah memasang aplikasinya tidak perlu dibujuk lagi; ia mau
+ * bekerja. Menyuguhkan halaman jualan lengkap dengan tombol "Coba Gratis"
+ * setiap kali ikon diketuk membuat aplikasinya terasa seperti peramban yang
+ * menyamar.
+ *
+ * Di peramban TIDAK ADA YANG BERUBAH, dan itu disengaja: propfs.id satu-
+ * satunya cara pemakai baru datang, dan halamannya harus tampil seketika —
+ * termasuk bagi mesin pengindeks yang tidak pernah punya sesi.
+ *
+ * Keputusannya sendiri ada di lib/pintuAwal.ts supaya bisa diuji tanpa DOM.
+ */
+export function RuteAwal({ children }: Props) {
+  const { user, isLoading } = useAuthStore()
+  const beranda = useRutaMasuk()
+  const tujuan = tujuanAwal({
+    diApk: diAndroid(),
+    memuat: isLoading,
+    sudahLogin: !!user,
+    beranda,
+  })
+  if (tujuan.jenis === 'landing') return <>{children}</>
+  if (tujuan.jenis === 'tunggu') return <Spinner />
+  return <Navigate to={tujuan.ke} replace />
 }
 
 /** Redirect non-superadmin away from admin routes */

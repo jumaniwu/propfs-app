@@ -4,7 +4,7 @@ import { useFSStore } from './store/fsStore'
 import { useAuthStore } from './store/authStore'
 import { Toaster } from './components/ui/toaster'
 import { toast } from './hooks/use-toast'
-import { PrivateRoute, AuthRoute, OpenRoute, AdminRoute, FeatureRoute } from './components/auth/RouteGuards'
+import { PrivateRoute, AuthRoute, OpenRoute, RuteAwal, AdminRoute, FeatureRoute } from './components/auth/RouteGuards'
 import { supabase } from './lib/supabase'
 import { Button } from './components/ui/button'
 import BottomNav from './components/layout/BottomNav'
@@ -134,7 +134,9 @@ export default function App() {
       <Suspense fallback={<LoadingScreen />}>
         <Routes>
           {/* ── Public Routes ── */}
-          <Route path="/" element={<OpenRoute><LandingPage /></OpenRoute>} />
+          {/* Di peramban: halaman jualan. Di dalam APK: langsung ke pintu masuk,
+              atau ke pekerjaannya bila sesinya masih hidup. Lihat lib/pintuAwal.ts. */}
+          <Route path="/" element={<RuteAwal><LandingPage /></RuteAwal>} />
           <Route path="/auth" element={<AuthRoute><AuthPage /></AuthRoute>} />
           {/* Pintu masuk karyawan: Kode Perusahaan + User ID, terpisah dari akun utama */}
           <Route path="/tim/masuk" element={<AuthRoute><TimLoginPage /></AuthRoute>} />
