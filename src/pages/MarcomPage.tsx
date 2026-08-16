@@ -36,6 +36,11 @@ import {
   dukunganVideo, unduh, keFile, bagikan,
 } from '@/lib/marcomRender'
 import { subSah } from '@/lib/posisiKerja'
+import {
+  subjekAwal, pilihanSubjek, pilihSubjek, nilaiTerpilih, modeSetelahKetik,
+  pratinjauGaris, adaGarisProyek, proyekAsingDiCaption, captionMasihBawaan,
+  TANPA_PROYEK, type SubjekMarcom,
+} from '@/lib/marcomSubjek'
 
 type Sub = 'gambar' | 'video'
 const SUB_SAH: readonly Sub[] = ['gambar', 'video']
@@ -73,7 +78,6 @@ export default function MarcomPage() {
   const [format, setFormat] = useState<FormatMarcom>('feed')
   const [template, setTemplate] = useState<TemplateMarcom>('sorot')
   const [tagline, setTagline] = useState('')
-  const [lingkup, setLingkup] = useState('')
   const [gaya, setGaya] = useState<GayaCaption>('progres')
   const [catatan, setCatatan] = useState('')
   const [caption, setCaption] = useState('')
@@ -94,8 +98,51 @@ export default function MarcomPage() {
   const [tersalin, setTersalin] = useState(false)
   const berkasRef = useRef<HTMLInputElement>(null)
 
-  const namaProyek = projectInfo?.projectName || savedProjects[0]?.info.projectName || ''
-  const lokasi = projectInfo?.location || savedProjects[0]?.info.location || ''
+  // ── Subjek materi: TENTANG APA materi ini dibuat ──────────────────────────
+  //
+  // Dulu nama proyeknya diturunkan langsung dari proyek aktif dan tidak bisa
+  // diubah — lalu DIBAKAR ke dalam gambar. Artinya aplikasi ini hanya bisa
+  // mempromosikan proyek yang terakhir dibuka: proyek baru belum bisa
+  // diumumkan, proyek lama tidak bisa diangkat lagi, dan materi perusahaan
+  // (ucapan hari raya, lowongan tukang) tetap membawa nama proyek orang.
+  //
+  // Sekarang ia data tersendiri. Proyek aktif hanya jadi TAWARAN awal.
+  // Lihat lib/marcomSubjek.ts.
+  const proyekRingkas = useMemo(
+    () => savedProjects.map(p => ({
+      id: p.info.id, projectName: p.info.projectName,
+      location: p.info.location, type: p.info.type,
+    })),
+    [savedProjects],
+  )
+  const [subjek, setSubjek] = useState<SubjekMarcom>(
+    () => subjekAwal(projectInfo, savedProjects.map(p => p.info)),
+  )
+  // Mode pemilih DISIMPAN, tidak diturunkan dari judulnya. Menurunkannya
+  // menelan dirinya sendiri: memilih "ketik sendiri" mengosongkan judul, lalu
+  // turunannya membaca kosong itu sebagai "tanpa proyek" dan menyembunyikan
+  // kolom yang baru saja diminta untuk diketik. Lihat modeSetelahKetik().
+  const [modeSubjek, setModeSubjek] = useState<string>(
+    () => nilaiTerpilih(
+      subjekAwal(projectInfo, savedProjects.map(p => p.info)),
+      savedProjects.map(p => p.info),
+    ),
+  )
+  const opsiSubjek = useMemo(() => pilihanSubjek(proyekRingkas), [proyekRingkas])
+  const garisTercetak = useMemo(() => pratinjauGaris(subjek), [subjek])
+
+  const gantiSubjek = (nilai: string) => {
+    setModeSubjek(nilai)
+    setSubjek(v => pilihSubjek(nilai, proyekRingkas, v))
+  }
+  const ketikJudul = (judul: string) => {
+    setSubjek(v => ({ ...v, judul }))
+    setModeSubjek(m => modeSetelahKetik(judul, proyekRingkas, m))
+  }
+
+  const namaProyek = subjek.judul
+  const lokasi = subjek.lokasi
+  const lingkup = subjek.lingkup
   const jenis = projectInfo?.type || ''
 
   const cekProfil = useMemo(() => periksaProfil(profil), [profil])
@@ -187,15 +234,42 @@ export default function MarcomPage() {
     } finally { setMenulis(false) }
   }
 
-  // Isi caption sekali di awal supaya kolomnya tidak menyambut dengan halaman
-  // kosong — orang lebih mudah menyunting daripada memulai dari nol.
-  useEffect(() => {
-    if (caption) return
+  // Naskah bawaan yang TERAKHIR ditulis modul ini. Dipakai membedakan caption
+  // yang masih utuh dari yang sudah disunting orang — hanya yang utuh yang
+  // boleh disegarkan sendiri.
+  const naskahTerakhir = useRef('')
+
+  const tulisNaskah = useCallback(() => {
     const n = captionNaskah({ gaya, namaProyek, lokasi, jenis, catatan, profil })
+    naskahTerakhir.current = n.teks
     setCaption(n.teks)
     setHashtag(n.hashtag.join(' '))
     setSumberCaption('naskah')
-  }, [gaya]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gaya, namaProyek, lokasi, jenis, catatan, profil])
+
+  // Isi caption di awal supaya kolomnya tidak menyambut dengan halaman kosong,
+  // dan SEGARKAN saat subjeknya berganti — tetapi HANYA bila naskahnya masih
+  // utuh. Gambar dan caption disusun terpisah; tanpa ini, mengganti subjek
+  // menghasilkan foto Noble Cove dengan caption "Update progres Ruko Pak Soni"
+  // — dan yang ditempel orang ke Instagram adalah captionnya.
+  //
+  // Yang sudah disunting tangan atau ditulis AI TIDAK disentuh: menghapus
+  // tulisan orang diam-diam adalah kesalahan yang tidak bisa dikembalikan.
+  useEffect(() => {
+    if (!captionMasihBawaan(caption, naskahTerakhir.current)) return
+    tulisNaskah()
+  }, [gaya, namaProyek, lokasi]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Nama proyek lain yang masih tertinggal di caption yang tidak boleh
+  // ditimpa. Bukan galat — pemberitahuan, beserta jalan keluarnya.
+  const namaSemuaProyek = useMemo(
+    () => proyekRingkas.map(p => p.projectName ?? ''),
+    [proyekRingkas],
+  )
+  const proyekAsing = useMemo(
+    () => proyekAsingDiCaption(`${caption}\n${hashtag}`, namaProyek, namaSemuaProyek),
+    [caption, hashtag, namaProyek, namaSemuaProyek],
+  )
 
   // ── Komposisi ─────────────────────────────────────────────────────────────
   const susun = useCallback(async () => {
@@ -420,10 +494,68 @@ export default function MarcomPage() {
             ))}
           </div>
 
-          <input value={lingkup} onChange={e => setLingkup(e.target.value)}
-            aria-label="Lingkup pekerjaan"
-            placeholder="Lingkup pekerjaan — mis. Civil, Arsitektur & MEP"
-            className="w-full h-10 rounded-xl border border-border px-3 text-xs" />
+          {/* ── Materi ini tentang apa ─────────────────────────────────────
+              Bagian yang selama ini tidak ada. Nama proyek diturunkan dari
+              proyek yang kebetulan terbuka, lalu dibakar ke dalam gambar —
+              jadi proyek baru tidak pernah bisa diumumkan dari sini. */}
+          <div className="rounded-xl border border-border p-3 space-y-2 bg-slate-50/60">
+            <label className="block">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-1">
+                Materi ini tentang
+              </span>
+              <select
+                data-marcom="pilih-subjek"
+                value={modeSubjek}
+                onChange={e => gantiSubjek(e.target.value)}
+                className="w-full h-10 rounded-xl border border-border bg-white px-2.5 text-xs font-bold text-navy">
+                {opsiSubjek.map(o => <option key={o.nilai} value={o.nilai}>{o.label}</option>)}
+              </select>
+            </label>
+
+            {modeSubjek !== TANPA_PROYEK && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  data-marcom="judul"
+                  value={subjek.judul}
+                  onChange={e => ketikJudul(e.target.value)}
+                  aria-label="Nama proyek atau judul materi"
+                  placeholder="Nama proyek — mis. Noble Cove Residence"
+                  className="w-full h-10 rounded-xl border border-border px-3 text-xs" />
+                <input
+                  data-marcom="lokasi"
+                  value={subjek.lokasi}
+                  onChange={e => setSubjek(v => ({ ...v, lokasi: e.target.value }))}
+                  aria-label="Lokasi atau tahap pekerjaan"
+                  placeholder="Lokasi / tahap — mis. Jambi, tahap finishing"
+                  className="w-full h-10 rounded-xl border border-border px-3 text-xs" />
+              </div>
+            )}
+
+            <input value={lingkup}
+              onChange={e => setSubjek(v => ({ ...v, lingkup: e.target.value }))}
+              aria-label="Lingkup pekerjaan"
+              placeholder="Lingkup pekerjaan — mis. Civil, Arsitektur & MEP"
+              className="w-full h-10 rounded-xl border border-border px-3 text-xs" />
+
+            {/* Tulisan ini DIBAKAR ke dalam foto. Satu huruf pun tidak bisa
+                diperbaiki setelah materinya diunggah ke Instagram — yang bisa
+                dilakukan hanyalah menghapus unggahannya. Jadi ia diperlihatkan
+                sebelum dirender, bukan setelah. */}
+            <p data-marcom="garis-tercetak"
+              className="text-[10px] leading-relaxed rounded-lg px-2 py-1.5 bg-white border border-border">
+              {adaGarisProyek(subjek) ? (
+                <>
+                  <span className="text-muted-foreground">Tercetak di gambar: </span>
+                  <span className="font-bold text-navy">{garisTercetak}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  Pita bawah dikosongkan — materinya tidak menyebut proyek mana pun.
+                </span>
+              )}
+            </p>
+          </div>
+
           <input value={tagline} onChange={e => setTagline(e.target.value)}
             aria-label="Semboyan di bawah logo"
             placeholder="Semboyan di bawah logo — mis. Build Smart, Live Better"
@@ -550,6 +682,25 @@ export default function MarcomPage() {
             {menulis ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
             {menulis ? 'Menulis…' : 'Tulis Caption dengan AI'}
           </button>
+
+          {/* Caption masih menyebut proyek lain. Bukan galat — captionnya
+              mungkin memang sengaja begitu. Yang tidak boleh terjadi adalah
+              orang menempelkannya ke Instagram tanpa menyadarinya. */}
+          {proyekAsing.length > 0 && (
+            <div data-marcom="caption-asing"
+              className="rounded-xl border border-amber-200 bg-amber-50 p-2.5 space-y-2">
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                Caption ini masih menyebut <b>{proyekAsing.join(', ')}</b>, sedangkan
+                gambarnya {namaProyek ? <>tentang <b>{namaProyek}</b></> : 'tidak menyebut proyek'}.
+              </p>
+              <button
+                data-marcom="tulis-ulang"
+                onClick={tulisNaskah}
+                className="h-8 px-3 rounded-lg bg-amber-600 text-white text-[11px] font-bold">
+                Tulis ulang untuk {namaProyek || 'materi perusahaan'}
+              </button>
+            </div>
+          )}
 
           <textarea value={caption} onChange={e => setCaption(e.target.value)} rows={5}
             aria-label="Isi caption"
