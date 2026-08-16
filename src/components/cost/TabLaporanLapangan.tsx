@@ -22,6 +22,7 @@ import {
   fieldApi, laporLink, progresLink, waShare, getDriveWebhook,
   type FieldLog, type FieldReport,
 } from '@/lib/fieldReports'
+import type { PekerjaLapangan } from '@/lib/pekerjaLapangan'
 import ChipAbsensi from './ChipAbsensi'
 import PanelRekapAbsensi from './PanelRekapAbsensi'
 import PhotoLightbox from '@/components/PhotoLightbox'
@@ -37,6 +38,9 @@ export default function TabLaporanLapangan() {
   const [reports, setReports] = useState<FieldReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [tampilan, setTampilan] = useState<'harian' | 'absensi'>('harian')
+  // Daftar pekerja dibutuhkan rekap upah: tarif hariannya ada di sana, bukan
+  // di absensinya. Kegagalannya ditelan — rekap HOK tetap berguna tanpa upah.
+  const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
 
   const load = () => {
@@ -68,6 +72,9 @@ export default function TabLaporanLapangan() {
       .then(setReports)
       .catch(() => setReports([]))
       .finally(() => setReportsLoading(false))
+    fieldApi().listPekerja(log.report_token)
+      .then(setPekerja)
+      .catch(() => setPekerja([]))
   }
 
   const copy = (text: string, label: string) => {
@@ -199,7 +206,7 @@ export default function TabLaporanLapangan() {
           {reportsLoading ? (
             <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
           ) : tampilan === 'absensi' ? (
-            <PanelRekapAbsensi laporan={reports} namaProyek={openLog.project_name} />
+            <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name} />
           ) : reports.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
           ) : (

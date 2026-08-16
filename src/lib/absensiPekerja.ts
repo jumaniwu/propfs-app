@@ -37,12 +37,32 @@ export const LEMBUR_MAKS = 12
 export type StatusHadir = 'hadir' | 'setengah' | 'izin' | 'alpa'
 
 export interface BarisAbsensi {
+  /**
+   * Pekerja terdaftar yang diabsen. Kosong pada baris lama, yang lahir
+   * sebelum daftar pekerja ada — dan pada baris itu `nama` yang jadi kunci.
+   */
+  pekerja_id?: string
+  /**
+   * SALINAN nama, disimpan walau sudah ada `pekerja_id`.
+   *
+   * Bukan pemborosan: pekerja bisa dihapus atau berganti nama, dan absensi
+   * bulan lalu harus tetap terbaca apa adanya — termasuk oleh orang yang
+   * sedang menghitung upah yang belum terbayar. Rekap yang berubah karena
+   * data induknya disunting adalah rekap yang tidak bisa
+   * dipertanggungjawabkan.
+   */
   nama: string
   /** Tukang batu, kenek, mandor… Boleh kosong. */
   peran?: string
   status: StatusHadir
   /** Jam lembur hari itu. Disimpan terpisah, tidak pernah dilebur ke HOK. */
   lembur?: number
+  /**
+   * Foto orangnya hari itu — bukti hadir, bukan potret. Dikecilkan keras di
+   * klien: lima belas pekerja kali tiga puluh hari harus tetap muat di satu
+   * kolom jsonb yang masih bisa dibaca HP di lapangan.
+   */
+  foto?: string
 }
 
 export const STATUS_HADIR: Array<{
@@ -112,10 +132,12 @@ export function bacaAbsensi(mentah: unknown): BarisAbsensi[] {
       : 'hadir'
     const lembur = Number(o.lembur)
     out.push({
+      pekerja_id: typeof o.pekerja_id === 'string' && o.pekerja_id ? o.pekerja_id : undefined,
       nama,
       peran: rapikanNama(o.peran) || undefined,
       status,
       lembur: Number.isFinite(lembur) && lembur > 0 ? Math.min(lembur, LEMBUR_MAKS) : undefined,
+      foto: typeof o.foto === 'string' && o.foto ? o.foto : undefined,
     })
   }
   return out

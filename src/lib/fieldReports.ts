@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore'
 import { tautanPublik } from './tautanPendek'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
 import type { BarisAbsensi } from './absensiPekerja'
+import { bacaDaftarPekerja, type PekerjaLapangan } from './pekerjaLapangan'
 
 export interface FieldLog {
   id: string
@@ -37,12 +38,22 @@ export interface FieldReport {
   created_at?: string
 }
 
-/** Header halaman pekerja, beserta nama-nama yang pernah tercatat absen. */
+/** Header halaman pekerja, beserta daftar pekerja yang terdaftar di sana. */
 export interface FieldHeader {
   project_name: string
   drive_webhook: string
-  /** Saran nama untuk absensi harian; kosong bila migrasinya belum jalan. */
-  pekerja?: Array<{ nama: string; peran: string }>
+  /** Pekerja terdaftar; kosong bila migrasinya belum jalan. */
+  pekerja?: PekerjaLapangan[]
+}
+
+/** Data pendaftaran seorang pekerja oleh pengawas. */
+export interface DaftarPekerjaInput {
+  nama: string
+  peran?: string
+  no_hp?: string
+  jenis?: 'harian' | 'borongan'
+  upah_harian?: number
+  foto?: string
 }
 
 export interface FieldApi {
@@ -62,6 +73,14 @@ export interface FieldApi {
   getLogByReportToken(token: string): Promise<FieldHeader | null>
   submitReport(token: string, r: Omit<FieldReport, 'id' | 'log_id' | 'created_at'>): Promise<boolean>
   getOwnerView(token: string): Promise<{ project_name: string; reports: FieldReport[] } | null>
+
+  // ── Daftar pekerja (pengawas, lewat link yang sama) ──
+  /** Pekerja terdaftar di buku laporan ini. */
+  listPekerja(token: string): Promise<PekerjaLapangan[]>
+  /** Daftarkan pekerja. Mendaftarkan orang yang sama dua kali memperbaruinya. */
+  daftarPekerja(token: string, p: DaftarPekerjaInput): Promise<string>
+  /** Berhenti menawarkan pekerja di absen harian; absensinya yang lalu tetap. */
+  nonaktifkanPekerja(token: string, id: string): Promise<boolean>
 }
 
 // ── REST langsung ────────────────────────────────────────────────────────────
@@ -170,9 +189,9 @@ const realApi: FieldApi = {
     const data = await rpc<FieldHeader[]>('field_log_by_report_token', { p_token: token }, true)
     const row = (Array.isArray(data) ? data[0] : data) ?? null
     if (!row) return null
-    // `pekerja` hanya ada setelah migrasi absensi dijalankan. Tanpanya form
-    // absensi tetap bisa dipakai — hanya tanpa saran nama.
-    return { ...row, pekerja: Array.isArray(row.pekerja) ? row.pekerja : [] }
+    // `pekerja` hanya ada setelah migrasi pekerja dijalankan. Tanpanya
+    // halaman absensi tetap terbuka — daftarnya saja yang kosong.
+    return { ...row, pekerja: bacaDaftarPekerja(row.pekerja) }
   },
   async submitReport(token, r) {
     const inti = {
@@ -194,6 +213,31 @@ const realApi: FieldApi = {
       return ok
     }
   },
+  async listPekerja(token) {
+    // Migrasi pekerja belum tentu sudah dijalankan. Halaman absensi harus
+    // tetap terbuka tanpanya — hanya daftarnya yang kosong.
+    try {
+      return bacaDaftarPekerja(await rpc('field_workers_by_token', { p_token: token }, true))
+    } catch (e) {
+      if (e instanceof Error && /HTTP 40[04]/.test(e.message)) return []
+      throw e
+    }
+  },
+  async daftarPekerja(token, p) {
+    return await rpc<string>('field_worker_daftar', {
+      p_token: token,
+      p_nama: p.nama,
+      p_peran: p.peran ?? '',
+      p_no_hp: p.no_hp ?? '',
+      p_jenis: p.jenis ?? 'harian',
+      p_upah: p.upah_harian ?? 0,
+      p_foto: p.foto ?? '',
+    }, true)
+  },
+  async nonaktifkanPekerja(token, id) {
+    return await rpc<boolean>('field_worker_nonaktif', { p_token: token, p_id: id }, true) === true
+  },
+
   async getOwnerView(token) {
     const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token }, true)
     const row = Array.isArray(data) ? data[0] : data

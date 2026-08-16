@@ -6,9 +6,14 @@
 // Itulah dasar orang dibayar, dan tanpa panel ini jawabannya hanya bisa
 // didapat dengan membuka tiga puluh kartu laporan satu per satu.
 //
-// Satu hal yang sengaja TIDAK ada di sini: nominal upah. Tarif tiap tukang
-// bukan angka yang boleh ikut tersebar bersama link laporan, dan HOK sudah
-// cukup untuk dikalikan sendiri oleh yang berhak mengetahuinya.
+// Ada DUA pertanyaan yang berbeda, jadi dua tampilan:
+//
+//   PER BULAN   — siapa masuk berapa hari. Dibuka untuk mengawasi.
+//   UPAH MINGGUAN — berapa yang harus dibayar Sabtu ini. Dibuka untuk membayar.
+//
+// Nominal upah hanya muncul DI SINI, di panel kantor. Ia tidak pernah ikut ke
+// halaman bertoken yang dibuka mandor: tarif tiap tukang bukan angka yang
+// boleh tersebar bersama link laporan.
 // ============================================================
 import { useMemo, useState } from 'react'
 import { Users, FileSpreadsheet, CalendarRange } from 'lucide-react'
@@ -18,13 +23,22 @@ import {
   rekapAbsensi, totalRekap, bulat, STATUS_HADIR, type SumberAbsensi,
 } from '@/lib/absensiPekerja'
 import {
+  rekapUpahMingguan, upahBelumDiisi, type PekerjaLapangan,
+} from '@/lib/pekerjaLapangan'
+import {
   kelompokPerBulan, pilihanBulan, labelBulanPanjang, bulanBerjalan, SEMUA_BULAN,
 } from '@/lib/kelompokBulan'
 
-export default function PanelRekapAbsensi({ laporan, namaProyek }: {
+export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
   laporan: SumberAbsensi[]
+  /** Daftar pekerja terdaftar — tarif hariannya ada di sini, bukan di absensi. */
+  pekerja?: PekerjaLapangan[]
   namaProyek: string
 }) {
+  // Dua pertanyaan yang berbeda, jadi dua tampilan:
+  //   BULANAN  — siapa masuk berapa hari (HOK). Untuk mengawasi.
+  //   MINGGUAN — berapa yang harus dibayar Sabtu ini. Untuk membayar.
+  const [lingkup, setLingkup] = useState<'bulanan' | 'mingguan'>('bulanan')
   // Hanya laporan yang MEMBAWA absensi yang ikut menyusun pemilih bulan.
   // Bulan-bulan sebelum fitur ini ada tidak punya satu nama pun di dalamnya,
   // dan menawarkannya berarti menawarkan halaman kosong.
@@ -99,8 +113,19 @@ export default function PanelRekapAbsensi({ laporan, namaProyek }: {
     )
   }
 
+  if (lingkup === 'mingguan') {
+    return (
+      <div className="space-y-3">
+        <PilihLingkup lingkup={lingkup} setLingkup={setLingkup} />
+        <RekapMingguan laporan={berabsensi} pekerja={pekerja ?? []} namaProyek={namaProyek} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3">
+      <PilihLingkup lingkup={lingkup} setLingkup={setLingkup} />
+
       {/* Bertumpuk di layar HP. Berdampingan, nama bulannya terpotong di
           tengah — dan "Agustus 2026 (2" bukan pilihan yang bisa dibaca. */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -194,6 +219,167 @@ export default function PanelRekapAbsensi({ laporan, namaProyek }: {
         HOK = hari orang kerja: hadir sehari penuh 1, setengah hari 0,5. Jam lembur
         dihitung terpisah — tarifnya berbeda di tiap perusahaan, jadi tidak ikut
         dijumlahkan ke HOK.
+      </p>
+    </div>
+  )
+}
+
+/** Dua pertanyaan berbeda: mengawasi (bulanan) vs membayar (mingguan). */
+function PilihLingkup({ lingkup, setLingkup }: {
+  lingkup: 'bulanan' | 'mingguan'
+  setLingkup: (v: 'bulanan' | 'mingguan') => void
+}) {
+  return (
+    <div className="flex gap-1.5">
+      {([
+        ['bulanan', 'Per Bulan', 'siapa masuk berapa hari'],
+        ['mingguan', 'Upah Mingguan', 'berapa yang dibayar'],
+      ] as const).map(([key, label, untuk]) => (
+        <button key={key} onClick={() => setLingkup(key)}
+          data-lingkup={key}
+          className={`flex-1 rounded-xl px-2.5 py-2 text-left transition-colors ${
+            lingkup === key ? 'bg-navy text-white' : 'bg-slate-100 text-muted-foreground hover:bg-slate-200'}`}>
+          <p className="text-[11px] font-black leading-tight">{label}</p>
+          <p className={`text-[9px] leading-tight ${lingkup === key ? 'text-white/70' : ''}`}>{untuk}</p>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Rekap upah per minggu — dibuka saat hendak membayar.
+ *
+ * BORONGAN kolom upahnya kosong, bukan nol. Nol berkata "orang ini bekerja
+ * dan tidak dibayar sepeser pun"; kosong berkata "orang ini tidak dibayar
+ * dengan cara ini". Yang pertama akan ditanyakan orang di akhir minggu.
+ */
+function RekapMingguan({ laporan, pekerja, namaProyek }: {
+  laporan: SumberAbsensi[]
+  pekerja: PekerjaLapangan[]
+  namaProyek: string
+}) {
+  const minggu = useMemo(
+    () => rekapUpahMingguan(laporan as never, pekerja),
+    [laporan, pekerja],
+  )
+  const [pilihan, setPilihan] = useState(0)
+  const m = minggu[Math.min(pilihan, Math.max(0, minggu.length - 1))] ?? null
+  const belumAdaTarif = useMemo(() => upahBelumDiisi(m), [m])
+
+  async function unduh() {
+    if (!m) return
+    const xlsx = await import('xlsx')
+    const wb = xlsx.utils.book_new()
+    const baris = m.baris.map(r => ({
+      'Nama Pekerja': r.nama,
+      'Peran': r.peran,
+      'Cara Bayar': r.jenis === 'borongan' ? 'Borongan' : 'Harian',
+      'Hadir': r.hadir,
+      'Setengah Hari': r.setengah,
+      'Izin': r.izin,
+      'Alpa': r.alpa,
+      'Total HOK': r.hok,
+      'Jam Lembur': r.jamLembur,
+      'Upah/Hari': r.jenis === 'borongan' ? '' : r.upahHarian,
+      // Sengaja string kosong, bukan 0 — di Excel pun bedanya harus terbaca.
+      'Upah Minggu Ini': r.upah === null ? '' : r.upah,
+    }))
+    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(baris), 'Upah Mingguan')
+    void simpanXlsx(
+      xlsx.write(wb, { bookType: 'xlsx', type: 'array' }),
+      `Upah_${namaProyek || 'Proyek'}_${m.awal}.xlsx`,
+    )
+  }
+
+  if (!m) {
+    return (
+      <div className="py-10 text-center space-y-2">
+        <Users className="w-9 h-9 mx-auto opacity-25" />
+        <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+          Belum ada absensi yang bisa dihitung. Daftarkan pekerja lewat <b>Link Pekerja</b> →
+          tab <b>Pekerja</b>, lalu isi absensi hariannya.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        {minggu.length > 1 && (
+          <label className="flex items-center gap-2 flex-1 min-w-0">
+            <CalendarRange className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <select value={pilihan} onChange={e => setPilihan(Number(e.target.value))}
+              aria-label="Pilih minggu" data-pilih-minggu
+              className="h-9 flex-1 min-w-0 rounded-xl border border-border bg-white pl-2.5 pr-8 text-[11px] font-bold text-navy">
+              {minggu.map((w, i) => <option key={w.awal} value={i}>{w.label}</option>)}
+            </select>
+          </label>
+        )}
+        <Button size="sm" variant="outline" className="h-9 text-[11px] gap-1.5 shrink-0" onClick={unduh}>
+          <FileSpreadsheet className="w-3.5 h-3.5" /> Unduh Upah
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-slate-50 border border-border p-2.5">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-bold">Total HOK</p>
+          <p className="text-lg font-black text-navy tabular-nums leading-tight">{bulat(m.totalHok)}</p>
+        </div>
+        <div className="rounded-xl bg-navy text-white p-2.5">
+          <p className="text-[10px] uppercase tracking-wide text-white/60 font-bold">Upah Dibayar</p>
+          <p className="text-lg font-black tabular-nums leading-tight">
+            Rp {Math.round(m.totalUpah).toLocaleString('id-ID')}
+          </p>
+        </div>
+      </div>
+
+      {belumAdaTarif.length > 0 && (
+        <p data-upah-kosong className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
+          <b>{belumAdaTarif.map(r => r.nama).join(', ')}</b> bekerja minggu ini tetapi upah
+          hariannya belum diisi, jadi terhitung nol. Isi di <b>Link Pekerja → tab Pekerja</b>
+          supaya tidak ada yang kurang dibayar.
+        </p>
+      )}
+
+      <table className="w-full text-xs border-collapse table-fixed">
+        <thead>
+          <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            <th className="text-left font-bold py-1.5 pr-1">Pekerja</th>
+            <th className="text-right font-bold py-1.5 px-1 w-11">HOK</th>
+            <th className="text-right font-bold py-1.5 pl-1.5 w-24">Upah</th>
+          </tr>
+        </thead>
+        <tbody>
+          {m.baris.map(r => (
+            <tr key={r.kunci} data-upah={r.kunci} className="border-t border-border">
+              <td className="py-2 pr-1">
+                <p className="font-semibold text-navy truncate">{r.nama}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {r.jenis === 'borongan'
+                    ? 'Borongan'
+                    : r.upahHarian > 0
+                      ? `Rp ${r.upahHarian.toLocaleString('id-ID')}/hari`
+                      : 'upah belum diisi'}
+                  {r.jamLembur > 0 && ` · ${bulat(r.jamLembur)} j lembur`}
+                </p>
+              </td>
+              <td className="text-right py-2 px-1 font-black text-navy tabular-nums">{bulat(r.hok)}</td>
+              <td className="text-right py-2 pl-1.5 tabular-nums">
+                {r.upah === null
+                  ? <span className="text-[10px] text-muted-foreground italic">borongan</span>
+                  : <span className="font-bold text-navy">Rp {Math.round(r.upah).toLocaleString('id-ID')}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="text-[10px] text-muted-foreground leading-relaxed">
+        Upah = HOK × upah harian. Pekerja <b>borongan</b> dibayar per pekerjaan selesai,
+        bukan per hari — absensinya tetap dihitung, kolom upahnya sengaja dikosongkan.
+        Jam lembur tidak ikut dijumlahkan ke upah; tarifnya berbeda di tiap perusahaan.
       </p>
     </div>
   )
