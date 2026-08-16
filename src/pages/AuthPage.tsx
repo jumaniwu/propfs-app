@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LegalModal } from '@/components/ui/LegalModal'
-import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2, Check } from 'lucide-react'
+import { Building2, Mail, Lock, User, Briefcase, EyeOff, Eye, ArrowRight, AlertCircle, Phone, ShieldCheck, Loader2, CheckCircle2, Check, Users } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { tampilkanJualan, bolehDaftarDiSini, tautanDaftar, kompakMasuk } from '@/lib/pintuAwal'
+import { pesanGalatMasuk } from '@/lib/galatMasuk'
+import { diAndroid } from '@/lib/unduhBerkas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -226,20 +229,43 @@ export default function AuthPage() {
     }
   }
 
+  // Di dalam APK, bagian yang membujuk disembunyikan — lihat lib/pintuAwal.ts.
+  // Di layar lebar (lg) panelnya tetap tampil apa adanya: APK hanya berjalan
+  // di layar sempit, jadi aturan lg tidak pernah bertabrakan dengannya.
+  const apk = diAndroid()
+  const jualan = tampilkanJualan(apk)
+  const bolehDaftar = bolehDaftarDiSini(apk)
+  const rapat = kompakMasuk(apk)
+
+  /** Tinggi & ukuran huruf kolom isian: longgar di web, rapat di APK. */
+  const kolomCls = rapat
+    ? 'pl-12 h-12 rounded-xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-base font-medium'
+    : 'pl-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium'
+  const ikonCls = rapat ? 'absolute left-4 top-4 h-4 w-4 text-slate-400' : 'absolute left-5 top-5 h-5 w-5 text-slate-400'
+
   return (
     <div className="min-h-screen bg-background flex flex-col lg:flex-row font-sans">
-      {/* ── Left panel: branding ── */}
-      <div className="lg:w-[40%] bg-[#0f172a] relative overflow-hidden p-10 lg:p-20 flex flex-col justify-between text-white shrink-0">
+      {/* ── Left panel: branding ──
+          Di dalam APK panel ini menyusut menjadi kop setinggi lambangnya saja.
+          Isinya — "Analisa Kelayakan Tanpa Batas", lencana Professional Real
+          Estate Tool, kotak Verified Security — ditulis untuk MEMBUJUK orang
+          yang belum kenal PropFS. Orang yang sudah memasang aplikasinya sudah
+          terbujuk; baginya ini empat puluh persen layar pertama yang harus
+          digulung setiap kali ia mau bekerja. */}
+      <div className={`lg:w-[40%] bg-[#0f172a] relative overflow-hidden flex flex-col text-white shrink-0
+        ${jualan ? 'p-10 lg:p-20 justify-between' : 'px-6 py-5 lg:p-20 lg:justify-between'}`}>
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gold/5 rounded-full blur-[140px] -translate-y-1/2 translate-x-1/2 pointer-events-none" />
         
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 bg-gold rounded-2xl flex items-center justify-center shadow-2xl shadow-gold/20">
-            <Building2 className="h-7 w-7 text-navy" />
+          <div className={`bg-gold rounded-2xl flex items-center justify-center shadow-2xl shadow-gold/20
+            ${jualan ? 'w-14 h-14' : 'w-11 h-11 lg:w-14 lg:h-14'}`}>
+            <Building2 className={jualan ? 'h-7 w-7 text-navy' : 'h-6 w-6 lg:h-7 lg:w-7 text-navy'} />
           </div>
-          <span className="text-3xl font-serif font-black tracking-tighter text-white">PropFS</span>
+          <span className={`font-serif font-black tracking-tighter text-white
+            ${jualan ? 'text-3xl' : 'text-2xl lg:text-3xl'}`}>PropFS</span>
         </div>
 
-        <div className="relative z-10 py-12 lg:py-0">
+        <div className={`relative z-10 py-12 lg:py-0 ${jualan ? '' : 'hidden lg:block'}`}>
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gold/10 border border-gold/20 text-gold text-[11px] font-black uppercase tracking-widest mb-8">
             <ShieldCheck className="w-4 h-4" /> Professional Real Estate Tool
           </div>
@@ -253,7 +279,8 @@ export default function AuthPage() {
           </p>
         </div>
 
-        <div className="relative z-10 p-6 bg-white/5 rounded-[32px] border border-white/10 backdrop-blur">
+        <div className={`relative z-10 p-6 bg-white/5 rounded-[32px] border border-white/10 backdrop-blur
+          ${jualan ? '' : 'hidden lg:block'}`}>
           <p className="text-sm font-bold text-gold mb-2">Verified Security</p>
           <p className="text-xs text-white/40 leading-relaxed">Seluruh data Anda dienkripsi secara end-to-end menggunakan standar keamanan perbankan global.</p>
         </div>
@@ -265,7 +292,13 @@ export default function AuthPage() {
 
         <div className="w-full max-w-[440px] relative z-10">
           
-          <div className="flex bg-slate-200/50 p-2 rounded-2xl mb-12 w-full backdrop-blur">
+          {/* Penukar LOG IN / REGISTER hanya berarti bila keduanya memang
+              dilayani di sini. Di dalam APK pendaftaran dialihkan ke situs,
+              jadi tab ini akan menjadi dua tombol yang salah satunya tidak
+              pernah menuju ke mana-mana. */}
+          <div className={`flex bg-slate-200/50 p-2 rounded-2xl w-full backdrop-blur
+            ${bolehDaftar ? '' : 'hidden lg:flex'}
+            ${jualan ? 'mb-12' : 'mb-8 lg:mb-12'}`}>
             <button onClick={() => setTab('login')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'login' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>LOG IN</button>
             <button onClick={() => setTab('register')} className={`flex-1 py-4 text-sm font-black rounded-xl transition-all duration-300 ${tab === 'register' ? 'bg-white text-navy shadow-xl shadow-navy/5' : 'text-slate-500 hover:text-navy/60'}`}>REGISTER</button>
           </div>
@@ -273,35 +306,54 @@ export default function AuthPage() {
           {/* LOGIN */}
           {tab === 'login' && (
             <form onSubmit={handleLogin} className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-              <div className="space-y-2">
-                <h2 className="text-4xl font-serif font-black text-navy leading-none">Selamat Datang 👋</h2>
-                <p className="text-slate-500 font-medium">Masuk untuk mengelola Dashboard Anda.</p>
+              <div className={rapat ? 'space-y-1' : 'space-y-2'}>
+                <h2 className={`font-serif font-black text-navy leading-none
+                  ${rapat ? 'text-2xl' : 'text-4xl'}`}>Selamat Datang 👋</h2>
+                <p className={`text-slate-500 font-medium ${rapat ? 'text-sm' : ''}`}>
+                  Masuk untuk mengelola Dashboard Anda.
+                </p>
               </div>
 
-              {authError && (
-                 <div className="p-5 bg-red-50 border-2 border-red-100 rounded-[24px] flex gap-4 text-xs text-red-700 leading-relaxed shadow-sm">
-                   <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
-                   <div>
-                     <p className="font-black text-[13px] mb-1">Gagal Terhubung</p>
-                     <p>Pesan: {authError}. Pastikan internet stabil dan akun sudah terverifikasi.</p>
-                   </div>
-                 </div>
-              )}
+              {/* Password salah TIDAK boleh dijelaskan sebagai "Gagal Terhubung":
+                  koneksinya justru baik — karena tersambunglah server sempat
+                  menjawab. Lihat lib/galatMasuk.ts. */}
+              {authError && (() => {
+                const g = pesanGalatMasuk(authError)
+                return (
+                  <div className="p-4 bg-red-50 border-2 border-red-100 rounded-[20px] flex gap-3 text-xs text-red-700 leading-relaxed shadow-sm">
+                    <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
+                    <div className="min-w-0">
+                      <p className="font-black text-[13px] mb-1">{g.judul}</p>
+                      <p>{g.isi}</p>
+                      {g.sarankanReset && (
+                        <button type="button"
+                          onClick={() => { setTab('forgot-password'); clearError(); setRegError(''); setResetSuccess(false) }}
+                          className="mt-1.5 font-bold underline hover:text-red-900">
+                          Atur ulang password
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
-              <div className="space-y-5">
-                <div className="space-y-2.5">
+              <div className={rapat ? 'space-y-3.5' : 'space-y-5'}>
+                <div className={rapat ? 'space-y-1.5' : 'space-y-2.5'}>
                   <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Email Perusahaan</Label>
                   <div className="relative">
-                    <Mail className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                    <Input className="pl-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium" type="email" placeholder="name@company.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
+                    <Mail className={ikonCls} />
+                    <Input className={kolomCls} type="email" placeholder="name@company.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required />
                   </div>
                 </div>
-                <div className="space-y-2.5">
-                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Password Access</Label>
+                <div className={rapat ? 'space-y-1.5' : 'space-y-2.5'}>
+                  <Label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">Password</Label>
                   <div className="relative">
-                    <Lock className="absolute left-5 top-5 h-5 w-5 text-slate-400" />
-                    <Input className="pl-14 pr-14 h-16 rounded-2xl bg-white border-slate-200 focus:border-gold focus:ring-4 focus:ring-gold/5 transition-all text-lg font-medium" type={showPass ? 'text' : 'password'} placeholder="••••••••" value={loginPass} onChange={e => setLoginPass(e.target.value)} required />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-5 top-5 text-slate-400 p-1 hover:text-navy transition-colors">{showPass ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
+                    <Lock className={ikonCls} />
+                    <Input className={`${kolomCls} ${rapat ? 'pr-12' : 'pr-14'}`} type={showPass ? 'text' : 'password'} placeholder="••••••••" value={loginPass} onChange={e => setLoginPass(e.target.value)} required />
+                    <button type="button" onClick={() => setShowPass(!showPass)}
+                      className={`absolute text-slate-400 p-1 hover:text-navy transition-colors ${rapat ? 'right-4 top-4' : 'right-5 top-5'}`}>
+                      {showPass ? <EyeOff className={rapat ? 'h-4 w-4' : 'h-5 w-5'} /> : <Eye className={rapat ? 'h-4 w-4' : 'h-5 w-5'} />}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -312,9 +364,63 @@ export default function AuthPage() {
                 </button>
               </div>
               
-              <Button type="submit" variant="gold" className="w-full h-16 rounded-[22px] text-xl font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all" disabled={isLoading}>
-                {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <><span>MASUK SEKARANG</span> <ArrowRight className="h-5 w-5 ml-3" /></>}
+              <Button type="submit" variant="gold" disabled={isLoading}
+                className={`w-full font-black shadow-2xl shadow-gold/20 hover:scale-[1.02] active:scale-95 transition-all
+                  ${rapat ? 'h-12 rounded-2xl text-base' : 'h-16 rounded-[22px] text-xl'}`}>
+                {isLoading ? <Loader2 className="animate-spin h-6 w-6 mr-3" /> : <><span>MASUK</span> <ArrowRight className={rapat ? 'h-4 w-4 ml-2' : 'h-5 w-5 ml-3'} /></>}
               </Button>
+
+              {/* ── Pintu kedua: karyawan perusahaan ──────────────────────
+                  Halaman ini meminta email & password akun PropFS — yang hanya
+                  dipunyai pemilik usaha. Mandor, pengawas, dan admin lapangan
+                  tidak punya akun seperti itu; mereka masuk dengan Kode
+                  Perusahaan dan User ID yang dibuatkan atasannya.
+
+                  Pintunya sudah lama ada di /tim/masuk, tetapi TIDAK PERNAH
+                  disebut di halaman ini — jadi satu-satunya cara sampai ke sana
+                  adalah mengetik alamatnya, dan itu berarti tidak ada. Di dalam
+                  APK ia bahkan mustahil: tidak ada bilah alamat untuk
+                  mengetiknya. */}
+              <div className="pt-2 space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-slate-200" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">atau</span>
+                  <span className="h-px flex-1 bg-slate-200" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/tim/masuk')}
+                  className={`w-full border-2 border-navy/15 bg-white flex items-center justify-center gap-3
+                    text-navy font-black hover:border-navy/35 hover:bg-slate-50 active:scale-95 transition-all
+                    ${rapat ? 'h-12 rounded-2xl' : 'h-16 rounded-[22px]'}`}>
+                  <Users className={rapat ? 'h-4 w-4 shrink-0' : 'h-5 w-5 shrink-0'} />
+                  <span className={`leading-tight text-left ${rapat ? 'text-sm' : 'text-base'}`}>
+                    Masuk sebagai Tim Perusahaan
+                  </span>
+                </button>
+                <p className="text-xs text-slate-500 text-center leading-relaxed px-2">
+                  Untuk mandor, pengawas, admin, dan logistik — masuk dengan
+                  <b> Kode Perusahaan</b> dan <b>User ID</b> dari atasan Anda, bukan email.
+                </p>
+
+                {/* Pendaftaran tidak dilayani di dalam APK. Mendaftar berarti
+                    memilih paket, membaca syarat & ketentuan, menunggu email
+                    verifikasi, lalu membayar — sekali seumur akun, di depan
+                    komputer. Tautannya tetap ada supaya yang memang mau
+                    mendaftar punya jalan; ia dibuka di peramban, bukan di
+                    dalam aplikasi, karena di sanalah alur pembayarannya
+                    berakhir. */}
+                {!bolehDaftar && (
+                  <p className="text-xs text-slate-500 text-center pt-1">
+                    Belum punya akun PropFS?{' '}
+                    <button type="button"
+                      onClick={() => window.open(tautanDaftar(window.location.origin), '_blank', 'noopener')}
+                      className="font-bold text-navy underline hover:text-gold">
+                      Daftar di propfs.id
+                    </button>
+                  </p>
+                )}
+              </div>
             </form>
           )}
 
