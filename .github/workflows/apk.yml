@@ -45,17 +45,51 @@ jobs:
           node-version: '22'
           cache: npm
 
-      # JDK 17: yang diminta Android Gradle Plugin 8.x. JDK 21 gagal merakit,
-      # dan pesan galatnya tidak menyebut versi Java sama sekali.
+      # JDK 21, dan angkanya BUKAN pilihan bebas.
+      #
+      # @capacitor/android 8 merakit modulnya dengan
+      # `sourceCompatibility JavaVersion.VERSION_21` (lihat
+      # node_modules/@capacitor/android/capacitor/build.gradle). JDK yang lebih
+      # tua menolaknya dengan pesan tentang "invalid source release" yang tidak
+      # pernah menyebut Capacitor — jadi kalau suatu hari baris ini diturunkan
+      # ke 17 karena "17 kan LTS juga", build ini akan gagal selama empat menit
+      # tanpa memberi petunjuk kenapa.
+      #
+      # Versinya ikut naik bila Capacitor naik. Yang menentukan adalah berkas
+      # build.gradle di atas, bukan kebiasaan.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - uses: android-actions/setup-android@v3
 
       - name: Pasang dependensi
         run: npm ci
+
+      # Cocokkan JDK dengan yang DIMINTA Capacitor, dibaca dari berkasnya
+      # sendiri — bukan dari ingatan siapa pun.
+      #
+      # Tanpa langkah ini, JDK yang salah baru ketahuan di menit keempat, dan
+      # yang muncul adalah galat Gradle tentang "invalid source release" yang
+      # tidak pernah menyebut Capacitor maupun berkas ini. Di sini ia gagal
+      # dalam dua puluh detik, dan mengatakan persis angka apa yang harus
+      # ditulis di langkah setup-java di atas.
+      - name: Periksa versi JDK terhadap Capacitor
+        run: |
+          minta=$(grep -oP 'sourceCompatibility JavaVersion\.VERSION_\K[0-9_]+' \
+            node_modules/@capacitor/android/capacitor/build.gradle | head -1 | tr '_' '.')
+          punya=$(java -version 2>&1 | head -1 | grep -oP '"\K[0-9]+')
+          echo "Capacitor meminta Java $minta; runner memakai Java $punya."
+          if [ -z "$minta" ]; then
+            echo "::warning::Target Java Capacitor tidak terbaca — pemeriksaan dilewati."
+            exit 0
+          fi
+          if [ "${minta%%.*}" != "$punya" ]; then
+            echo "::error::@capacitor/android merakit ke Java $minta, tetapi runner memakai Java $punya."
+            echo "::error::Ubah java-version di langkah setup-java pada .github/workflows/apk.yml menjadi '$minta'."
+            exit 1
+          fi
 
       # Uji dijalankan SEBELUM merakit. APK yang dibagikan ke lapangan tidak
       # boleh berasal dari commit yang ujinya merah — sekali terpasang di HP
