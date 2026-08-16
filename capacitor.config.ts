@@ -26,9 +26,33 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // di Supabase, itu pertukaran yang jujur.
 // ============================================================
 
+/**
+ * Penanda di User-Agent — INILAH cara aplikasi web tahu ia sedang berjalan
+ * di dalam APK.
+ *
+ * Cara bawaannya, `window.Capacitor.isNativePlatform()`, TIDAK BISA DIPAKAI
+ * di sini. Objek itu disuntikkan Capacitor lewat server lokalnya, dan server
+ * lokal itu hanya melayani berkas dari `webDir`. Halaman kita datang dari
+ * https://propfs.id — origin lain sama sekali — jadi penyuntikannya tidak
+ * pernah sampai, atau sampai terlambat setelah React memutuskan mau
+ * menampilkan apa.
+ *
+ * Akibatnya persis yang terlihat: APK terbuka di halaman jualan, seolah ia
+ * peramban biasa.
+ *
+ * User-Agent tidak punya masalah itu. Ia ditetapkan WebView sebelum satu byte
+ * pun diminta, berlaku di origin mana pun, dan terbaca serentak — tidak ada
+ * jendela waktu tempat jawabannya masih "belum tahu".
+ */
+export const PENANDA_APK = 'PropFSApp'
+
 const config: CapacitorConfig = {
   appId: 'id.propfs.app',
   appName: 'PropFS',
+
+  // Ditambahkan ke User-Agent WebView, mis.
+  //   Mozilla/5.0 (Linux; Android 14; …) … Chrome/… PropFSApp
+  appendUserAgent: PENANDA_APK,
 
   // Wajib ada walau tidak pernah dipakai selama `server.url` aktif. Isinya
   // satu halaman penjelasan, bukan hasil `npm run build` — sehingga membangun
@@ -51,6 +75,10 @@ const config: CapacitorConfig = {
   },
 
   android: {
+    // Diulang di sini: sebagian versi Capacitor hanya membaca yang di dalam
+    // blok platform, dan penanda yang hilang berarti aplikasinya kembali
+    // menyangka dirinya peramban.
+    appendUserAgent: PENANDA_APK,
     // Menampilkan halaman galat bawaan Android bila situsnya tidak terjangkau,
     // bukan layar putih tanpa keterangan.
     webContentsDebuggingEnabled: false,

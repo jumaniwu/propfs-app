@@ -13,7 +13,7 @@
 // disimpan di tempat lain.
 // ============================================================
 import {
-  namaAman, mimeDariNama, base64Saja, blobDariBase64, diAndroid,
+  namaAman, mimeDariNama, base64Saja, blobDariBase64, diAndroid, PENANDA_APK,
   simpanBerkas, bukaBerkas, simpanPdf, simpanXlsx,
 } from '../src/lib/unduhBerkas.ts'
 
@@ -73,6 +73,60 @@ assert(diAndroid() === false, 'plugin yang melempar tidak menjatuhkan apa pun')
 globalThis.Capacitor = { isNativePlatform: () => true }
 assert(diAndroid() === true, 'di dalam APK barulah true')
 delete globalThis.Capacitor
+
+// ── 4b. Penanda User-Agent: jalan yang sebenarnya dipakai APK ──────────────
+//
+// `window.Capacitor` GAGAL pada susunan aplikasi ini. Objek itu disuntikkan
+// lewat server lokal Capacitor, yang hanya melayani berkas dari `webDir` —
+// sedangkan halaman kita datang dari https://propfs.id, origin lain sama
+// sekali. Yang terlihat di HP: APK terbuka di halaman jualan, seolah peramban.
+//
+// User-Agent tidak punya masalah itu: WebView menetapkannya sebelum satu byte
+// pun diminta (Bridge.java memanggil setUserAgentString saat menyiapkan
+// WebSettings), jadi ia terbaca serentak di origin mana pun.
+{
+  // `globalThis.navigator` di Node 22 hanya punya getter, jadi tidak bisa
+  // ditimpa dengan penetapan biasa.
+  const asli = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const ganti = nav => Object.defineProperty(globalThis, 'navigator', {
+    value: nav, configurable: true, writable: true,
+  })
+  const pasang = ua => ganti({ userAgent: ua })
+
+  pasang(`Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36 ${PENANDA_APK}`)
+  assert(diAndroid() === true, 'UA dengan penanda: true, tanpa perlu window.Capacitor')
+  assert(globalThis.Capacitor === undefined, 'dan memang tidak ada window.Capacitor di sini')
+
+  // UA Android biasa TANPA penanda — Chrome di HP yang sama.
+  pasang('Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36')
+  assert(diAndroid() === false, 'Chrome Android biasa tetap false')
+
+  pasang('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36')
+  assert(diAndroid() === false, 'desktop false')
+
+  // Penandanya harus utuh; potongan namanya bukan penanda.
+  pasang('Mozilla/5.0 PropFS')
+  assert(diAndroid() === false, '"PropFS" saja bukan penanda APK')
+  pasang('Mozilla/5.0 propfsapp')
+  assert(diAndroid() === false, 'huruf kecil bukan penanda — ia ditulis persis oleh config')
+
+  // navigator rusak/absen tidak boleh menjatuhkan apa pun.
+  ganti(undefined)
+  assert(diAndroid() === false, 'tanpa navigator: false, bukan melempar')
+  ganti({})
+  assert(diAndroid() === false, 'navigator tanpa userAgent aman')
+  ganti({ get userAgent() { throw new Error('rusak') } })
+  assert(diAndroid() === false, 'userAgent yang melempar ditangkap')
+
+  // Cadangan tetap hidup: bila UA-nya polos tetapi bridge-nya ada.
+  pasang('Mozilla/5.0')
+  globalThis.Capacitor = { isNativePlatform: () => true }
+  assert(diAndroid() === true, 'cadangan window.Capacitor tetap dipakai')
+  delete globalThis.Capacitor
+
+  if (asli) Object.defineProperty(globalThis, 'navigator', asli)
+  else delete globalThis.navigator
+}
 
 // ── 5. simpanBerkas: TIDAK PERNAH melempar ─────────────────────────────────
 //

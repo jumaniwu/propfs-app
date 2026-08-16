@@ -89,14 +89,40 @@ async function blobKeBase64(b: Blob): Promise<string> {
 }
 
 /**
+ * Penanda yang ditambahkan APK ke User-Agent. Nilainya ditetapkan di
+ * capacitor.config.ts; kalau salah satu diubah, yang lain harus ikut.
+ */
+export const PENANDA_APK = 'PropFSApp'
+
+/**
  * Apakah aplikasi sedang berjalan sebagai APK.
  *
- * Dibaca dari `window.Capacitor` langsung, bukan lewat `import` dari
- * `@capacitor/core` — supaya modul ini tetap murni dan bisa diuji di Node,
- * dan supaya bundel web tidak menyeret satu paket pun untuk menjawab
- * pertanyaan yang jawabannya selalu "tidak".
+ * DUA CARA, DAN URUTANNYA PENTING.
+ *
+ * 1. USER-AGENT. Inilah yang benar-benar bisa dipercaya. WebView menetapkannya
+ *    sebelum satu byte pun diminta, berlaku di origin mana pun, dan terbaca
+ *    serentak — tidak ada jendela waktu tempat jawabannya masih "belum tahu".
+ *
+ * 2. `window.Capacitor`. Cara bawaan Capacitor, dan cara yang DULU dipakai
+ *    sendirian di sini. Ia gagal pada susunan aplikasi ini: objek itu
+ *    disuntikkan lewat server lokal Capacitor, yang hanya melayani berkas dari
+ *    `webDir`. Halaman kita datang dari https://propfs.id — origin lain sama
+ *    sekali — jadi penyuntikannya tidak pernah sampai, atau sampai setelah
+ *    React sudah memutuskan mau menampilkan apa. Yang terlihat di HP: APK
+ *    terbuka di halaman jualan, seolah ia peramban biasa.
+ *
+ *    Tetap dipertahankan sebagai cadangan, untuk hari ketika aplikasinya
+ *    dibundel ke dalam APK dan justru inilah yang tersedia.
+ *
+ * Tidak melempar dalam keadaan apa pun: seluruh keputusan tampilan bergantung
+ * padanya, dan satu pengecualian di sini menjatuhkan halaman pertama.
  */
 export function diAndroid(): boolean {
+  try {
+    const ua = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent
+    if (typeof ua === 'string' && ua.includes(PENANDA_APK)) return true
+  } catch { /* jatuh ke cara kedua */ }
+
   try {
     const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
     return c?.isNativePlatform?.() === true
