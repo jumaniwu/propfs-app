@@ -4,6 +4,8 @@
  * user menjawab → render bird-eye fotorealistis mengikuti denah.
  */
 import { useRef, useState } from 'react'
+import PilihMutuRender from '@/components/siteplan/PilihMutuRender'
+import { MUTU_BAWAAN, type MutuGambar } from '@/lib/mutuGambar'
 import { simpanBerkas } from '@/lib/unduhBerkas'
 import { FileUp, Loader2, Download, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -40,6 +42,9 @@ export default function CadRenderDialog() {
   const [angles, setAngles] = useState<CadAngle[]>(['depan', 'sudut'])
   const [views, setViews] = useState<CadRenderedView[]>([])
   const [restyle, setRestyle] = useState(RESTYLE_OPTIONS[0])
+  // Bawaannya HEMAT — mutu tinggi harus dipilih, bukan didapat karena tidak
+  // memilih. Lihat lib/mutuGambar.ts untuk sebabnya.
+  const [mutu, setMutu] = useState<MutuGambar>(MUTU_BAWAAN)
   const [error, setError] = useState('')
 
   function reset() {
@@ -123,7 +128,7 @@ export default function CadRenderDialog() {
       const res = await renderCadViews(planUrl, analysis, answers, ordered, (done, total, label) => {
         setProgress(Math.max(6, (done / total) * 100))
         setStatus(done < total ? `Me-render ${label}… (${done + 1}/${total})` : 'Selesai')
-      }, styleOverride ? { styleOverride } : undefined)
+      }, { mutu, ...(styleOverride ? { styleOverride } : {}) })
       setViews(res)
       setPhase('done')
     } catch (e) {
@@ -244,6 +249,14 @@ export default function CadRenderDialog() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Harga tepat di atas tombolnya — bukan sebagai keterangan
+                      di tempat lain yang akan dilewati. */}
+                  <PilihMutuRender
+                    mutu={mutu}
+                    onPilih={setMutu}
+                    jumlahGambar={angles.length}
+                  />
 
                   {error && <p className="text-xs text-red-dk">{error}</p>}
                   <Button

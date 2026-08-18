@@ -11,7 +11,7 @@ import type { SiteplanResult } from '@/engine/siteplan/layout.ts'
 import { renderToCanvas } from '@/components/siteplan/exportImage.ts'
 import { renderIsometric } from '@/components/siteplan/render3d.ts'
 import { catatGambar } from '../store/usageStore'
-import { MODEL_GAMBAR } from './modelAi'
+import { modelUntukMutu, MUTU_BAWAAN, type MutuGambar } from './mutuGambar'
 import { mulaiSesiAi, type SesiAi } from './gemini'
 
 export type RenderAngle = 'depan' | 'sudut' | 'belakang'
@@ -25,6 +25,14 @@ export interface RenderOptions {
   angles: RenderAngle[]
   /** dataURL coretan/draft user sebagai referensi zonasi (opsional) */
   sketchDataUrl?: string | null
+  /**
+   * Mutu render. Bawaannya HEMAT — dan itu disengaja.
+   *
+   * Tidak dibuat wajib supaya pemanggil lama tidak berubah perilakunya; tetapi
+   * yang tidak menyebutkannya mendapat jalur murah, bukan jalur termahal.
+   * Kebalikannya yang dulu terjadi, dan tagihannya Rp 530 ribu sehari.
+   */
+  mutu?: MutuGambar
 }
 
 export interface RenderedView {
@@ -101,12 +109,21 @@ ${opts.sketchDataUrl ? '\nGAMBAR KEDUA adalah foto udara lokasi asli dengan core
 - Fotorealistis kualitas presentasi developer, rasio 16:9 landscape.`
 }
 
-/** Model gambar yang dicoba lebih dulu — dan yang tarifnya dipakai mencatat. */
-const MODEL_GAMBAR_UTAMA = 'gemini-2.5-flash-image'
-
+/**
+ * Merender satu gambar, dan MENGEMBALIKAN model yang benar-benar menjawab.
+ *
+ * Nama modelnya ikut keluar, tidak lagi ditebak pemanggilnya. Versi lama
+ * mencatat konstanta `MODEL_GAMBAR_UTAMA = 'gemini-2.5-flash-image'` — nama
+ * yang berhenti benar begitu model Pro disisipkan ke depan daftar, sehingga
+ * setiap gambar termahal tercatat dengan tarif yang termurah. Cacat seperti
+ * itu tidak mungkin terlihat dari kode pemanggilnya; satu-satunya
+ * pencegahannya adalah tidak menyimpan jawabannya di dua tempat.
+ */
 async function callGeminiImage(
-  ai: SesiAi, prompt: string, planPngBase64: string, sketch?: { mime: string; data: string } | null,
-): Promise<string> {
+  ai: SesiAi, prompt: string, planPngBase64: string,
+  sketch: { mime: string; data: string } | null | undefined,
+  daftarModel: readonly string[],
+): Promise<{ dataUrl: string; model: string }> {
   const parts: Array<Record<string, unknown>> = [
     { text: prompt },
     { inline_data: { mime_type: 'image/png', data: planPngBase64 } },
@@ -116,9 +133,8 @@ async function callGeminiImage(
     contents: [{ parts }],
     generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
   }
-  const models = MODEL_GAMBAR
   let lastErr = ''
-  for (const model of models) {
+  for (const model of daftarModel) {
     const res = await ai.panggil(model, body)
     if (!res.ok) {
       lastErr = `HTTP ${res.status}`
@@ -130,7 +146,7 @@ async function callGeminiImage(
         p.inlineData?.data || p.inline_data?.data,
     )
     const b64 = imgPart?.inlineData?.data ?? imgPart?.inline_data?.data
-    if (b64) return `data:image/png;base64,${b64}`
+    if (b64) return { dataUrl: `data:image/png;base64,${b64}`, model }
     lastErr = 'Model tidak mengembalikan gambar.'
   }
   throw new Error(`Render gagal (${lastErr}).`)
@@ -163,6 +179,7 @@ export async function renderMasterplanViews(
   // membuang waktu — ia membuang uang. Anggarannya longgar karena membuat
   // gambar memang lama, tetapi ia tetap punya akhir.
   const ai = mulaiSesiAi(180_000, 60_000)
+  const daftarModel = modelUntukMutu(opts.mutu ?? MUTU_BAWAAN)
   const views: RenderedView[] = []
   for (let i = 0; i < opts.angles.length; i++) {
     const angle = opts.angles[i]
@@ -178,13 +195,16 @@ export async function renderMasterplanViews(
     {
       try {
         const prompt = buildPrompt(result, opts)
-        const dataUrl = await callGeminiImage(
-          ai, prompt, schematicUrl.split(',')[1], sketch,
+        const hasil = await callGeminiImage(
+          ai, prompt, schematicUrl.split(',')[1], sketch, daftarModel,
         )
+        const dataUrl = hasil.dataUrl
         // Satu sudut = satu gambar berbayar. Merender tiga sudut sekaligus
         // adalah pemakaian biasa, jadi yang terasa "sekali tekan" sebenarnya
         // tiga kali bayar — dan sebelumnya tak satu pun dari tiga itu tercatat.
-        catatGambar('render_masterplan', MODEL_GAMBAR_UTAMA, 1, prompt)
+        //
+        // Yang dicatat adalah model yang BENAR-BENAR menjawab, bukan tebakan.
+        catatGambar('render_masterplan', hasil.model, 1, prompt)
         views.push({ angle, label: RENDER_ANGLE_LABELS[angle], dataUrl, source: 'ai' })
         onProgress?.(i + 1, opts.angles.length, RENDER_ANGLE_LABELS[angle])
         continue

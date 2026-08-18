@@ -55,6 +55,12 @@ export const TARIF: Record<string, TarifModel> = {
   'gemini-2.5-flash-image': { masukan: 0.30, keluaran: 2.50, perGambar: 0.039, gambar: true },
   'gemini-2.0-flash-preview-image-generation':
     { masukan: 0.10, keluaran: 0.40, perGambar: 0.039, gambar: true },
+  // Model gambar termahal di keluarga Gemini — dan yang membuat tagihan
+  // 16 Agustus 2026 melonjak. Ia SEMPAT tidak ada di tabel ini sama sekali,
+  // sehingga jatuh ke tarif bawaan yang perGambar-nya 0: setiap gambar
+  // termahal tercatat Rp 0 di halaman AI Billing, tepat ketika angkanya paling
+  // perlu terlihat.
+  'gemini-3-pro-image-preview': { masukan: 2.00, keluaran: 12.00, perGambar: 0.134, gambar: true },
   'meta-llama/llama-4-scout:free': { masukan: 0, keluaran: 0, perGambar: 0, gambar: false },
   'llama-3.1-8b-instant':  { masukan: 0.05, keluaran: 0.08, perGambar: 0, gambar: false },
 }
@@ -62,11 +68,43 @@ export const TARIF: Record<string, TarifModel> = {
 /** Dipakai bila modelnya belum ada di tabel — jangan menganggapnya gratis. */
 export const TARIF_BAWAAN: TarifModel = { masukan: 0.30, keluaran: 2.50, perGambar: 0, gambar: false }
 
+/** Tebakan untuk model GAMBAR yang belum terdaftar namanya. */
+export const TARIF_GAMBAR_TAKDIKENAL: TarifModel =
+  { masukan: 2.00, keluaran: 12.00, perGambar: 0.134, gambar: true }
+
+/** Tebakan untuk model teks jalur Pro yang belum terdaftar namanya. */
+export const TARIF_PRO_TAKDIKENAL: TarifModel =
+  { masukan: 1.25, keluaran: 10.00, perGambar: 0, gambar: false }
+
 export const USD_KE_IDR = 16300
 
+// Nama model gambar selalu menyebut dirinya: `-image` atau `image-generation`.
+// Pola yang sama sudah dipakai pagar di api/ai.ts untuk alasan yang sama.
+const POLA_GAMBAR = /-image(-|$)|image-generation/i
+const POLA_PRO = /-pro(-|$)/i
+
+/**
+ * Tarif sebuah model — dan yang penting: apa yang dilakukan ketika namanya
+ * TIDAK ADA di tabel.
+ *
+ * Dulu jawabannya `TARIF_BAWAAN`, yang `perGambar`-nya 0. Akibatnya bukan
+ * sekadar meleset: setiap model gambar baru yang dirilis Google akan tercatat
+ * Rp 0 sampai ada orang yang ingat memperbarui tabel ini. Itu persis yang
+ * terjadi pada `gemini-3-pro-image-preview`, dan itulah kenapa lonjakan
+ * tagihannya tidak terlihat sama sekali dari dalam aplikasi.
+ *
+ * Tabel tidak akan pernah bisa mengejar penamaan Google. Jadi yang tidak
+ * dikenali kini ditebak dari BENTUK namanya, dan ditebak ke ATAS — perkiraan
+ * yang terlalu tinggi hanya membuat orang berhati-hati, sedangkan perkiraan
+ * yang terlalu rendah membuatnya tidak tahu apa-apa sampai tagihannya datang.
+ */
 export function tarifModel(model: unknown): TarifModel {
   const m = String(model ?? '').trim()
-  return TARIF[m] ?? TARIF_BAWAAN
+  const tepat = TARIF[m]
+  if (tepat) return tepat
+  if (POLA_GAMBAR.test(m)) return TARIF_GAMBAR_TAKDIKENAL
+  if (POLA_PRO.test(m)) return TARIF_PRO_TAKDIKENAL
+  return TARIF_BAWAAN
 }
 
 /** Apakah model ini menghasilkan gambar — yaitu, mahal. */
