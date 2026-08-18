@@ -15,7 +15,13 @@
 import {
   namaAman, mimeDariNama, base64Saja, blobDariBase64, diAndroid, PENANDA_APK,
   simpanBerkas, bukaBerkas, simpanPdf, simpanXlsx,
+  jembatanNativeAda, simpanBerkasRinci, pasangPelaporUnduh, PESAN_APK_TAK_BISA,
 } from '../src/lib/unduhBerkas.ts'
+
+// Berkas uji ini SENGAJA menjalankan jalur-jalur yang gagal — itu memang
+// intinya. Peringatannya dibungkam agar kegagalan uji yang sesungguhnya tidak
+// tenggelam di antara belasan tumpukan galat yang justru diharapkan muncul.
+console.warn = () => {}
 
 let ok = 0
 const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
@@ -183,6 +189,148 @@ delete globalThis.Capacitor
   let melempar = false
   try { blobDariBase64('bukan base64!!!', 'text/plain') } catch { melempar = true }
   assert(melempar, 'base64 rusak memang melempar di sini — simpanBerkas yang menangkapnya')
+}
+
+
+// ── 9. jembatanNativeAda: pertanyaan yang BERBEDA dari diAndroid ───────────
+//
+// `diAndroid()` menjawab "apakah ini APK", `jembatanNativeAda()` menjawab
+// "apakah plugin native bisa dipanggil". Keduanya bisa berbeda di dalam APK
+// yang sah — APK lama yang dibangun sebelum pluginnya ada — dan justru
+// perbedaan itulah yang menentukan berkasnya tersimpan atau hilang diam-diam.
+{
+  delete globalThis.Capacitor
+  assert(jembatanNativeAda() === false, 'tanpa window.Capacitor: false')
+
+  globalThis.Capacitor = {}
+  assert(jembatanNativeAda() === false, 'objek kosong bukan jembatan')
+
+  globalThis.Capacitor = { isNativePlatform: 'bukan fungsi' }
+  assert(jembatanNativeAda() === false, 'yang bukan fungsi tidak dipanggil')
+
+  globalThis.Capacitor = { isNativePlatform: () => false }
+  assert(jembatanNativeAda() === false, 'di web Capacitor menjawab false')
+
+  globalThis.Capacitor = { isNativePlatform: () => 'ya' }
+  assert(jembatanNativeAda() === false, 'hanya `true` yang dihitung, bukan yang mirip')
+
+  globalThis.Capacitor = { isNativePlatform: () => { throw new Error('rusak') } }
+  assert(jembatanNativeAda() === false, 'yang melempar ditangkap')
+
+  globalThis.Capacitor = { isNativePlatform: () => true }
+  assert(jembatanNativeAda() === true, 'jembatan sungguhan: true')
+
+  delete globalThis.Capacitor
+}
+
+// ── 10. DI APK, KEGAGALAN TIDAK BOLEH MENYAMAR SEBAGAI KEBERHASILAN ───────
+//
+// Inti keluhannya: "appnya ga bisa download foto dan tombol share ga bisa
+// pakai". Penyebabnya satu kenyataan yang tidak bisa dilihat dari kode
+// pemanggil — di WebView Android, `<a download>` TIDAK mengunduh apa pun DAN
+// TIDAK melempar apa pun. Capacitor sendiri tidak memasang DownloadListener.
+//
+// Jadi begitu kita tahu sedang di dalam APK, jalur itu haram dipakai sebagai
+// penutup: `true` untuknya adalah kebohongan yang membuat orang berhenti
+// mencari berkas yang tidak pernah ada.
+{
+  const asli = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const ganti = nav => Object.defineProperty(globalThis, 'navigator', {
+    value: nav, configurable: true, writable: true,
+  })
+
+  // APK: penanda di UA, tanpa jembatan native, tanpa navigator.share.
+  ganti({ userAgent: `Mozilla/5.0 (Linux; Android 14) Chrome/126.0.0.0 Mobile Safari/537.36 ${PENANDA_APK}` })
+  delete globalThis.Capacitor
+
+  const h = await simpanBerkasRinci(new Blob(['isi']), 'promosi.png', 'image/png')
+  assert(h.ok === false, 'di APK tanpa jembatan: TIDAK mengaku berhasil')
+  assert(h.cara === undefined, 'dan tidak mengaku memakai jalur mana pun')
+  assert(h.alasan === PESAN_APK_TAK_BISA, 'alasannya kalimat siap tampil, bukan galat mesin')
+  assert(/APK|Chrome/i.test(h.alasan), 'menyebut jalan keluarnya, bukan cuma kabar gagal')
+
+  // Kegagalan itu BERSUARA — inilah yang dulu tidak ada.
+  const suara = []
+  pasangPelaporUnduh(p => suara.push(p))
+  const berhasil = await simpanBerkas(new Blob(['isi']), 'promosi.png', 'image/png')
+  assert(berhasil === false, 'simpanBerkas tetap mengembalikan false')
+  assert(suara.length === 1, 'dan melaporkannya SATU kali')
+  assert(suara[0] === PESAN_APK_TAK_BISA, 'dengan kalimat yang sama')
+
+  // Pelapor yang rusak tidak boleh menjatuhkan halaman yang sedang dipakai.
+  pasangPelaporUnduh(() => { throw new Error('toast rusak') })
+  assert(await simpanBerkas(new Blob(['isi']), 'a.png') === false, 'pelapor rusak ditangkap')
+
+  // Dibatalkan pemakainya BUKAN kegagalan — tidak boleh ada pesan galat.
+  suara.length = 0
+  pasangPelaporUnduh(p => suara.push(p))
+  globalThis.Capacitor = { isNativePlatform: () => true }
+  ganti({
+    userAgent: 'Mozilla/5.0 (Linux; Android 14) Mobile Safari/537.36',
+    canShare: () => true,
+    share: () => { const e = new Error('Abort due to cancellation of share.'); e.name = 'AbortError'; throw e },
+  })
+  const batal = await simpanBerkasRinci(new Blob(['isi']), 'a.png', 'image/png')
+  assert(batal.ok === false, 'dibatalkan: bukan berhasil')
+  assert(batal.dibatalkan === true, 'ditandai sebagai pembatalan')
+  await simpanBerkas(new Blob(['isi']), 'a.png', 'image/png')
+  assert(suara.length === 0, 'pembatalan TIDAK memunculkan pesan galat')
+
+  // Menu bagikan peramban dipakai bila ada — Chrome HP punya, WebView tidak.
+  const dibagikan = []
+  ganti({
+    userAgent: 'Mozilla/5.0 (Linux; Android 14) Mobile Safari/537.36',
+    canShare: () => true,
+    share: async d => { dibagikan.push(d) },
+  })
+  const lewatWeb = await simpanBerkasRinci(new Blob(['isi']), 'promosi.png', 'image/png', 'Caption')
+  assert(lewatWeb.ok === true && lewatWeb.cara === 'bagikan-web', 'jatuh ke menu bagikan peramban')
+  assert(dibagikan[0].files[0].name === 'promosi.png', 'berkasnya ikut, dengan namanya')
+  assert(dibagikan[0].text === 'Caption', 'caption ikut dikirim — di Marcom keduanya satu paket')
+
+  pasangPelaporUnduh(null)
+  delete globalThis.Capacitor
+  if (asli) Object.defineProperty(globalThis, 'navigator', asli)
+  else delete globalThis.navigator
+}
+
+// ── 11. Di WEB tidak ada satu pun yang berubah ────────────────────────────
+//
+// 21 titik pemanggil adalah pekerjaan yang dipakai setiap hari. Jalur webnya
+// harus tetap `<a download>` — tanpa langkah baru yang disisipkan di depannya,
+// termasuk navigator.share yang akan memunculkan menu yang tidak diminta.
+{
+  const asliNav = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+  const asliDoc = globalThis.document
+  delete globalThis.Capacitor
+  Object.defineProperty(globalThis, 'navigator', {
+    value: {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/126.0.0.0 Safari/537.36',
+      // Sengaja DISEDIAKAN: kalau jalur web diam-diam memakainya, uji ini gagal.
+      canShare: () => true,
+      share: async () => { throw new Error('menu bagikan tidak boleh dipakai di web') },
+    },
+    configurable: true, writable: true,
+  })
+
+  const diklik = []
+  const anchor = { set href(v) { this._h = v }, get href() { return this._h },
+    download: '', click() { diklik.push(this.download) }, remove() {} }
+  globalThis.document = {
+    createElement: () => anchor,
+    body: { appendChild() {} },
+  }
+  globalThis.URL.createObjectURL = () => 'blob:uji'
+  globalThis.URL.revokeObjectURL = () => {}
+
+  const h = await simpanBerkasRinci(new Blob(['isi']), 'Laporan Mingguan.xlsx')
+  assert(h.ok === true, 'di web tetap berhasil')
+  assert(h.cara === 'unduh-tautan', 'dan tetap lewat <a download>, bukan menu bagikan')
+  assert(diklik.length === 1 && diklik[0] === 'Laporan Mingguan.xlsx', 'nama berkasnya utuh')
+
+  globalThis.document = asliDoc
+  if (asliNav) Object.defineProperty(globalThis, 'navigator', asliNav)
+  else delete globalThis.navigator
 }
 
 console.log(`unduh-berkas: ${ok} assert lulus`)
