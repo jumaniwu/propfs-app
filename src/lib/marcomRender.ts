@@ -18,7 +18,7 @@
 // lalu menemukan berkasnya tidak bisa diunggah.
 // ============================================================
 
-import { simpanBerkas } from './unduhBerkas.ts'
+import { simpanBerkas, simpanBerkasRinci, diAndroid, jembatanNativeAda } from './unduhBerkas.ts'
 import {
   FORMAT_MARCOM, tataLetak, barisKontak, namaTampil, bungkusBaris, judulGambar,
   garisProyek, fotoPadaWaktu, durasiVideo, durasiPakai, DURASI_PER_FOTO, MAKS_DETIK_VIDEO,
@@ -712,8 +712,16 @@ export async function olahVideo(o: OpsiOlahVideo): Promise<HasilVideo> {
 
 // ── Unduh & bagikan ─────────────────────────────────────────────────────────
 
-export function unduh(isi: string | Blob, nama: string) {
-  void simpanBerkas(isi, nama)
+/**
+ * Simpan hasil marcom, dan katakan apakah benar-benar tersimpan.
+ *
+ * Dulu `void simpanBerkas(...)` — hasilnya dibuang. Di dalam APK, tempat
+ * `<a download>` memang tidak melakukan apa pun, itu berarti tombol Unduh
+ * yang diam sepenuhnya: tidak ada berkas, tidak ada pesan, tidak ada apa pun
+ * yang bisa dilaporkan pemakainya selain "ga bisa".
+ */
+export async function unduh(isi: string | Blob, nama: string): Promise<boolean> {
+  return await simpanBerkas(isi, nama)
 }
 
 /** Ubah data URL menjadi File, supaya bisa dibagikan lewat Web Share. */
@@ -724,12 +732,30 @@ export async function keFile(dataUrl: string, nama: string): Promise<File> {
 }
 
 /**
- * Bagikan langsung ke aplikasi lain bila peramban mendukung.
+ * Bagikan langsung ke aplikasi lain.
  *
- * Mengembalikan false bila tidak didukung, supaya pemanggilnya bisa jatuh ke
- * unduhan biasa alih-alih memberi tombol yang tidak melakukan apa-apa.
+ * DI DALAM APK, `navigator.share` TIDAK ADA. Web Share API adalah fitur
+ * peramban Chrome, bukan fitur WebView — dan WebView-lah yang menjalankan
+ * aplikasi ini di HP. Jadi pemeriksaan `if (!nav.share) return false` selalu
+ * berbunyi "tidak didukung", tombol Bagikan jatuh ke unduhan, dan unduhannya
+ * pun tidak melakukan apa-apa. Dua tombol, satu-satunya hasil: diam.
+ *
+ * Karena itu di APK yang dipakai adalah menu Bagikan ANDROID lewat plugin
+ * Capacitor — jalur yang sama dengan seluruh unduhan lain di aplikasi ini,
+ * dan justru jalur yang paling tepat di sini: gambar dan captionnya sampai ke
+ * WhatsApp dalam satu langkah.
  */
 export async function bagikan(berkas: File[], teks: string): Promise<boolean> {
+  if (berkas.length === 0) return false
+
+  if (diAndroid() || jembatanNativeAda()) {
+    const h = await simpanBerkasRinci(berkas[0], berkas[0].name, berkas[0].type, teks)
+    // Dibatalkan sendiri oleh pemakainya bukan kegagalan — jangan disusul
+    // unduhan yang tidak ia minta.
+    if (h.dibatalkan) return true
+    return h.ok
+  }
+
   const nav = navigator as Navigator & {
     canShare?: (d: ShareData) => boolean
     share?: (d: ShareData) => Promise<void>

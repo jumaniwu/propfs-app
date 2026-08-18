@@ -9,6 +9,7 @@ import { supabase } from './lib/supabase'
 import { Button } from './components/ui/button'
 import BottomNav from './components/layout/BottomNav'
 import { jalurTautan, type JenisTautan } from './lib/tautanPendek'
+import { pasangPelaporUnduh } from './lib/unduhBerkas'
 import { useRutaMasuk } from './hooks/useRutaMasuk'
 
 // Code-split routes
@@ -115,6 +116,24 @@ export default function App() {
     link.href = faviconUrl
     document.head.appendChild(link)
   }, [faviconUrl, siteName])
+
+  // Setiap unduhan yang gagal bersuara — di mana pun di aplikasi ini.
+  //
+  // Sebelumnya seluruh kegagalan berakhir sebagai `false` yang dibuang dengan
+  // `void` di 21 titik pemanggil: tombol ditekan, tidak terjadi apa-apa, dan
+  // tidak ada satu pun pesan. Di dalam APK itu bukan kasus langka melainkan
+  // keadaan sehari-hari, karena WebView memang tidak mengunduh dari `blob:`.
+  //
+  // Disuntikkan dari sini supaya lib/unduhBerkas.ts tetap bisa diuji di Node
+  // tanpa React.
+  useEffect(() => {
+    pasangPelaporUnduh(pesan => toast({
+      title: 'Berkas tidak tersimpan',
+      description: pesan,
+      variant: 'destructive',
+    }))
+    return () => pasangPelaporUnduh(null)
+  }, [])
 
   // Initialize auth (check session, load profile, load feature flags)
   useEffect(() => {

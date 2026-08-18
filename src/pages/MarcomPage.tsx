@@ -35,6 +35,7 @@ import {
   komposisiGambar, buatVideo, olahVideo, pratinjauVideo, muatVideo,
   dukunganVideo, unduh, keFile, bagikan,
 } from '@/lib/marcomRender'
+import { diAndroid } from '@/lib/unduhBerkas'
 import { subSah } from '@/lib/posisiKerja'
 import {
   subjekAwal, pilihanSubjek, pilihSubjek, nilaiTerpilih, modeSetelahKetik,
@@ -300,16 +301,31 @@ export default function MarcomPage() {
 
   useEffect(() => { void susun() }, [susun])
 
-  function unduhGambar() {
+  async function unduhGambar() {
     if (!pratinjau) return
-    unduh(pratinjau, namaBerkas(namaProyek || 'promosi', format, 'png'))
+    // Hasilnya ditunggu. Kalau gagal, pesannya sudah muncul sendiri dari
+    // lib/unduhBerkas — yang haram di sini adalah mengabaikannya lalu
+    // membiarkan tombolnya tampak tidak melakukan apa-apa.
+    const berhasil = await unduh(pratinjau, namaBerkas(namaProyek || 'promosi', format, 'png'))
+    if (berhasil) {
+      toast({
+        title: diAndroid() ? 'Gambar siap dibagikan' : 'Gambar tersimpan',
+        description: diAndroid()
+          ? 'Pilih WhatsApp, Instagram, atau Galeri di menu yang muncul.'
+          : 'Cek folder Unduhan di perangkat Anda.',
+      })
+    }
   }
 
   async function bagikanGambar() {
     if (!pratinjau) return
     const nama = namaBerkas(namaProyek || 'promosi', format, 'png')
     const berhasil = await bagikan([await keFile(pratinjau, nama)], captionPenuh)
-    if (!berhasil) unduhGambar()
+    // Jatuh ke unduhan HANYA di peramban yang memang tidak punya menu bagikan.
+    // Di dalam APK, `bagikan` sudah memakai jalur yang sama dengan unduhan —
+    // mengulanginya berarti membuka menu yang sama dua kali, atau menampilkan
+    // pesan galat yang sama dua kali.
+    if (!berhasil && !diAndroid()) await unduhGambar()
   }
 
   async function rekamVideo() {
@@ -324,7 +340,11 @@ export default function MarcomPage() {
       const hasil = videoAsli
         ? await olahVideo({ ...isi, videoUrl: videoAsli.url })
         : await buatVideo({ ...isi, fotoDataUrls: foto.map(f => f.dipakai) })
-      unduh(hasil.blob, namaBerkas(namaProyek || 'promosi', format, hasil.ext))
+      const tersimpan = await unduh(hasil.blob, namaBerkas(namaProyek || 'promosi', format, hasil.ext))
+      // Kabar "tersimpan" untuk berkas yang tidak tersimpan lebih buruk
+      // daripada diam: orangnya berhenti mencari, lalu menemukannya hilang
+      // justru ketika hendak diunggah.
+      if (!tersimpan) return
       toast({
         title: `Video ${hasil.ext.toUpperCase()} tersimpan`,
         description: hasil.mp4
@@ -597,7 +617,7 @@ export default function MarcomPage() {
 
           {sub === 'gambar' ? (
             <div className="flex gap-2">
-              <button onClick={unduhGambar} disabled={!pratinjau}
+              <button onClick={() => void unduhGambar()} disabled={!pratinjau}
                 className="flex-1 h-11 rounded-xl bg-navy text-white text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50">
                 <Download className="w-4 h-4" /> Unduh Gambar
               </button>

@@ -129,6 +129,65 @@ export function diAndroid(): boolean {
   } catch { return false }
 }
 
+/**
+ * Apakah jembatan Capacitor SUNGGUH ada dan bisa dipanggil sekarang.
+ *
+ * Berbeda dari `diAndroid()`, dan bedanya itu yang menentukan.
+ *
+ *   `diAndroid()`  menjawab "apakah ini APK" — dari User-Agent, yang selalu
+ *                  ada sejak byte pertama.
+ *   fungsi ini     menjawab "apakah plugin native bisa dipanggil" — pertanyaan
+ *                  yang berbeda, dan bisa dijawab TIDAK di dalam APK yang sah:
+ *                  APK lama yang dibangun sebelum pluginnya ditambahkan, atau
+ *                  WebView tua yang tidak mendukung penyuntikan skrip di awal
+ *                  dokumen.
+ *
+ * Membedakannya penting karena akibat salah tebaknya diam: di WebView, tautan
+ * `<a download>` TIDAK MELAKUKAN APA-APA dan tidak melaporkan apa pun. Kalau
+ * jawabannya keliru, tombolnya cuma terlihat rusak.
+ */
+export function jembatanNativeAda(): boolean {
+  try {
+    const c = (globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+    return typeof c?.isNativePlatform === 'function' && c.isNativePlatform() === true
+  } catch { return false }
+}
+
+/**
+ * Ke mana sebuah berkas akhirnya disalurkan, dan kenapa ia gagal.
+ *
+ * Dibawa keluar apa adanya supaya pemanggilnya bisa mengatakan sesuatu yang
+ * benar kepada pemakainya. Sebelum ini, seluruh kegagalan berakhir sebagai
+ * `false` yang dibuang dengan `void` — dan itulah kenapa keluhannya berbunyi
+ * "tombolnya ga bisa dipakai", bukan "muncul pesan galat".
+ */
+export type CaraSimpan = 'bagikan-native' | 'bagikan-web' | 'unduh-tautan'
+
+export interface HasilSimpan {
+  ok: boolean
+  cara?: CaraSimpan
+  /** Sudah berupa kalimat siap tampil, bukan pesan galat mesin. */
+  alasan?: string
+  /** Pemakainya menutup menu Bagikan — bukan kegagalan, jangan diberi pesan. */
+  dibatalkan?: boolean
+}
+
+/**
+ * Kalimat yang ditampilkan ketika sebuah berkas tidak bisa disimpan DI DALAM
+ * APK. Menyebut jalan keluarnya, bukan cuma mengabarkan kegagalan.
+ */
+export const PESAN_APK_TAK_BISA =
+  'Aplikasi ini belum bisa menyimpan berkas. Biasanya karena APK-nya versi lama — '
+  + 'minta versi terbaru ke admin. Sementara itu, buka propfs.id lewat Chrome; '
+  + 'di sana unduhannya jalan seperti biasa.'
+
+/** Pemakainya membatalkan sendiri — dikenali agar tidak dilaporkan galat. */
+function dibatalkanPemakai(e: unknown): boolean {
+  const n = (e as { name?: string } | null)?.name
+  const p = String((e as { message?: string } | null)?.message ?? '')
+  return n === 'AbortError' || /abort|cancel|dibatalkan|share canceled/i.test(p)
+}
+
 /** Jalur web: persis seperti seluruh kode sebelum modul ini ada. */
 function unduhLewatTautan(blob: Blob, nama: string): void {
   const url = URL.createObjectURL(blob)
@@ -144,7 +203,7 @@ function unduhLewatTautan(blob: Blob, nama: string): void {
 }
 
 /** Tulis ke cache aplikasi lalu buka menu Bagikan Android. */
-async function bagikanDiAndroid(blob: Blob, nama: string, mime: string): Promise<void> {
+async function bagikanDiAndroid(blob: Blob, nama: string, mime: string, teks?: string): Promise<void> {
   const { Filesystem, Directory } = await import('@capacitor/filesystem')
   const { Share } = await import('@capacitor/share')
 
@@ -158,42 +217,111 @@ async function bagikanDiAndroid(blob: Blob, nama: string, mime: string): Promise
     recursive: true,
   })
 
-  await Share.share({ title: nama, files: [hasil.uri] })
+  // `text` ikut dikirim bila ada: di Marcom, gambar dan captionnya memang satu
+  // paket — dikirim terpisah berarti orangnya harus menyalin caption sendiri.
+  await Share.share({ title: nama, files: [hasil.uri], ...(teks ? { text: teks } : {}) })
+}
+
+/** Menu Bagikan bawaan peramban. Ada di Chrome HP, TIDAK ADA di WebView. */
+async function bagikanLewatPeramban(blob: Blob, nama: string, mime: string, teks?: string): Promise<boolean> {
+  const nav = navigator as Navigator & {
+    canShare?: (d: ShareData) => boolean
+    share?: (d: ShareData) => Promise<void>
+  }
+  if (typeof nav.share !== 'function' || typeof nav.canShare !== 'function') return false
+  const berkas = [new File([blob], nama, { type: mime })]
+  if (!nav.canShare({ files: berkas })) return false
+  await nav.share({ files: berkas, ...(teks ? { text: teks } : {}) })
+  return true
+}
+
+/** Blob dari isi yang boleh Blob maupun base64. `null` bila memang kosong. */
+function keBlob(isi: Blob | string | null | undefined, jenis: string): Blob | null {
+  if (isi instanceof Blob) return isi.size === 0 ? null : isi
+  const b64 = base64Saja(isi)
+  if (!b64) return null
+  try { return blobDariBase64(b64, jenis) } catch { return null }
 }
 
 /**
- * Simpan sebuah berkas — di web mengunduh, di Android membuka menu Bagikan.
+ * Simpan sebuah berkas, dan LAPORKAN apa yang terjadi.
  *
- * `isi` boleh Blob atau base64 (dengan atau tanpa awalan data URI).
- * Tidak pernah melempar: gagal menyimpan tidak boleh menjatuhkan halaman yang
- * sedang dipakai. Mengembalikan `false` bila memang tidak ada yang disimpan.
+ * Urutannya ditentukan satu kenyataan: di WebView Android, `<a download>`
+ * tidak mengunduh apa pun DAN tidak melempar apa pun. Jadi begitu kita tahu
+ * sedang berada di dalam APK, jalur itu tidak boleh dipakai sebagai penutup —
+ * ia bukan cadangan, ia lubang tempat berkasnya hilang tanpa suara.
+ *
+ *   DI APK   : plugin Capacitor → menu Bagikan peramban → MENYERAH DENGAN
+ *              BERSUARA. Menyerah dengan bersuara jauh lebih berguna daripada
+ *              "berhasil" yang tidak menghasilkan berkas apa pun.
+ *   DI WEB   : `<a download>`, persis seperti sebelum modul ini ada. Tidak
+ *              satu pun langkah baru disisipkan di sini — 21 titik pemanggil
+ *              adalah pekerjaan yang dipakai setiap hari.
+ *
+ * Tidak pernah melempar.
+ */
+export async function simpanBerkasRinci(
+  isi: Blob | string | null | undefined,
+  nama: string,
+  mime?: string,
+  teks?: string,
+): Promise<HasilSimpan> {
+  const berkas = namaAman(nama)
+  const jenis = mime || mimeDariNama(berkas)
+
+  const blob = keBlob(isi, jenis)
+  if (!blob) return { ok: false, alasan: 'Tidak ada isi berkas yang bisa disimpan.' }
+
+  // ── Jalur web, tidak disentuh ────────────────────────────────────────────
+  if (!diAndroid() && !jembatanNativeAda()) {
+    try {
+      unduhLewatTautan(blob, berkas)
+      return { ok: true, cara: 'unduh-tautan' }
+    } catch (e) {
+      console.warn('[unduh] gagal mengunduh:', e)
+      return { ok: false, alasan: 'Peramban ini menolak mengunduh berkasnya.' }
+    }
+  }
+
+  // ── Di dalam APK ─────────────────────────────────────────────────────────
+  try {
+    await bagikanDiAndroid(blob, berkas, jenis, teks)
+    return { ok: true, cara: 'bagikan-native' }
+  } catch (e) {
+    if (dibatalkanPemakai(e)) return { ok: false, dibatalkan: true }
+    // Gagal berarti jembatannya memang tidak ada — dicatat sekali, lalu dicoba
+    // cara berikutnya. Bukan alasan untuk berhenti.
+    console.warn('[unduh] plugin native tidak tersedia:', e)
+  }
+
+  try {
+    if (await bagikanLewatPeramban(blob, berkas, jenis, teks)) {
+      return { ok: true, cara: 'bagikan-web' }
+    }
+  } catch (e) {
+    if (dibatalkanPemakai(e)) return { ok: false, dibatalkan: true }
+    console.warn('[unduh] menu bagikan peramban gagal:', e)
+  }
+
+  // Sengaja TIDAK jatuh ke `<a download>`. Di WebView ia tidak melakukan
+  // apa-apa, dan mengembalikan `true` untuknya berarti berbohong kepada
+  // pemakainya — persis kebohongan yang membuat tombolnya terasa rusak.
+  return { ok: false, alasan: PESAN_APK_TAK_BISA }
+}
+
+/**
+ * Bentuk ringkas untuk 21 titik pemanggil yang hanya perlu tahu berhasil atau
+ * tidak. Kegagalannya dilaporkan sendiri lewat pelapor di bawah, jadi tidak
+ * ada lagi tombol yang diam ketika gagal.
  */
 export async function simpanBerkas(
   isi: Blob | string | null | undefined,
   nama: string,
   mime?: string,
 ): Promise<boolean> {
-  const berkas = namaAman(nama)
-  const jenis = mime || mimeDariNama(berkas)
-
-  let blob: Blob
-  if (isi instanceof Blob) {
-    if (isi.size === 0) return false
-    blob = isi
-  } else {
-    const b64 = base64Saja(isi)
-    if (!b64) return false
-    try { blob = blobDariBase64(b64, jenis) } catch { return false }
-  }
-
-  try {
-    if (diAndroid()) await bagikanDiAndroid(blob, berkas, jenis)
-    else unduhLewatTautan(blob, berkas)
-    return true
-  } catch (e) {
-    console.warn('[unduh] gagal menyimpan berkas:', e)
-    return false
-  }
+  const h = await simpanBerkasRinci(isi, nama, mime)
+  if (!h.ok && !h.dibatalkan) laporkanGagal(h)
+  return h.ok
 }
 
 /**
@@ -211,7 +339,7 @@ export async function bukaBerkas(
   const berkas = namaAman(nama)
   const jenis = mime || mimeDariNama(berkas)
 
-  if (diAndroid()) return await simpanBerkas(isi, berkas, jenis)
+  if (diAndroid() || jembatanNativeAda()) return await simpanBerkas(isi, berkas, jenis)
 
   let blob: Blob
   if (isi instanceof Blob) {
@@ -234,6 +362,30 @@ export async function bukaBerkas(
     console.warn('[unduh] gagal membuka berkas:', e)
     return false
   }
+}
+
+// ── Pelapor kegagalan ───────────────────────────────────────────────────────
+//
+// Modul ini sengaja tidak mengimpor toast: begitu React masuk ke sini, seluruh
+// ujinya tidak bisa lagi dijalankan langsung di Node. Jadi penampilnya
+// DISUNTIKKAN sekali dari App, dan modulnya tetap murni.
+//
+// Yang diperbaiki dengan ini bukan hal kecil. Sebelumnya setiap kegagalan
+// berakhir sebagai `false` yang dibuang dengan `void` di 21 titik pemanggil —
+// tombol ditekan, tidak terjadi apa-apa, tidak ada satu pun pesan. Sekarang
+// satu sambungan membuat semuanya bersuara sekaligus.
+
+type Pelapor = (pesan: string) => void
+let pelapor: Pelapor | null = null
+
+/** Dipasang sekali saat aplikasi mulai. */
+export function pasangPelaporUnduh(fn: Pelapor | null): void {
+  pelapor = fn
+}
+
+function laporkanGagal(h: HasilSimpan): void {
+  const pesan = h.alasan || PESAN_APK_TAK_BISA
+  try { pelapor?.(pesan) } catch { /* penampilnya rusak; jangan ikut menjatuhkan */ }
 }
 
 // ── Pembungkus tipis untuk dua bentuk yang paling sering dipakai ────────────
