@@ -70,12 +70,45 @@ export const MODEL_LEBIH_BAIK = ['gemini-3-flash', 'gemini-3-pro-preview', 'gemi
 export const MODEL_UTAMA = MODEL_TEKS[0]
 export const MODEL_CADANGAN = MODEL_TEKS[MODEL_TEKS.length - 1]
 
-/** Urutan keinginan untuk model yang MENGHASILKAN gambar. */
-export const MODEL_GAMBAR = [
-  'gemini-3-pro-image-preview',
+/**
+ * Model gambar HEMAT — dan ini yang dipakai kalau tidak ada yang memilih.
+ *
+ * Ditulis terpisah dari jalur Pro karena satu kejadian yang mahal. Pada 16
+ * Agustus 2026, `gemini-3-pro-image-preview` disisipkan ke DEPAN satu-satunya
+ * daftar gambar yang ada. Sejak itu setiap render masterplan, setiap render
+ * dari CAD, dan setiap ketukan "Rapikan foto" di Marcom memakai model termahal
+ * di keluarga Gemini — tanpa seorang pun memutuskannya, dan tanpa satu baris
+ * pun di layar yang menyebutkannya. Tagihan hari itu melonjak ke Rp 530 ribu.
+ *
+ * Daftar model TEKS di atas sudah lama menolak hal yang sama, dengan alasan
+ * yang berlaku persis sama di sini: kenaikan biaya adalah keputusan pemilik
+ * tagihan, bukan efek samping dari sebuah daftar. Yang kurang dulu hanyalah
+ * menerapkannya pada gambar — padahal justru di gambar selisihnya berlipat,
+ * bukan berpersen.
+ */
+export const MODEL_GAMBAR_HEMAT = [
   'gemini-2.5-flash-image',
   'gemini-2.0-flash-preview-image-generation',
 ] as const
+
+/**
+ * Model gambar MUTU TINGGI — hanya dipakai bila dipilih dengan sadar.
+ *
+ * Hasilnya memang lebih baik, dan untuk render presentasi ke pemilik proyek
+ * itu bisa sepadan. Yang tidak sepadan adalah membayarnya tanpa tahu: karena
+ * itu ia hanya bisa dicapai lewat pilihan di layar yang menyebutkan
+ * perkiraan harganya lebih dulu (lihat lib/mutuGambar.ts).
+ *
+ * Jalur hematnya tetap disambung di belakang sebagai cadangan: bila model Pro
+ * belum tersedia pada kunci yang terpasang, rendernya tetap jadi.
+ */
+export const MODEL_GAMBAR_TINGGI = [
+  'gemini-3-pro-image-preview',
+  ...MODEL_GAMBAR_HEMAT,
+] as const
+
+/** Urutan keinginan bawaan untuk model yang MENGHASILKAN gambar. */
+export const MODEL_GAMBAR = MODEL_GAMBAR_HEMAT
 
 // Pemeriksaan bentuk kunci dulu ada di sini, dipakai kotak "uji kunci lain"
 // di halaman admin. Keduanya hilang bersama kuncinya: sejak kunci pindah ke

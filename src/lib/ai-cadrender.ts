@@ -7,7 +7,8 @@
 
 import { susunPromptRender, judulRender, type KonteksRender } from './promptRender'
 import { catatGambar } from '../store/usageStore'
-import { MODEL_TEKS, MODEL_GAMBAR } from './modelAi'
+import { MODEL_TEKS } from './modelAi'
+import { modelUntukMutu, MUTU_BAWAAN, type MutuGambar } from './mutuGambar'
 import { mulaiSesiAi } from './gemini'
 
 export interface CadQuestion {
@@ -38,7 +39,14 @@ export interface CadRenderedView {
 }
 
 const GEMINI_TEXT_MODELS = MODEL_TEKS
-const GEMINI_IMAGE_MODELS = MODEL_GAMBAR
+
+/**
+ * Daftar model gambar untuk mutu yang dipilih. Yang tidak memilih mendapat
+ * jalur HEMAT — kebalikan dari keadaan sebelumnya, ketika satu-satunya daftar
+ * yang ada dimulai dari model termahal dan tak seorang pun memutuskannya.
+ */
+const modelGambar = (mutu?: MutuGambar): readonly string[] =>
+  modelUntukMutu(mutu ?? MUTU_BAWAAN)
 
 type Part = { text: string } | { inline_data: { mime_type: string; data: string } }
 
@@ -159,7 +167,7 @@ export async function renderCadViews(
   answers: Record<string, string | number>,
   angles: CadAngle[],
   onProgress?: (done: number, total: number, label: string) => void,
-  opts?: { styleOverride?: string },
+  opts?: { styleOverride?: string; mutu?: MutuGambar },
 ): Promise<CadRenderedView[]> {
   const mock = (window as {
     __aiCadRenderMock?: (angles: CadAngle[], opts?: { styleOverride?: string }) => Promise<CadRenderedView[]>
@@ -203,7 +211,7 @@ ${CAD_ANGLE_PROMPTS[angle]}
 - Fotorealistis kualitas presentasi developer properti, rasio 16:9 landscape.`
     const parts: Part[] = [{ text: prompt }, dataUrlToPart(planDataUrl)]
     if (hasRef) parts.push(dataUrlToPart(views[0].dataUrl))
-    const { image } = await callGemini(GEMINI_IMAGE_MODELS, parts, true)
+    const { image } = await callGemini(modelGambar(opts?.mutu), parts, true)
     if (!image) throw new Error('Model tidak mengembalikan gambar.')
     views.push({ angle, label: CAD_ANGLE_LABELS[angle], dataUrl: image })
     onProgress?.(i + 1, angles.length, CAD_ANGLE_LABELS[angle])
@@ -229,7 +237,7 @@ export interface HasilRenderPrompt {
 export async function renderDariPrompt(
   planDataUrl: string,
   pesan: string,
-  konteks: KonteksRender & { acuanDataUrl?: string | null } = {},
+  konteks: KonteksRender & { acuanDataUrl?: string | null; mutu?: MutuGambar } = {},
 ): Promise<HasilRenderPrompt> {
   const mock = (window as {
     __aiPromptRenderMock?: (pesan: string) => Promise<HasilRenderPrompt>
@@ -241,7 +249,7 @@ export async function renderDariPrompt(
   const parts: Part[] = [{ text: prompt }, dataUrlToPart(planDataUrl)]
   if (acuan) parts.push(dataUrlToPart(acuan))
 
-  const { image } = await callGemini(GEMINI_IMAGE_MODELS, parts, true)
+  const { image } = await callGemini(modelGambar(konteks.mutu), parts, true)
   if (!image) throw new Error('Model tidak mengembalikan gambar. Coba ulangi dengan kalimat yang lebih sederhana.')
   return { dataUrl: image, judul: judulRender(pesan) }
 }

@@ -20,6 +20,8 @@ import {
   renderMasterplanViews, RENDER_STYLE_LABELS, RENDER_ANGLE_LABELS,
   type RenderAngle, type RenderStyle, type RenderTime, type RenderedView,
 } from '@/lib/ai-render.ts'
+import PilihMutuRender from '@/components/siteplan/PilihMutuRender'
+import { MUTU_BAWAAN, type MutuGambar } from '@/lib/mutuGambar'
 
 interface Props {
   result: SiteplanResult | null
@@ -47,6 +49,10 @@ export default function RenderMasterplanDialog({ result, initialFloors, sketchDa
     }
   }, [initialFloors])
   const [angles, setAngles] = useState<RenderAngle[]>(['depan', 'sudut'])
+  // Mulai dari mutu HEMAT. Yang mahal harus dipilih, bukan didapat karena
+  // tidak memilih — itu yang terjadi sebelumnya, dan tagihannya Rp 530 ribu
+  // dalam satu hari tanpa satu baris pun di layar yang menyebutkannya.
+  const [mutu, setMutu] = useState<MutuGambar>(MUTU_BAWAAN)
   const [rendering, setRendering] = useState(false)
   const [progress, setProgress] = useState(0)
   const [status, setStatus] = useState('')
@@ -71,7 +77,7 @@ export default function RenderMasterplanDialog({ result, initialFloors, sketchDa
       const ordered = ALL_ANGLES.filter(a => angles.includes(a))
       const res = await renderMasterplanViews(
         result,
-        { style, timeOfDay, floors: { rumah: floorRumah, ruko: floorRuko, tower: floorTower }, angles: ordered, sketchDataUrl },
+        { style, timeOfDay, floors: { rumah: floorRumah, ruko: floorRuko, tower: floorTower }, angles: ordered, sketchDataUrl, mutu },
         (done, total, label) => {
           setProgress(Math.max(4, (done / total) * 100))
           setStatus(done < total ? `Me-render ${label}… (${done + 1}/${total})` : 'Selesai')
@@ -179,6 +185,17 @@ export default function RenderMasterplanDialog({ result, initialFloors, sketchDa
               ✓ Draft coretan Anda dipakai sebagai referensi zonasi render.
             </p>
           )}
+
+          {/* Harga diletakkan TEPAT di atas tombolnya. Ditaruh di bagian lain
+              dialog, ia menjadi keterangan yang dilewati; di sini ia bagian
+              dari keputusan menekan tombol. */}
+          <PilihMutuRender
+            mutu={mutu}
+            onPilih={setMutu}
+            jumlahGambar={angles.length}
+            nonaktif={rendering}
+          />
+
           <Button
             className="w-full h-11 font-bold bg-navy hover:bg-steel"
             disabled={rendering || angles.length === 0}
