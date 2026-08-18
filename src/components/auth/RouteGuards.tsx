@@ -1,10 +1,11 @@
 // ── Auth Route Guards ────────────────────────────────────
+import { useRef } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { sesiTim } from '@/lib/teamApi'
 import { rutaTagihan, RUTA_LANGGANAN } from '@/lib/berandaMasuk'
 import { useRutaMasuk } from '@/hooks/useRutaMasuk'
-import { tujuanAwal } from '@/lib/pintuAwal'
+import { tujuanAwal, tungguSesiPertama } from '@/lib/pintuAwal'
 import { diAndroid } from '@/lib/unduhBerkas'
 import type { AppFeature } from '@/lib/supabase'
 
@@ -82,11 +83,32 @@ export function PrivateRoute({ children }: Props) {
 export function AuthRoute({ children }: Props) {
   const { user, isLoading } = useAuthStore()
   const beranda = useRutaMasuk()
+
+  // Apakah pembacaan sesi yang PERTAMA sudah pernah tuntas.
+  //
+  // Dipakai untuk membedakan dua hal yang sama-sama menyalakan `isLoading`
+  // tapi menuntut perlakuan berlawanan: aplikasi yang baru dinyalakan (boleh
+  // ditahan) versus tombol MASUK yang baru ditekan (haram ditahan — lihat
+  // catatan di bawah). Sekali menyala, tidak pernah padam lagi.
+  const sesiPernahSelesai = useRef(false)
+  if (!isLoading) sesiPernahSelesai.current = true
+
   const urlParams = new URLSearchParams(window.location.search)
   const planParam = urlParams.get('plan')
   // Paket yang dipilih sebelum login tetap ditagihkan lebih dulu; `/home` kini
   // hanya pintu penerbit tagihan, bukan halaman yang menampilkan apa pun.
   const redirectTo = planParam && planParam !== 'free' ? rutaTagihan(planParam) : beranda
+
+  // APK membuka /auth sebagai halaman pertamanya, jadi orang yang sesinya
+  // masih hidup pun mendarat di sini. Tanpa penahanan ini ia melihat form
+  // login sekelebat sebelum dilempar ke berandanya — kedipan yang dibaca
+  // sebagai "aku ter-logout lagi". Hanya pada pemuatan pertama, dan hanya di
+  // dalam APK; keputusannya sendiri ada di lib/pintuAwal.ts.
+  if (tungguSesiPertama({
+    diApk: diAndroid(),
+    memuat: isLoading,
+    pernahSelesai: sesiPernahSelesai.current,
+  })) return <Spinner />
 
   // Do not return null on isLoading here, because it will UNMOUNT AuthPage and destroy its local state
   // AuthPage itself already handles its loading state via the useAuthStore's isLoading flag.

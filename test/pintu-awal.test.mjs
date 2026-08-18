@@ -13,7 +13,7 @@
 // ============================================================
 import {
   tujuanAwal, tampilkanJualan, bolehDaftarDiSini, tautanDaftar, kompakMasuk,
-  RUTA_MASUK,
+  tungguSesiPertama, RUTA_MASUK,
 } from '../src/lib/pintuAwal.ts'
 
 let ok = 0
@@ -88,5 +88,30 @@ assert(tautanDaftar(null) === 'https://propfs.id/auth?tab=register', 'null aman'
 // ── 7. Kerapatan form ─────────────────────────────────────────────────────
 assert(kompakMasuk(true) === true, 'di APK: rapat')
 assert(kompakMasuk(false) === false, 'di web: longgar seperti sebelumnya')
+
+// ── 8. Menahan form masuk saat sesi dipulihkan ────────────────────────────
+//
+// Sejak APK menunjuk langsung ke /auth, halaman pertamanya form login — juga
+// bagi yang sesinya masih hidup. Tanpa penahanan, ia melihat form login
+// sepersekian detik sebelum dilempar ke berandanya, dan kedipan itu dibaca
+// sebagai "aku ter-logout lagi".
+assert(tungguSesiPertama({ diApk: true, memuat: true, pernahSelesai: false }) === true,
+  'APK, pemuatan pertama, sesi belum terbaca: tahan')
+assert(tungguSesiPertama({ diApk: true, memuat: false, pernahSelesai: false }) === false,
+  'sesi sudah terbaca: tampilkan')
+
+// HANYA pemuatan pertama. isLoading juga menyala saat orang menekan MASUK;
+// menahan form di saat itu meng-unmount halamannya dan menghapus email serta
+// password yang sudah diketik — cacat yang sudah pernah ada dan tidak diulang.
+assert(tungguSesiPertama({ diApk: true, memuat: true, pernahSelesai: true }) === false,
+  'sedang menekan MASUK: JANGAN ditahan, ketikannya akan hilang')
+
+// Di peramban tidak ada yang berubah.
+for (const memuat of [true, false]) {
+  for (const pernahSelesai of [true, false]) {
+    assert(tungguSesiPertama({ diApk: false, memuat, pernahSelesai }) === false,
+      `di web tidak pernah ditahan (${memuat}/${pernahSelesai})`)
+  }
+}
 
 console.log(`pintu-awal: ${ok} assert lulus`)

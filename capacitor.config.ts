@@ -62,7 +62,22 @@ const config: CapacitorConfig = {
   webDir: 'android-shell',
 
   server: {
-    url: 'https://propfs.id',
+    // Menunjuk LANGSUNG ke halaman masuk, bukan ke alamat pokok.
+    //
+    // Sebelumnya alamatnya https://propfs.id dan yang memutuskan "tampilkan
+    // login, bukan halaman jualan" adalah JavaScript situsnya (RuteAwal +
+    // diAndroid). Rancangan itu rapuh: ia menuntut DUA hal terjadi bersamaan —
+    // APK dibangun ulang membawa penanda User-Agent, DAN situs sudah di-deploy
+    // dengan kode pembaca penanda itu. Kalau salah satu tertinggal, hasilnya
+    // sama persis seperti tidak diperbaiki sama sekali: halaman jualan.
+    //
+    // Menunjuk ke /auth memindahkan keputusannya dari JavaScript ke ALAMAT.
+    // Halaman pertama APK adalah form login apa pun versi situsnya, dan tidak
+    // ada penyuntikan, deteksi, atau urutan pemuatan yang bisa menggagalkannya.
+    //
+    // Yang sudah login tidak tertahan di sini: AuthRoute — yang sudah lama ada
+    // di situs — langsung melemparnya ke berandanya sendiri.
+    url: 'https://propfs.id/auth',
     androidScheme: 'https',
     cleartext: false,
 

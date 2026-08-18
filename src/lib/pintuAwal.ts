@@ -107,3 +107,27 @@ export function tautanDaftar(origin: string): string {
 export function kompakMasuk(diApk: boolean): boolean {
   return diApk
 }
+
+/**
+ * Apakah form masuk harus DITAHAN dulu sementara sesi dipulihkan.
+ *
+ * Sejak APK menunjuk langsung ke `/auth`, halaman pertamanya adalah form
+ * login — juga bagi orang yang sesinya masih hidup. Tanpa penahanan ini ia
+ * melihat form login sepersekian detik sebelum dilempar ke berandanya, dan
+ * kedipan itu dibaca sebagai "aku ter-logout lagi".
+ *
+ * HANYA pada pemuatan PERTAMA. `isLoading` juga menyala saat orang menekan
+ * MASUK; menahan form di saat itu akan meng-unmount halamannya di tengah
+ * proses dan menghapus email serta password yang sudah diketik — cacat yang
+ * sudah pernah ada di berkas ini dan sengaja tidak diulang.
+ *
+ * Di peramban tidak ada yang berubah: halaman login memang dibuka orang yang
+ * hendak mengetik, bukan oleh aplikasi yang baru dinyalakan.
+ */
+export function tungguSesiPertama(k: {
+  diApk: boolean
+  memuat: boolean
+  pernahSelesai: boolean
+}): boolean {
+  return k.diApk && k.memuat && !k.pernahSelesai
+}
