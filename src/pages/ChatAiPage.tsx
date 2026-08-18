@@ -102,11 +102,17 @@ export default function ChatAiPage() {
   const [dos, setDos] = useState<DeliveryOrder[]>([])
   const [bayar, setBayar] = useState<PoPayment[]>([])
 
-  const akhirRef = useRef<HTMLDivElement>(null)
+  const gulirRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadProjects() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { akhirRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [pesan, sibuk, rencana])
+  // Digeser lewat scrollTop, bukan scrollIntoView: yang terakhir menggulung
+  // setiap leluhur sampai ke dokumen, dan sejak halamannya bertinggi pasti itu
+  // justru bisa menyeret seluruh tata letak.
+  useEffect(() => {
+    const kotak = gulirRef.current
+    if (kotak) kotak.scrollTo({ top: kotak.scrollHeight, behavior: 'smooth' })
+  }, [pesan, sibuk, rencana])
 
   // Proyek terakhir diperbarui dipakai bila belum ada yang terbuka — pemakainya
   // hampir selalu sedang mengurus proyek itu.
@@ -299,7 +305,12 @@ export default function ChatAiPage() {
   }, [realisasiEntries])
 
   return (
-    <div className="min-h-screen bg-slate-100/70 flex flex-col">
+    // Tinggi PASTI — lihat catatan panjang di ChatTimPage. Ringkasnya: dengan
+    // `min-h-screen` kotak percakapan tumbuh sebesar isinya, `overflow-y-auto`
+    // di dalamnya tidak pernah menyala, dan yang bergulung adalah halamannya —
+    // sampai kolom ketik terdorong hilang di ujung riwayat.
+    <div className="tinggi-ruang bg-slate-100/70 flex flex-col overflow-hidden">
+      <div className="shrink-0">
       <KontraktorHeader
         judul="Chat AI"
         subjudul={projectInfo
@@ -319,9 +330,12 @@ export default function ChatAiPage() {
           </select>
         ) : undefined}
       />
+      </div>
 
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 -mt-2 pb-4 flex flex-col">
-        <div className="flex-1 bg-white rounded-2xl border border-border flex flex-col overflow-hidden min-h-[60vh]">
+      {/* min-h-0: tanpa ini, anak flex menolak mengecil di bawah tinggi isinya,
+          dan batas tingginya tidak pernah sampai ke kotak percakapan. */}
+      <div className="flex-1 min-h-0 max-w-3xl w-full mx-auto px-4 -mt-2 pb-4 flex flex-col">
+        <div className="flex-1 min-h-0 bg-white rounded-2xl border border-border flex flex-col overflow-hidden">
 
           {urut.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
@@ -336,8 +350,8 @@ export default function ChatAiPage() {
             </div>
           ) : (
             <>
-              {/* ── Percakapan ─────────────────────────────────────────── */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* ── Percakapan — satu-satunya yang bergulung ───────────── */}
+              <div ref={gulirRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-3">
                 {pesan.map(m => (
                   <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {/* Gelembung yang memuat tabel diberi lebar penuh:
@@ -397,10 +411,10 @@ export default function ChatAiPage() {
                     </span>
                   </div>
                 )}
-                <div ref={akhirRef} />
               </div>
 
               {rencana && (
+                <div className="shrink-0 max-h-[45%] overflow-y-auto overscroll-contain">
                 <PanelRencana
                   rencana={rencana}
                   pilihPo={pilihPo} onPilihPo={setPilihPo}
@@ -410,10 +424,11 @@ export default function ChatAiPage() {
                   onCatat={catatSemua}
                   onLewati={() => setRencana(null)}
                 />
+                </div>
               )}
 
-              {/* ── Kotak kirim ────────────────────────────────────────── */}
-              <div className="border-t border-border p-3 space-y-2">
+              {/* ── Kotak kirim — menempel di bawah, tidak ikut bergulung ─ */}
+              <div className="shrink-0 border-t border-border p-3 space-y-2">
                 {lampiran.length > 0 && (
                   <div className="flex gap-2 flex-wrap">
                     {lampiran.map((f, i) => (
@@ -483,7 +498,7 @@ export default function ChatAiPage() {
           )}
         </div>
 
-        <p className="mt-3 text-center text-[10px] text-muted-foreground flex items-center justify-center gap-1">
+        <p className="shrink-0 mt-3 text-center text-[10px] text-muted-foreground flex items-center justify-center gap-1">
           <Sparkles className="w-3 h-3" />
           Realisasi Biaya · Akuntan · Procurement — satu masukan, semua modul
         </p>

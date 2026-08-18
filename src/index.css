@@ -154,6 +154,41 @@
 }
 
 @layer utilities {
+  /* ──────────────────────────────────────────────────────────────────────
+     .tinggi-ruang — tinggi satu layar penuh, dikurangi navigasi bawah.
+
+     Dipakai halaman yang harus berperilaku seperti APLIKASI, bukan seperti
+     dokumen: kepalanya diam, isinya yang bergulung di dalam kotaknya sendiri,
+     dan kolom ketik tetap menempel di bawah. Tanpa tinggi yang PASTI, satu-
+     satunya yang terjadi adalah halamannya memanjang ke bawah — `overflow-y`
+     di dalamnya tidak pernah menyala karena tidak ada yang membatasinya.
+
+     Angka 4rem itu tinggi BottomNav (h-16) beserta pengganjal setinggi sama
+     yang dirender App di bawah <Routes>. Menguranginya di sini membuat jumlah
+     keduanya pas satu layar — bukan satu layar lebih 64px yang bergulung
+     sedikit dan membuat kolom ketik bersembunyi di balik navigasinya.
+
+     dvh, bukan vh: di peramban HP, 100vh mengukur layar SEOLAH bilah alamatnya
+     tersembunyi. Halaman setinggi itu selalu lebih tinggi dari ruang yang
+     benar-benar terlihat, dan yang terpotong adalah bagian bawah — tepat tempat
+     tombol Kirim berada. dvh mengukur yang sungguh terlihat saat itu juga.
+
+     vh tetap ditulis lebih dulu sebagai jaring pengaman untuk peramban lama
+     yang tidak mengenal dvh; tanpa itu, barisnya dibuang dan tingginya kembali
+     mengikuti isi.
+     ────────────────────────────────────────────────────────────────────── */
+  .tinggi-ruang {
+    height: calc(100vh - 4rem);
+    height: calc(100dvh - 4rem - env(safe-area-inset-bottom, 0px));
+  }
+  /* Mulai lg, BottomNav memang tidak dirender — layarnya utuh kembali. */
+  @media (min-width: 1024px) {
+    .tinggi-ruang {
+      height: 100vh;
+      height: 100dvh;
+    }
+  }
+
   /* ── PRINT STYLES ── */
   @media print {
     /* === Page Setup === */
