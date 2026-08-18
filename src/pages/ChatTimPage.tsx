@@ -83,7 +83,7 @@ export default function ChatTimPage() {
     try { return localStorage.getItem(KUNCI_BACA) ?? '' } catch { return '' }
   })
 
-  const akhirRef = useRef<HTMLDivElement>(null)
+  const gulirRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function muat(diam = false) {
@@ -147,7 +147,16 @@ export default function ChatTimPage() {
   // Digulirkan ke bawah setiap aliran berubah — ruang chat yang membuka di
   // tengah riwayat membuat orang mengira pesannya belum terkirim.
   useEffect(() => {
-    if (tab === 'chat') akhirRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (tab !== 'chat') return
+    const kotak = gulirRef.current
+    if (!kotak) return
+    // Digeser lewat scrollTop, bukan scrollIntoView.
+    //
+    // scrollIntoView menggulung SETIAP leluhur yang bisa digulung sampai ke
+    // dokumen — dulu tidak terasa karena memang halamannya yang bergulung,
+    // sekarang ia justru bisa menggeser seluruh tata letak dan menyeret judul
+    // keluar layar. scrollTop hanya menyentuh kotak ini.
+    kotak.scrollTo({ top: kotak.scrollHeight, behavior: 'smooth' })
   }, [aliran.length, tab])
 
   // Ditandai terbaca begitu ruangnya dibuka: pemakainya memang sedang melihatnya.
@@ -277,7 +286,21 @@ export default function ChatTimPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 flex flex-col">
+    // Tinggi PASTI, bukan `min-h-screen`.
+    //
+    // Dengan `min-h-screen`, kotak percakapan boleh tumbuh sebesar isinya —
+    // dan `overflow-y-auto` di dalamnya tidak pernah menyala, karena tidak ada
+    // yang membatasinya. Yang bergulung akhirnya halamannya sendiri: riwayat
+    // memanjang jauh ke bawah, kolom ketik terdorong hilang di ujungnya, dan
+    // judul ikut hanyut ke atas.
+    //
+    // `tinggi-ruang` (lihat index.css) mengunci tingginya ke satu layar dikurangi
+    // navigasi bawah. `overflow-hidden` menutup sisa gerak halamannya, sehingga
+    // satu-satunya yang bisa bergulung adalah daftar pesannya.
+    <div className="tinggi-ruang bg-slate-100/70 flex flex-col overflow-hidden">
+      {/* shrink-0: di kolom flex bertinggi pasti, anak yang tidak dikunci akan
+          diperas saat isinya penuh — dan yang pertama hilang adalah subjudulnya. */}
+      <div className="shrink-0">
       <KontraktorHeader
         judul="Chat Tim"
         subjudul={`${ringkasChat(semua)}${baru > 0 ? ` · ${baru} baru` : ''}`}
@@ -300,9 +323,13 @@ export default function ChatTimPage() {
           </div>
         }
       />
+      </div>
 
-      <div className="flex-1 max-w-3xl w-full mx-auto px-4 -mt-2 pb-4 flex flex-col">
-        <div className="flex gap-1.5 mb-2">
+      {/* min-h-0: tanpa ini, anak flex menolak mengecil di bawah tinggi isinya —
+          batas tingginya tidak pernah sampai ke kotak percakapan, dan gulungan
+          di dalamnya tidak menyala sama sekali. */}
+      <div className="flex-1 min-h-0 max-w-3xl w-full mx-auto px-4 -mt-2 pb-4 flex flex-col">
+        <div className="flex gap-1.5 mb-2 shrink-0">
           {([['chat', 'Percakapan', MessageSquare], ['kpi', 'Keaktifan Tim', BarChart3]] as const).map(([k, l, I]) => (
             <button key={k} onClick={() => setTab(k)}
               className={`flex-1 h-9 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
@@ -320,8 +347,9 @@ export default function ChatTimPage() {
         )}
 
         {tab === 'chat' ? (
-          <div className="flex-1 bg-white rounded-2xl border border-border flex flex-col overflow-hidden min-h-[58vh]">
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50/60">
+          <div className="flex-1 min-h-0 bg-white rounded-2xl border border-border flex flex-col overflow-hidden">
+            {/* Inilah satu-satunya yang bergulung di halaman ini. */}
+            <div ref={gulirRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 space-y-2 bg-slate-50/60">
               {memuat && aliran.length === 0 && (
                 <div className="py-10 flex items-center justify-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="w-4 h-4 animate-spin" /> Memuat percakapan…
@@ -344,10 +372,9 @@ export default function ChatTimPage() {
                   {k.baris.map(barisChat)}
                 </div>
               ))}
-              <div ref={akhirRef} />
             </div>
 
-            <div className="border-t border-border p-3 space-y-2">
+            <div className="shrink-0 border-t border-border p-3 space-y-2">
               {foto.length > 0 && (
                 <div className="flex gap-2 flex-wrap">
                   {foto.map((f, i) => (
@@ -386,7 +413,10 @@ export default function ChatTimPage() {
           </div>
         ) : (
           /* ── Keaktifan tim ─────────────────────────────────────────────── */
-          <div className="flex-1 space-y-3">
+          /* Isinya laporan panjang. Karena halamannya kini tidak bergulung,
+             panel ini harus mengurus gulungannya sendiri — kalau tidak,
+             baris terbawah tabelnya tidak akan pernah bisa dicapai. */
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3 pr-0.5">
             <div className="rounded-2xl bg-white border border-border p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-bold text-navy text-sm flex items-center gap-1.5">
