@@ -21,9 +21,10 @@ import type { CapacitorConfig } from '@capacitor/cli'
 // itu tidak perlu disentuh sama sekali, dan pembaruan situs langsung sampai
 // ke APK tanpa merilis ulang.
 //
-// HARGANYA, dan ini disengaja: APK ini WAJIB online. Tanpa internet ia
-// menampilkan halaman kosong. Untuk aplikasi yang seluruh datanya memang ada
-// di Supabase, itu pertukaran yang jujur.
+// HARGANYA, dan ini disengaja: APK ini WAJIB online. Untuk aplikasi yang
+// seluruh datanya memang ada di Supabase, itu pertukaran yang jujur — dan
+// ketika jaringannya mati, yang tampil adalah android-shell/gagal.html
+// (lihat server.errorPath), bukan halaman galat mentah Chrome.
 // ============================================================
 
 /**
@@ -64,11 +65,29 @@ const config: CapacitorConfig = {
     url: 'https://propfs.id',
     androidScheme: 'https',
     cleartext: false,
+
+    // Halaman yang ditampilkan bila situsnya TIDAK TERJANGKAU.
+    //
+    // Tanpanya, HP yang sedang tidak punya DNS menampilkan halaman Chrome
+    // mentah: "Halaman web tidak tersedia — net::ERR_NAME_NOT_RESOLVED".
+    // Pengawas yang membacanya menyimpulkan APLIKASINYA rusak lalu menelepon
+    // kantor, padahal yang perlu dilakukannya hanya menyalakan data.
+    //
+    // Dimuat dari server LOKAL di dalam APK (Bridge.getErrorUrl menyusunnya
+    // sebagai scheme://host/<errorPath>), jadi ia tetap tampil justru ketika
+    // internetnya mati — dan karena itu isinya wajib berdiri sendiri, tanpa
+    // satu pun permintaan jaringan.
+    errorPath: 'gagal.html',
     // Yang boleh dibuka DI DALAM aplikasi. Yang di luar daftar ini dilempar
     // ke peramban atau aplikasi lain — dan itu memang yang diinginkan untuk
     // wa.me dan mailto:, supaya WhatsApp yang membukanya, bukan WebView.
     allowNavigation: [
       'propfs.id',
+      // www ikut didaftarkan: apex dan www melayani aplikasi yang sama, dan
+      // salah satunya bisa mengalihkan ke yang lain. Alamat yang tidak
+      // terdaftar akan dilempar ke peramban luar — aplikasinya "keluar
+      // sendiri" hanya karena satu pengalihan.
+      'www.propfs.id',
       '*.propfs.id',
       '*.supabase.co',
     ],
@@ -79,8 +98,9 @@ const config: CapacitorConfig = {
     // blok platform, dan penanda yang hilang berarti aplikasinya kembali
     // menyangka dirinya peramban.
     appendUserAgent: PENANDA_APK,
-    // Menampilkan halaman galat bawaan Android bila situsnya tidak terjangkau,
-    // bukan layar putih tanpa keterangan.
+    // Inspeksi WebView dari komputer, dimatikan untuk APK yang dibagikan.
+    // (Halaman saat situsnya tidak terjangkau diatur server.errorPath di atas,
+    // bukan di sini — komentar lama di baris ini keliru menyebutnya.)
     webContentsDebuggingEnabled: false,
   },
 
