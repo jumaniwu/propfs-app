@@ -189,20 +189,52 @@ assert(!perluApprovalUlang(600000, 600000.4), 'beda pecahan rupiah bukan kenaika
     'spasi berlebih dirapikan')
 }
 
-// ── 9. Alamat boleh kosong, tetapi tidak boleh separuh ─────────────────────
+// ── 9. Alamat: WAJIB untuk PO proyek, longgar untuk alat & kantor ─────────
 //
-// PO alat kecil yang diambil sendiri ke toko tidak punya alamat pengiriman.
-// Memaksanya diisi hanya melahirkan alamat karangan.
-assert(siapAlamatKirim(ALAMAT_KOSONG).boleh, 'alamat kosong SAH')
-assert(siapAlamatKirim(null).boleh, 'null aman')
-assert(siapAlamatKirim({ ...ALAMAT_KOSONG, alamat: 'Jl. A' }).boleh, 'alamat saja boleh')
+// Aturannya dibedakan menurut jenis PO, dan pembedaan itu yang penting.
+//
+// PO PROYEK diantar ke lokasi. Alamat kosong di sini tidak berhenti sebagai
+// kolom kosong: blok "DIKIRIM KE" hanya digambar bila ada isinya, jadi PO-nya
+// TERCETAK tanpa tujuan antar sama sekali — dan yang menanggungnya sopir yang
+// membongkar satu truk material di proyek yang salah.
+//
+// PO ALAT & KANTOR sering diambil sendiri ke toko. Memaksa alamat diisi di
+// situ hanya melahirkan alamat karangan, yang lebih buruk daripada kosong
+// karena terbaca seperti alamat sungguhan.
 {
-  const namaSaja = siapAlamatKirim({ ...ALAMAT_KOSONG, nama: 'Indra' })
+  // — PO proyek —
+  const kosongProyek = siapAlamatKirim(ALAMAT_KOSONG, 'proyek')
+  assert(!kosongProyek.boleh, 'PO proyek TIDAK BOLEH tanpa alamat')
+  assert(/alamat pengiriman/i.test(kosongProyek.alasan), 'alasannya menyebut alamat')
+  assert(/tercetak tanpa tujuan antar/i.test(kosongProyek.alasan),
+    'dan menyebut AKIBATNYA, bukan sekadar "wajib diisi"')
+
+  const tanpaNama = siapAlamatKirim({ ...ALAMAT_KOSONG, alamat: 'Jl. A' }, 'proyek')
+  assert(!tanpaNama.boleh && /nama penerima/i.test(tanpaNama.alasan), 'nama penerima wajib')
+
+  const tanpaWa = siapAlamatKirim({ ...ALAMAT_KOSONG, alamat: 'Jl. A', nama: 'Indra' }, 'proyek')
+  assert(!tanpaWa.boleh && /nomor HP/i.test(tanpaWa.alasan), 'nomor HP wajib')
+
+  const lengkap = siapAlamatKirim({ alamat: 'Jl. A', nama: 'Indra', wa: '0812', catatan: '' }, 'proyek')
+  assert(lengkap.boleh, 'lengkap: boleh')
+
+  // — PO alat & kantor —
+  assert(siapAlamatKirim(ALAMAT_KOSONG, 'alat').boleh, 'PO alat: kosong SAH')
+  assert(siapAlamatKirim(ALAMAT_KOSONG, 'kantor').boleh, 'PO kantor: kosong SAH')
+  assert(siapAlamatKirim(null, 'alat').boleh, 'null aman')
+  assert(siapAlamatKirim({ ...ALAMAT_KOSONG, alamat: 'Jl. A' }, 'alat').boleh, 'alamat saja boleh')
+
+  // Bawaan tanpa jenis TIDAK BOLEH mendadak mewajibkan apa pun: pemanggil
+  // lama yang belum menyebut jenisnya harus tetap berperilaku seperti dulu.
+  assert(siapAlamatKirim(ALAMAT_KOSONG).boleh, 'tanpa jenis: tetap longgar seperti sebelumnya')
+
+  const namaSaja = siapAlamatKirim({ ...ALAMAT_KOSONG, nama: 'Indra' }, 'alat')
   assert(!namaSaja.boleh && namaSaja.alasan.includes('nomor HP'),
     'nama tanpa nomor tidak menolong sopir yang tersesat di gerbang')
-  const waSaja = siapAlamatKirim({ ...ALAMAT_KOSONG, wa: '0812' })
+  const waSaja = siapAlamatKirim({ ...ALAMAT_KOSONG, wa: '0812' }, 'alat')
   assert(!waSaja.boleh && waSaja.alasan.includes('nama'), 'nomor tanpa nama ditolak')
-  assert(siapAlamatKirim({ nama: 'Indra', wa: '0812', alamat: '', catatan: '' }).boleh, 'keduanya ada')
+  assert(siapAlamatKirim({ nama: 'Indra', wa: '0812', alamat: '', catatan: '' }, 'alat').boleh,
+    'keduanya ada')
 }
 assert(rapikanWa('  0812-3456-7890  (Pak Indra) ') === '0812-3456-7890 (Pak Indra)',
   'nomor tetap berguna bagi manusia yang membacanya, tidak divalidasi keras')

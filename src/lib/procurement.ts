@@ -115,8 +115,22 @@ export interface PoItem {
   /** Material Request sumbernya; kosong bila barang ditambah manual. */
   request_id?: string | null
   nama: string
+  /** Satuan yang DIPESAN ke vendor. Boleh berbeda dari satuan permintaan. */
   satuan: string
+  /** Jumlah dalam satuan pesan. Ini yang dicetak di PO dan dikalikan harga. */
   qty: number
+  /**
+   * Berapa banyak permintaan yang ditutup baris ini, DALAM SATUAN PERMINTAAN.
+   *
+   * Hanya ada bila satuannya memang berbeda — lapangan minta 49 Batang,
+   * pembelian dilakukan 2 Ton. Tanpa medan ini, angka 2 dikurangkan dari 49
+   * dan permintaan yang sudah dipenuhi penuh tampak terbengkalai selamanya di
+   * panel "Menunggu Dipesan".
+   *
+   * Ketiadaannya berarti "pakai qty" — itulah kenapa ia tidak ditulis ketika
+   * satuannya sama, dan itulah yang membuat seluruh PO lama tetap benar.
+   */
+  penuhi?: number
   harga: number
   subtotal: number
 }
