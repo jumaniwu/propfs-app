@@ -46,6 +46,7 @@ const SEMUA = '__semua__'
 const IKON: Record<JenisNotifikasi, typeof HardHat> = {
   laporan: HardHat, pakai: PackageOpen, request: ShoppingCart,
   terima: Truck, ttd: FileSignature, opname: ClipboardList, invoice: ReceiptText,
+  chat: MessageSquare,
 }
 const WARNA: Record<JenisNotifikasi, string> = {
   laporan: 'bg-amber-100 text-amber-700',
@@ -55,6 +56,7 @@ const WARNA: Record<JenisNotifikasi, string> = {
   ttd: 'bg-violet-100 text-violet-700',
   opname: 'bg-slate-100 text-slate-700',
   invoice: 'bg-sky-100 text-sky-700',
+  chat: 'bg-navy/10 text-navy',
 }
 
 const jam = (iso: string) => {

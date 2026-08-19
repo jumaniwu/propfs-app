@@ -159,7 +159,12 @@ assert(ringkasNotifikasi([]) === 'belum ada kabar', 'daftar kosong berbunyi waja
 assert(susunNotifikasi({ invoice: [] }).length === 0, 'daftar invoice kosong aman')
 
 // ── Label & masukan kosong ─────────────────────────────────────────────────
-assert(Object.keys(LABEL_JENIS).length === 7, 'tujuh jenis kabar')
+// Delapan sejak pesan Chat Tim ikut menjadi kabar. Angkanya dijaga bukan
+// karena delapan itu penting, melainkan supaya jenis baru berikutnya memaksa
+// seseorang memeriksa apakah ikon, warna, dan tabel KPI-nya sudah ikut diurus —
+// tiga tempat yang mudah terlewat.
+assert(Object.keys(LABEL_JENIS).length === 8, 'delapan jenis kabar, termasuk Pesan Tim')
+assert(LABEL_JENIS.chat === 'Pesan Tim', 'pesan tim punya labelnya sendiri')
 assert(susunNotifikasi().length === 0, 'tanpa sumber, tidak ada kabar')
 assert(susunNotifikasi({}).length === 0, 'sumber kosong aman')
 
