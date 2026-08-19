@@ -38,7 +38,7 @@ export interface SkorKpi {
   /** Pesan yang ia tulis di Chat Tim. */
   pesan: number
   /** Kejadian sistem yang tercatat atas namanya, dipilah per jenis. */
-  kegiatan: Record<JenisNotifikasi, number>
+  kegiatan: Record<JenisKegiatan, number>
   /** Jumlah seluruh kejadian sistem atas namanya. */
   totalKegiatan: number
   /** Hari berbeda yang padanya ia meninggalkan jejak apa pun. */
@@ -61,9 +61,25 @@ export interface HasilKpi {
   sejak: string
 }
 
-const JENIS: JenisNotifikasi[] = ['laporan', 'pakai', 'request', 'terima', 'ttd', 'opname', 'invoice']
+/**
+ * Jenis kejadian yang dihitung sebagai KEGIATAN — dan `chat` sengaja bukan
+ * salah satunya.
+ *
+ * Pesan tim sudah dihitung tersendiri sebagai kolom "Pesan". Memasukkannya
+ * lagi ke sini berarti satu pesan terhitung dua kali, dan angka KPI yang
+ * menggelembung karena orangnya banyak mengobrol adalah persis kebalikan dari
+ * apa yang hendak diukur tabel ini.
+ *
+ * Dinyatakan sebagai tipe, bukan sekadar dikeluarkan dari daftar: dengan
+ * begitu jenis notifikasi baru berikutnya akan memaksa keputusan yang sama
+ * diambil sadar, lewat galat kompilasi, bukan lewat tabel yang diam-diam
+ * salah hitung.
+ */
+export type JenisKegiatan = Exclude<JenisNotifikasi, 'chat'>
 
-function kegiatanKosong(): Record<JenisNotifikasi, number> {
+const JENIS: JenisKegiatan[] = ['laporan', 'pakai', 'request', 'terima', 'ttd', 'opname', 'invoice']
+
+function kegiatanKosong(): Record<JenisKegiatan, number> {
   return { laporan: 0, pakai: 0, request: 0, terima: 0, ttd: 0, opname: 0, invoice: 0 }
 }
 
@@ -148,6 +164,9 @@ export function nilaiKpi(
     const k = kunciAnggota(a)
     const s = skor.get(k)
     if (!s) continue
+    // Pesan tim sudah dihitung sebagai kolom "Pesan" tersendiri; menghitungnya
+    // lagi di sini berarti satu pesan masuk dua kali.
+    if (b.kategori === 'chat') continue
     s.kegiatan[b.kategori] = (s.kegiatan[b.kategori] ?? 0) + 1
     s.totalKegiatan++
     if (waktu > s.terakhir) s.terakhir = waktu
@@ -173,7 +192,7 @@ export function nilaiKpi(
 }
 
 /** Label pendek jenis kegiatan untuk kolom tabel KPI. */
-export const LABEL_KEGIATAN: Record<JenisNotifikasi, string> = {
+export const LABEL_KEGIATAN: Record<JenisKegiatan, string> = {
   laporan: 'Laporan', pakai: 'Pakai bahan', request: 'Request',
   terima: 'Terima barang', ttd: 'Tanda tangan', opname: 'Opname',
   invoice: 'Tagihan',

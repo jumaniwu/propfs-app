@@ -29,6 +29,7 @@ export type JenisNotifikasi =
   | 'ttd'          // dokumen ditandatangani pihak kedua
   | 'opname'       // form opname diisi petugas
   | 'invoice'      // vendor mengirim tagihan lewat tautannya — perlu diperiksa
+  | 'chat'         // pesan baru dari anggota tim di Chat Tim
 
 export const LABEL_JENIS: Record<JenisNotifikasi, string> = {
   laporan: 'Laporan Harian',
@@ -38,6 +39,7 @@ export const LABEL_JENIS: Record<JenisNotifikasi, string> = {
   ttd: 'Tanda Tangan',
   opname: 'Opname',
   invoice: 'Tagihan Vendor',
+  chat: 'Pesan Tim',
 }
 
 /** Jenis yang menunggu tindakan manusia, bukan sekadar kabar. */
@@ -84,6 +86,19 @@ export interface SumberNotifikasi {
   invoice?: Array<{ id?: string; po_nomor?: string; vendor_nama?: string; nomor_invoice?: string
                     total?: number; status?: string; dikirim_oleh?: string
                     created_at?: string; project_name?: string }>
+  chat?: Array<{ id?: string; penulis_id?: string | null; penulis_nama?: string
+                 teks?: string; foto?: string[] | null
+                 created_at?: string; project_name?: string }>
+  /**
+   * Id pemakai yang sedang melihat. Dipakai MEMBUANG pesannya sendiri dari
+   * daftar kabar.
+   *
+   * Tanpa ini, mengirim satu pesan ke tim langsung menyalakan lencana di
+   * lonceng sendiri — dan lencana yang menyala karena perbuatan sendiri
+   * mengajari orang untuk mengabaikan lencana. Sekali kebiasaan itu terbentuk,
+   * kabar yang benar-benar penting ikut terabaikan.
+   */
+  sayaId?: string
 }
 
 const teks = (v: unknown) => String(v ?? '').trim()
@@ -210,6 +225,33 @@ export function susunNotifikasi(sumber: SumberNotifikasi = {}): Notifikasi[] {
       ].filter(Boolean).join(' · ') || 'Tagihan baru masuk.',
       tautan: '/kontraktor/procurement', proyek: teks(v.project_name) || undefined,
       oleh: teks(v.dikirim_oleh) || undefined,
+    })
+  }
+
+  // ── Pesan tim ──
+  //
+  // Pesan SENDIRI dibuang. Lencana yang menyala karena perbuatan sendiri
+  // mengajari orang untuk mengabaikan lencana, dan sekali kebiasaan itu
+  // terbentuk, kabar yang benar-benar penting ikut terabaikan.
+  const sayaId = teks(sumber.sayaId)
+  for (const c of sumber.chat ?? []) {
+    const waktu = teks(c.created_at)
+    if (!waktu) continue
+    if (sayaId && teks(c.penulis_id) === sayaId) continue
+
+    const isi = teks(c.teks)
+    const foto = Array.isArray(c.foto) ? c.foto.length : 0
+    hasil.push({
+      id: `chat:${teks(c.id) || waktu}`, jenis: 'chat', waktu,
+      judul: `Pesan dari ${teks(c.penulis_nama) || 'anggota tim'}`,
+      // Foto tanpa teks tetap harus berbunyi sesuatu — "(kosong)" membuat
+      // orang membuka aplikasinya hanya untuk mengetahui bahwa memang ada
+      // isinya.
+      rincian: isi || (foto > 0 ? `Mengirim ${foto} foto` : 'Pesan baru'),
+      tautan: '/kontraktor/tim-chat', proyek: teks(c.project_name) || undefined,
+      oleh: teks(c.penulis_nama) || undefined,
+      // Pesan bukan pekerjaan yang menunggu persetujuan; ia kabar. Menandainya
+      // "menunggu" akan membuat daftar tugas penuh oleh percakapan.
     })
   }
 
