@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Store, Package, ShoppingCart, Loader2, RefreshCw, Trash2, Plus, Copy,
   Send, Check, X, Link2, PenLine, Download, FileText, Search, AlertTriangle,
-  ReceiptIcon, Truck, ReceiptText,
+  ReceiptIcon, Truck, ReceiptText, MapPin,
 } from 'lucide-react'
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
 import { useSearchParams } from 'react-router-dom'
@@ -22,8 +22,12 @@ import KontraktorHeader from '@/components/cost/KontraktorHeader'
 import DaftarBulanan from '@/components/cost/DaftarBulanan'
 import {
   alamatKirimAwal, siapAlamatKirim, alamatBerbedaDariProyek,
-  nomorPoTampil, poDirevisi, ALAMAT_KOSONG, type AlamatKirim,
+  nomorPoTampil, poDirevisi, adaAlamatKirim, ALAMAT_KOSONG, type AlamatKirim,
 } from '@/lib/revisiPo'
+import {
+  SATUAN_UMUM, satuanDiubah, penuhiBawaan, penuhiBerlaku, siapBarisPesan,
+  ringkasPesan, jumlah as jml,
+} from '@/lib/satuanPo'
 import { getBrandingCache } from '@/lib/branding'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
@@ -939,9 +943,14 @@ function TabPo({
 interface BarisPilih {
   request_id: string
   nama: string
+  /** Satuan pada permintaan lapangan. Tidak pernah berubah — ini acuannya. */
   satuan: string
+  /** Satuan yang dipesan ke vendor. Boleh berbeda: minta Batang, beli Ton. */
+  satuanPesan: string
   sisa: number
   qty: number
+  /** Berapa banyak permintaan yang ditutup baris ini, dalam satuan request. */
+  penuhi: number
   harga: number
   pilih: boolean
 }
@@ -987,8 +996,8 @@ function FormPo({
   const [kirim, setKirim] = useState(false)
   const [jenis, setJenis] = useState<JenisPo>('proyek')
   const [baris, setBaris] = useState<BarisPilih[]>(() => requests.map(r => ({
-    request_id: r.id, nama: r.nama, satuan: r.satuan,
-    sisa: sisaQty(r), qty: sisaQty(r), harga: 0, pilih: false,
+    request_id: r.id, nama: r.nama, satuan: r.satuan, satuanPesan: r.satuan,
+    sisa: sisaQty(r), qty: sisaQty(r), penuhi: sisaQty(r), harga: 0, pilih: false,
   })))
   const [manual, setManual] = useState<BarisManual[]>([{ ...BARIS_MANUAL_KOSONG }])
 
@@ -1030,7 +1039,22 @@ function FormPo({
   }, [vendorId, items])
 
   const set = (i: number, patch: Partial<BarisPilih>) =>
-    setBaris(list => list.map((b, n) => (n === i ? { ...b, ...patch } : b)))
+    setBaris(list => list.map((b, n) => {
+      if (n !== i) return b
+      const baru = { ...b, ...patch }
+      // Mengubah satuan atau jumlah ikut menyetel ulang berapa permintaan yang
+      // ditutup — SELAMA orangnya belum mengisinya sendiri. Tanpa ini, mengetik
+      // "Ton" meninggalkan angka pemenuhan yang masih memakai logika Batang,
+      // dan yang tersisa di panel lapangan adalah angka yang tidak dimaksudkan
+      // siapa pun.
+      if (patch.penuhi === undefined) {
+        baru.penuhi = penuhiBawaan({
+          satuanRequest: baru.satuan, satuanPesan: baru.satuanPesan,
+          qty: baru.qty, sisa: baru.sisa,
+        })
+      }
+      return baru
+    }))
   const setM = (i: number, patch: Partial<BarisManual>) =>
     setManual(list => list.map((b, n) => (n === i ? { ...b, ...patch } : b)))
 
@@ -1043,10 +1067,23 @@ function FormPo({
       nama: b.nama.trim(), satuan: b.satuan.trim() || 'unit',
       qty: b.qty, harga: b.harga, subtotal: 0,
     }))
-    : dipilih.map(b => ({
-      request_id: b.request_id, nama: b.nama, satuan: b.satuan,
-      qty: b.qty, harga: b.harga, subtotal: 0,
-    }))
+    : dipilih.map(b => {
+      // Satuan yang dicetak di PO adalah satuan PESAN — itu yang bisa
+      // disiapkan dan dihargai vendor. `penuhi` ikut hanya bila satuannya
+      // memang berbeda; lihat lib/satuanPo.ts untuk sebabnya.
+      const inti: PoItem = {
+        request_id: b.request_id, nama: b.nama,
+        satuan: b.satuanPesan.trim() || b.satuan,
+        qty: b.qty, harga: b.harga, subtotal: 0,
+      }
+      if (!satuanDiubah({ satuanRequest: b.satuan, satuanPesan: b.satuanPesan, qty: b.qty, sisa: b.sisa })) {
+        return inti
+      }
+      return { ...inti, penuhi: penuhiBerlaku({
+        satuanRequest: b.satuan, satuanPesan: b.satuanPesan,
+        qty: b.qty, penuhi: b.penuhi, sisa: b.sisa,
+      }) }
+    })
   ), [nonProyek, manual, dipilih])
 
   // Bawaan alamat kirim, mengikuti jenis PO: proyek → alamat proyek,
@@ -1067,7 +1104,7 @@ function FormPo({
     setAlamatDisentuh(true)
     setKirim2(a => ({ ...a, ...patch }))
   }
-  const periksaAlamat = useMemo(() => siapAlamatKirim(kirim2), [kirim2])
+  const periksaAlamat = useMemo(() => siapAlamatKirim(kirim2, jenis), [kirim2, jenis])
   const alamatBeda = !nonProyek
     && alamatBerbedaDariProyek(kirim2.alamat, lokasiProyek)
 
@@ -1088,19 +1125,32 @@ function FormPo({
       }
     } else {
       if (dipilih.length === 0) { toast({ title: 'Pilih minimal satu barang', variant: 'destructive' }); return }
-      const lewat = dipilih.find(b => b.qty > b.sisa)
-      if (lewat) {
+      // Diperiksa pada PEMENUHAN, bukan pada jumlah pesan.
+      //
+      // Versi lama membandingkan `qty > sisa`, yang hanya benar selama kedua
+      // angka memakai satuan yang sama. "2 Ton" untuk permintaan "49 Batang"
+      // lolos begitu saja (2 < 49) sementara "60 Batang" untuk permintaan 49
+      // ditolak — yang dijaga ternyata bukan kelebihan pesan, melainkan
+      // kebetulan bahwa satuannya sama.
+      const salah = dipilih
+        .map(b => ({ b, periksa: siapBarisPesan({
+          satuanRequest: b.satuan, satuanPesan: b.satuanPesan,
+          qty: b.qty, penuhi: b.penuhi, sisa: b.sisa,
+        }) }))
+        .find(x => !x.periksa.boleh)
+      if (salah) {
         toast({
-          title: 'Qty melebihi sisa',
-          description: `${lewat.nama}: sisa yang belum dipesan hanya ${angka(lewat.sisa)} ${lewat.satuan}.`,
+          title: `Periksa ${salah.b.nama}`,
+          description: salah.periksa.alasan,
           variant: 'destructive',
         })
         return
       }
     }
 
-    // Alamat boleh kosong, tetapi tidak boleh separuh: nama tanpa nomor tidak
-    // menolong sopir yang tersesat di depan gerbang.
+    // PO proyek WAJIB punya alamat + nama + nomor penerima; alat & kantor
+    // boleh kosong tetapi tidak boleh separuh. Aturannya ada di
+    // lib/revisiPo.ts — termasuk sebab kenapa keduanya dibedakan.
     if (!periksaAlamat.boleh) {
       toast({ title: 'Alamat pengiriman belum lengkap', description: periksaAlamat.alasan, variant: 'destructive' })
       return
@@ -1241,6 +1291,11 @@ function FormPo({
           </p>
         )}
 
+        {/* Saran satuan, dipakai bersama oleh semua baris. */}
+        <datalist id="satuan-po">
+          {SATUAN_UMUM.map(s => <option key={s} value={s} />)}
+        </datalist>
+
         {!nonProyek && baris.map((b, i) => (
           <div key={b.request_id} className={`rounded-xl border p-3 space-y-2 ${
             b.pilih ? 'border-navy bg-navy/[0.03]' : 'border-border'}`}>
@@ -1251,29 +1306,78 @@ function FormPo({
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-navy truncate">{b.nama}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  belum terpesan {angka(b.sisa)} {b.satuan}
+                  belum terpesan {jml(b.sisa)} {b.satuan}
                 </p>
               </div>
             </label>
-            {b.pilih && (
-              <div className="grid grid-cols-2 gap-2 pl-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-medium text-muted-foreground">Qty dipesan</label>
-                  <input type="number" min={0} max={b.sisa} value={b.qty || ''}
-                    onChange={e => set(i, { qty: Number(e.target.value) || 0 })}
-                    inputMode="decimal" className={inputCls} />
-                  {b.qty > b.sisa && (
-                    <p className="text-[10px] text-rose-600">Melebihi sisa {angka(b.sisa)}.</p>
+            {b.pilih && (() => {
+              const ukur = {
+                satuanRequest: b.satuan, satuanPesan: b.satuanPesan,
+                qty: b.qty, penuhi: b.penuhi, sisa: b.sisa,
+              }
+              const beda = satuanDiubah(ukur)
+              const periksa = siapBarisPesan(ukur)
+              return (
+                <div className="pl-6 space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-medium text-muted-foreground">Qty dipesan</label>
+                      <input type="number" min={0} value={b.qty || ''}
+                        onChange={e => set(i, { qty: Number(e.target.value) || 0 })}
+                        inputMode="decimal" className={inputCls} />
+                    </div>
+                    <div className="space-y-1">
+                      {/* Satuan kini BISA DIKETIK. Lapangan minta Batang;
+                          pembelian terjadi dalam Ton. Daftar saran hanya
+                          saran — satuan lapangan tidak terbatas ("rit",
+                          "colt diesel"), dan memaksanya masuk daftar hanya
+                          membuat orang memilih satuan yang salah supaya
+                          formulirnya mau lanjut. */}
+                      <label className="text-[10px] font-medium text-muted-foreground">Satuan pesan</label>
+                      <input value={b.satuanPesan} list="satuan-po"
+                        onChange={e => set(i, { satuanPesan: e.target.value })}
+                        placeholder={b.satuan} className={inputCls} />
+                    </div>
+                    <div className="space-y-1">
+                      {/* "Harga satuan (Rp)" membungkus jadi dua baris di
+                          layar 390px dan mendorong kotaknya turun sendirian —
+                          tiga kolom yang tidak sejajar terbaca seperti salah
+                          susun. */}
+                      <label className="text-[10px] font-medium text-muted-foreground">Harga (Rp)</label>
+                      <input type="number" min={0} value={b.harga || ''}
+                        onChange={e => set(i, { harga: Number(e.target.value) || 0 })}
+                        inputMode="numeric" className={inputCls} />
+                    </div>
+                  </div>
+
+                  {beda && (
+                    <div className="space-y-1 rounded-lg bg-amber-50 border border-amber-200 p-2">
+                      <label className="text-[10px] font-bold text-amber-900">
+                        Menutup berapa {b.satuan} dari permintaan?
+                      </label>
+                      <input type="number" min={0} max={b.sisa} value={b.penuhi || ''}
+                        data-uji="penuhi"
+                        onChange={e => set(i, { penuhi: Number(e.target.value) || 0 })}
+                        inputMode="decimal" className={inputCls} />
+                      {/* Kenapa ini ditanyakan, bukan dihitung: berapa batang
+                          dalam satu ton bergantung panjang dan jenis kayunya.
+                          Menebaknya berarti mengarang angka yang akan dipakai
+                          orang lain sebagai kenyataan. */}
+                      <p className="text-[10px] leading-relaxed text-amber-900/80">
+                        Angka ini yang mengurangi daftar "Menunggu Dipesan" — bukan jumlah
+                        pesanan di atas. Tanpa itu, permintaan yang sudah dipenuhi penuh
+                        akan terus terlihat kurang.
+                      </p>
+                    </div>
                   )}
+
+                  <p className={`text-[10px] leading-relaxed ${
+                    periksa.boleh ? 'text-muted-foreground' : 'text-rose-600 font-semibold'}`}>
+                    {periksa.boleh ? ringkasPesan(ukur) : periksa.alasan}
+                  </p>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-medium text-muted-foreground">Harga satuan (Rp)</label>
-                  <input type="number" min={0} value={b.harga || ''}
-                    onChange={e => set(i, { harga: Number(e.target.value) || 0 })}
-                    inputMode="numeric" className={inputCls} />
-                </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
         ))}
       </div>
@@ -1433,6 +1537,73 @@ function FormPo({
 }
 
 // ── Kartu PO: tanda tangan → persetujuan → kirim ────────────────────────────
+/**
+ * Memperbaiki alamat pengiriman sebuah PO yang SUDAH terbit.
+ *
+ * Bukan revisi PO. Harga, jumlah, tanda tangan, dan persetujuannya tidak
+ * tersentuh — yang berubah hanya ke mana barangnya diantar, dan itu memang
+ * sering baru diketahui setelah PO ditandatangani. Memperlakukannya sebagai
+ * revisi akan menaikkan nomor menjadi -Rev1 dan meminta persetujuan ulang
+ * untuk sesuatu yang tidak mengubah satu rupiah pun.
+ */
+function PanelAlamatKirim({ po, onBatal, onSimpan }: {
+  po: PurchaseOrder
+  onBatal: () => void
+  onSimpan: (isi: {
+    kirim_nama: string; kirim_wa: string; kirim_alamat: string; kirim_catatan: string
+  }) => Promise<void>
+}) {
+  const { toast } = useToast()
+  const [isi, setIsi] = useState<AlamatKirim>({
+    nama: po.kirim_nama ?? '',
+    wa: po.kirim_wa ?? '',
+    alamat: po.kirim_alamat ?? '',
+    catatan: po.kirim_catatan ?? '',
+  })
+  const [simpan, setSimpan] = useState(false)
+  const periksa = siapAlamatKirim(isi, po.jenis ?? 'proyek')
+
+  return (
+    <div className="rounded-xl border-2 border-gold/40 p-3 space-y-2.5" data-uji="panel-alamat">
+      <p className="text-xs font-bold text-navy">Alamat pengiriman</p>
+      <textarea value={isi.alamat} rows={2}
+        onChange={e => setIsi(a => ({ ...a, alamat: e.target.value }))}
+        placeholder="Alamat lengkap lokasi antar *" className={inputCls} />
+      <div className="grid grid-cols-2 gap-2">
+        <input value={isi.nama} onChange={e => setIsi(a => ({ ...a, nama: e.target.value }))}
+          placeholder="Nama penerima *" className={inputCls} />
+        <input value={isi.wa} onChange={e => setIsi(a => ({ ...a, wa: e.target.value }))}
+          placeholder="No. HP penerima *" inputMode="tel" className={inputCls} />
+      </div>
+      <input value={isi.catatan} onChange={e => setIsi(a => ({ ...a, catatan: e.target.value }))}
+        placeholder="Catatan untuk sopir (patokan, jam antar)" className={inputCls} />
+      {!periksa.boleh && <p className="text-[10px] text-rose-600">{periksa.alasan}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" className="h-8 text-[11px] bg-navy hover:bg-steel"
+          disabled={!periksa.boleh || simpan}
+          onClick={async () => {
+            setSimpan(true)
+            try {
+              await onSimpan({
+                kirim_nama: isi.nama.trim(), kirim_wa: isi.wa.trim(),
+                kirim_alamat: isi.alamat.trim(), kirim_catatan: isi.catatan.trim(),
+              })
+            } catch (e) {
+              toast({
+                title: 'Gagal menyimpan alamat',
+                description: e instanceof Error ? e.message : String(e),
+                variant: 'destructive',
+              })
+            } finally { setSimpan(false) }
+          }}>
+          {simpan ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Simpan'}
+        </Button>
+        <Button size="sm" variant="outline" className="h-8 text-[11px]" onClick={onBatal}>Batal</Button>
+      </div>
+    </div>
+  )
+}
+
 function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
   po: PurchaseOrder
   namaSaya: string
@@ -1448,6 +1619,7 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
   const [jabatan, setJabatan] = useState('')
   const [proses, setProses] = useState(false)
   const [buka, setBuka] = useState(false)
+  const [ubahAlamat, setUbahAlamat] = useState(false)
 
   const izin = bolehKirimPo(po, vendors)
 
@@ -1642,7 +1814,36 @@ function KartuPo({ po, namaSaya, vendors, bolehUbah, bolehApprove, onUbah }: {
             <Copy className="w-3 h-3" /> Link Vendor
           </Button>
         )}
+
+        {/* Alamat kirim bisa diperbaiki SETELAH PO terbit.
+            Tanpa ini, PO lama yang terbit sebelum kolom alamat ada tidak akan
+            pernah bisa punya blok "DIKIRIM KE" di PDF-nya — satu-satunya jalan
+            adalah menghapus dan membuatnya ulang, berikut tanda tangan dan
+            nomornya. Mengubah tujuan antar juga bukan revisi PO: harga, jumlah,
+            dan persetujuannya tidak berubah sama sekali. */}
+        {bolehUbah && (
+          <Button size="sm" variant="outline"
+            className={`h-7 text-[11px] gap-1 ${
+              adaAlamatKirim(po) ? '' : 'border-amber-400 text-amber-800 bg-amber-50'}`}
+            onClick={() => setUbahAlamat(true)}>
+            <MapPin className="w-3 h-3" />
+            {adaAlamatKirim(po) ? 'Alamat Kirim' : 'Alamat belum diisi'}
+          </Button>
+        )}
       </div>
+
+      {ubahAlamat && (
+        <PanelAlamatKirim
+          po={po}
+          onBatal={() => setUbahAlamat(false)}
+          onSimpan={async isi => {
+            await procurementApi().updatePo(po.id, isi)
+            setUbahAlamat(false)
+            toast({ title: 'Alamat pengiriman disimpan', description: 'Unduh ulang PDF-nya untuk melihat hasilnya.' })
+            onUbah()
+          }}
+        />
+      )}
 
       {/* Alasan tombol kirim masih mati — supaya tidak perlu menebak */}
       {bolehUbah && !izin.boleh && po.status !== 'terkirim' && po.status !== 'selesai' && (

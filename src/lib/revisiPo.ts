@@ -27,7 +27,7 @@
 // Modul murni: tanpa DOM, tanpa jaringan, bisa diuji langsung di Node.
 // ============================================================
 
-import type { PoItem, PurchaseOrder } from './procurement.ts'
+import type { PoItem, PurchaseOrder, JenisPo } from './procurement.ts'
 
 /** Berapa kali sebuah PO sudah direvisi. Nol untuk PO yang belum pernah. */
 export function revisiKe(po: { revisi_ke?: number | null } | null | undefined): number {
@@ -318,9 +318,45 @@ export interface PeriksaAlamat {
  * ada cara menghubunginya — nama tanpa nomor tidak menolong sopir yang
  * tersesat di depan gerbang.
  */
-export function siapAlamatKirim(a: AlamatKirim | null | undefined): PeriksaAlamat {
+export function siapAlamatKirim(
+  a: AlamatKirim | null | undefined,
+  jenis: JenisPo = 'alat',
+): PeriksaAlamat {
   const nama = teks(a?.nama)
   const wa = teks(a?.wa)
+  const alamat = teks(a?.alamat)
+
+  // PO PROYEK: ketiganya WAJIB. Pengetatan yang disengaja.
+  //
+  // Sebelumnya pemeriksaan ini hanya menjaga agar nama dan nomor tidak terisi
+  // separuh; alamat yang KOSONG SAMA SEKALI lolos tanpa sepatah kata.
+  // Akibatnya bukan kolom kosong di layar, melainkan PO yang TERCETAK TANPA
+  // blok "DIKIRIM KE" — karena blok itu memang hanya digambar bila ada isinya.
+  // Dari sisi pemakainya yang terlihat adalah fiturnya tidak jalan; dari sisi
+  // sopir vendor, yang terlihat adalah dokumen tanpa tujuan antar.
+  //
+  // Yang menanggung akibatnya justru orang yang tidak ikut mengisi
+  // formulirnya: sopir yang menelepon menanyakan alamat, atau membongkar satu
+  // truk material di proyek yang salah.
+  //
+  // ALAT & KANTOR tetap longgar, dan itu bukan kelalaian. Bor yang diambil
+  // sendiri ke toko memang tidak punya alamat pengiriman, dan memaksanya diisi
+  // hanya melahirkan alamat karangan — yang lebih buruk daripada kosong,
+  // karena alamat karangan terbaca seperti alamat sungguhan.
+  if (jenis === 'proyek') {
+    if (!alamat) {
+      return { boleh: false, alasan: 'Isi alamat pengiriman — tanpa itu PO tercetak tanpa tujuan antar.' }
+    }
+    if (!nama) {
+      return { boleh: false, alasan: 'Isi nama penerima di lokasi — sopir vendor harus tahu siapa yang dicari.' }
+    }
+    if (!wa) {
+      return { boleh: false, alasan: 'Isi nomor HP penerima — sopir vendor perlu bisa menghubunginya.' }
+    }
+    return { boleh: true, alasan: '' }
+  }
+
+  // Di luar PO proyek: boleh kosong, tetapi tidak boleh separuh.
   if (nama && !wa) {
     return { boleh: false, alasan: 'Isi nomor HP penerima — sopir vendor perlu bisa menghubunginya.' }
   }
