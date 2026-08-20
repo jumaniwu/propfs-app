@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus, Megaphone,} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus, Megaphone, FileText,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -98,6 +98,11 @@ export const MENU_ITEMS: MenuItem[] = [
   // Satu halaman memuat Pakai Material, Request Material, dan Kekurangan.
   { key: 'material_lapangan', label: 'Material Lapangan', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.rose,
     alias: 'pakai penggunaan request permintaan bahan kekurangan stok menipis' },
+  // Berdiri di kategori Lapangan, bukan Proyek: yang paling sering membukanya
+  // orang yang sedang berdiri di depan pekerjaannya, bukan yang merencanakan.
+  { key: 'gambar_kerja', label: 'Gambar Kerja', icon: FileText, kategori: 'lapangan', path: '/kontraktor/gambar',
+    tone: TONE.navy, tag: 'BARU',
+    alias: 'denah gambar kerja shop drawing struktur arsitektur mep revisi versi pdf dwg' },
 
   // Cari Leads berdiri di kategori Tim, bukan Keuangan: yang mengerjakannya
   // orang — menyebar tautan, menelepon, mensurvei — bukan angka.

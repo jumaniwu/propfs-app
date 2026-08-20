@@ -44,6 +44,7 @@ const ChatAiPage = lazy(() => import('./pages/ChatAiPage'))
 const ChatTimPage = lazy(() => import('./pages/ChatTimPage'))
 const LeadsPage = lazy(() => import('./pages/LeadsPage'))
 const MarcomPage = lazy(() => import('./pages/MarcomPage'))
+const GambarKerjaPage = lazy(() => import('./pages/GambarKerjaPage'))
 const LeadFormPage = lazy(() => import('./pages/LeadFormPage'))
 const VendorDaftarPage = lazy(() => import('./pages/VendorDaftarPage'))
 const VendorItemPage = lazy(() => import('./pages/VendorItemPage'))
@@ -202,6 +203,7 @@ export default function App() {
           <Route path="/kontraktor/leads" element={<FeatureRoute feature="cost_control"><LeadsPage /></FeatureRoute>} />
           {/* Marcom: foto proyek → materi promosi media sosial */}
           <Route path="/kontraktor/marcom" element={<FeatureRoute feature="cost_control"><MarcomPage /></FeatureRoute>} />
+          <Route path="/kontraktor/gambar" element={<FeatureRoute feature="cost_control"><GambarKerjaPage /></FeatureRoute>} />
           <Route path="/cost-control" element={<FeatureRoute feature="cost_control"><CostDashboard /></FeatureRoute>} />
           <Route path="/cost-report/:id" element={<FeatureRoute feature="cost_control"><CostReportPage /></FeatureRoute>} />
 
