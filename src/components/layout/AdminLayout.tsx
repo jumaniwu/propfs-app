@@ -101,13 +101,19 @@ export default function AdminLayout() {
       {/* ── MOBILE DRAWER OVERLAY ───────────────────────────── */}
       {drawerOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          // z-[60]: tirainya harus di atas navigasi bawah — di sini navigasi
+          // milik AdminLayout sendiri (z-40), yang dirender BELAKANGAN dan
+          // karena itu menang pada nilai yang sama. Akibatnya bukan tampilan
+          // yang salah, melainkan menu navigasi yang masih bisa ditekan di
+          // balik tirai: laci dibuka, satu ketukan meleset, dan halamannya
+          // berpindah ke tempat lain. Lihat lib/lapisan.ts.
+          className="fixed inset-0 bg-black/50 z-[60] lg:hidden"
           onClick={() => setDrawerOpen(false)}
         />
       )}
 
       {/* ── MOBILE DRAWER ───────────────────────────────────── */}
-      <aside className={`fixed top-0 left-0 h-full w-72 bg-navy text-white flex flex-col z-50 transform transition-transform duration-300 lg:hidden ${
+      <aside className={`fixed top-0 left-0 h-full w-72 bg-navy text-white flex flex-col z-[61] transform transition-transform duration-300 lg:hidden ${
         drawerOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         {/* Drawer Header */}

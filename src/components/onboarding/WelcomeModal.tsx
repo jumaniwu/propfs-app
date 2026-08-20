@@ -30,7 +30,7 @@ export default function WelcomeModal({ userName, onClose }: Props) {
   const firstName = userName?.split(' ')[0] || 'Pengguna'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-navy/85 backdrop-blur-sm"
         onClick={onClose}

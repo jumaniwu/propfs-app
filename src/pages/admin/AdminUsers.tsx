@@ -372,7 +372,7 @@ export default function AdminUsers() {
 
       {/* User Access Modal */}
       {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-navy/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl overflow-hidden max-w-2xl w-full flex flex-col max-h-[90vh] shadow-2xl animate-in zoom-in-95 duration-200">
             
             <div className="p-6 sm:p-8 border-b border-border bg-slate-50 relative">
