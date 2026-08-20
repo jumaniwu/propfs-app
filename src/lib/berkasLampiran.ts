@@ -74,3 +74,35 @@ export function keteranganBerkas(mime: unknown): string {
   const m = String(mime ?? '').trim()
   return m ? m.split('/').pop()!.toUpperCase() : 'Berkas'
 }
+
+/**
+ * Nama tombol yang membuka berkas — mengikuti tempat aplikasinya berjalan.
+ *
+ * "Buka di tab baru" adalah kalimat peramban. Di dalam APK tidak ada tab, dan
+ * yang muncul ketika tombolnya ditekan adalah menu Bagikan Android: WhatsApp,
+ * Drive, pembaca PDF. Menyebutnya "tab baru" di sana bukan sekadar salah
+ * istilah — orang menunggu tab yang tidak akan pernah muncul, lalu
+ * menyimpulkan tombolnya rusak.
+ */
+export function labelBuka(diApk: boolean): string {
+  return diApk ? 'Buka dengan aplikasi lain' : 'Buka di tab baru'
+}
+
+/**
+ * Kalimat pada layar untuk berkas yang tidak bisa ditampilkan di dalam
+ * halaman.
+ *
+ * Ditulis sebagai PERINTAH, bukan sebagai laporan.
+ *
+ * Versi sebelumnya berbunyi "PDF ini dibuka di tab baru" — kalimat yang
+ * mengabarkan sesuatu yang BELUM terjadi, di layar tempat belum ada apa pun
+ * yang dibuka. Yang membacanya menyimpulkan berkasnya sudah terbuka di suatu
+ * tempat yang tidak bisa ia temukan, lalu berhenti mencari tombol yang
+ * sebenarnya ada di bawah layar.
+ */
+export function ajakanBuka(mime: unknown, diApk: boolean): string {
+  const apa = keteranganBerkas(mime)
+  return diApk
+    ? `${apa} tidak bisa ditampilkan di sini. Ketuk tombol di bawah untuk membukanya dengan aplikasi pembaca PDF, atau mengirimnya ke WhatsApp.`
+    : `${apa} tidak bisa ditampilkan di sini. Ketuk tombol di bawah untuk membukanya di tab baru.`
+}

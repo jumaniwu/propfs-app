@@ -2,6 +2,7 @@
 // laporan masuk, dan pratinjau laporan pekerja. Foto sering berupa data URL
 // base64 yang TIDAK bisa dibuka di tab baru pada HP, jadi ditampilkan in-app.
 import { useEffect } from 'react'
+import { simpanBerkas } from '@/lib/unduhBerkas'
 import { X, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 
 export default function PhotoLightbox({
@@ -35,10 +36,14 @@ export default function PhotoLightbox({
       <div className="flex items-center justify-between px-4 py-3 text-white/90" onClick={e => e.stopPropagation()}>
         <span className="text-sm font-medium">{index + 1} / {photos.length}</span>
         <div className="flex items-center gap-2">
-          <a href={src} download={`foto_${index + 1}.jpg`}
-            className="p-2 rounded-full hover:bg-white/10" title="Unduh">
+          {/* Tombol, bukan <a download>. Di WebView Android tautan seperti itu
+              tidak mengunduh apa pun dan tidak melempar apa pun — foto lapangan
+              yang hendak dikirim ke pemilik proyek berakhir sebagai ketukan
+              yang tidak menghasilkan apa-apa. */}
+          <button onClick={() => void simpanBerkas(src, `foto_${index + 1}.jpg`, 'image/jpeg')}
+            className="p-2 rounded-full hover:bg-white/10" title="Unduh" aria-label="Unduh foto">
             <Download className="w-5 h-5" />
-          </a>
+          </button>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10" title="Tutup">
             <X className="w-6 h-6" />
           </button>

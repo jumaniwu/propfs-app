@@ -11,7 +11,7 @@
 // ============================================================
 import {
   bisaTampilInline, adalahPdf, dataUriBerkas, base64Telanjang,
-  namaBerkasAman, keteranganBerkas,
+  namaBerkasAman, keteranganBerkas, labelBuka, ajakanBuka,
 } from '../src/lib/berkasLampiran.ts'
 
 let ok = 0
@@ -74,5 +74,34 @@ assert(namaBerkasAman('', 'image/jpeg', 'tagihan') === 'tagihan.jpg', 'cadangan 
 assert(keteranganBerkas('application/pdf') === 'PDF', 'PDF')
 assert(keteranganBerkas('image/jpeg') === 'Gambar', 'gambar')
 assert(keteranganBerkas('') === 'Berkas', 'tanpa jenis tetap punya sebutan')
+
+
+// ── Kalimat pada layar: PERINTAH, bukan laporan ────────────────────────────
+//
+// Versi sebelumnya berbunyi "PDF ini dibuka di tab baru" — mengabarkan sesuatu
+// yang BELUM terjadi, di layar tempat belum ada apa pun yang dibuka. Yang
+// membacanya menyimpulkan berkasnya sudah terbuka di suatu tempat yang tidak
+// bisa ia temukan, lalu berhenti mencari tombol yang sebenarnya ada di bawah
+// layar. Persis keluhan "tidak bisa buka file tagihan dari vendor".
+{
+  const web = ajakanBuka('application/pdf', false)
+  assert(/PDF/.test(web), 'menyebut jenis berkasnya')
+  assert(/Ketuk tombol di bawah/.test(web), 'MENYURUH, bukan mengabarkan')
+  assert(!/^PDF ini dibuka/.test(web), 'tidak lagi mengaku sudah membuka sesuatu')
+  assert(/tab baru/.test(web), 'di peramban, tab baru memang istilah yang benar')
+
+  // Di dalam APK tidak ada tab. Menyebutnya "tab baru" di sana membuat orang
+  // menunggu tab yang tidak akan pernah muncul.
+  const apk = ajakanBuka('application/pdf', true)
+  assert(!/tab baru/.test(apk), 'di APK TIDAK menyebut tab — tidak ada tab di sana')
+  assert(/WhatsApp|aplikasi pembaca/.test(apk), 'menyebut yang benar-benar akan muncul')
+
+  assert(labelBuka(false) === 'Buka di tab baru', 'label peramban')
+  assert(labelBuka(true) === 'Buka dengan aplikasi lain', 'label APK')
+  assert(labelBuka(true) !== labelBuka(false), 'keduanya memang berbeda')
+
+  assert(/Gambar/.test(ajakanBuka('image/png', false)), 'jenis lain ikut disebut')
+  assert(ajakanBuka(null, false).length > 20, 'mime kosong tetap menghasilkan kalimat utuh')
+}
 
 console.log(`berkas-lampiran: ${ok} assert lulus`)
