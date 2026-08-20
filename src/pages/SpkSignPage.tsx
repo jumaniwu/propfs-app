@@ -1,6 +1,7 @@
 // Halaman PUBLIK (tanpa login): vendor membuka link, membaca SPK,
 // lalu menandatangani secara digital.
 import { useEffect, useState } from 'react'
+import { bukaBerkas } from '@/lib/unduhBerkas'
 import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, CheckCircle2, FileSignature } from 'lucide-react'
@@ -82,16 +83,26 @@ export default function SpkSignPage() {
 
               {/* Lampiran RAB / Surat Penawaran Harga */}
               {spk.lampiran_data && (
-                <a href={spk.lampiran_data} target="_blank" rel="noreferrer"
-                  download={spk.lampiran_nama ?? 'lampiran'}
-                  className="flex items-center gap-2 bg-blue-lt border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-dk hover:bg-blue-100 transition-colors">
+                // Tombol, bukan <a href={dataUri} download>.
+                //
+                // Halaman ini dibuka VENDOR dari tautan WhatsApp, hampir selalu
+                // di HP. Peramban ponsel menolak menavigasi ke data URI yang
+                // panjang — dan menolaknya tanpa pesan. Akibatnya vendor tidak
+                // bisa membaca RAB yang justru sedang ia diminta tanda tangani,
+                // dan satu-satunya tanda bahwa ada yang salah adalah ketukan
+                // yang tidak menghasilkan apa-apa.
+                <button type="button"
+                  onClick={() => void bukaBerkas(
+                    spk.lampiran_data, spk.lampiran_nama ?? 'lampiran',
+                  )}
+                  className="w-full text-left flex items-center gap-2 bg-blue-lt border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-dk hover:bg-blue-100 transition-colors">
                   <span className="text-base">📎</span>
                   <span className="flex-1 min-w-0">
                     <span className="font-bold block">Lampiran: RAB / Surat Penawaran Harga</span>
                     <span className="truncate block">{spk.lampiran_nama || 'Buka lampiran'}</span>
                   </span>
                   <span className="font-semibold shrink-0">Buka ↗</span>
-                </a>
+                </button>
               )}
 
               {/* Lingkup pekerjaan */}

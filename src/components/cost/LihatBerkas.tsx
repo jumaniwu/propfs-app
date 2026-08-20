@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { bukaBerkas } from '@/lib/unduhBerkas'
-import { X, ExternalLink, Download, Loader2, FileText, AlertTriangle } from 'lucide-react'
+import { bukaBerkas, simpanBerkas, diAndroid, jembatanNativeAda } from '@/lib/unduhBerkas'
+import { X, ExternalLink, Download, Loader2, FileText, AlertTriangle, Share2 } from 'lucide-react'
 import {
   dataUriBerkas, base64Telanjang, bisaTampilInline, adalahPdf,
-  namaBerkasAman, keteranganBerkas,
+  namaBerkasAman, labelBuka, ajakanBuka,
 } from '@/lib/berkasLampiran'
 
 /**
@@ -53,16 +53,43 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
     return () => { hidup = false }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Di dalam APK tidak ada tab dan tidak ada folder Unduhan yang bisa dicapai
+  // dari `<a download>`; yang ada menu Bagikan Android. Dua tombol di bawah
+  // menyesuaikan diri — termasuk namanya.
+  const diApk = diAndroid() || jembatanNativeAda()
+  const [sibuk, setSibuk] = useState<'' | 'buka' | 'simpan'>('')
+
   /**
-   * Membuka berkas di tab baru.
+   * Membuka berkas untuk DILIHAT.
    *
    * Lewat Blob, bukan data URI. Peramban ponsel menolak menavigasi ke data URI
    * yang panjang — dan menolaknya tanpa pesan, sehingga tampak seperti tombol
-   * yang rusak.
+   * yang rusak. Di APK, `bukaBerkas` sendiri yang mengalihkannya ke menu
+   * Bagikan Android.
    */
-  function bukaTabBaru() {
+  async function bukaTabBaru() {
     if (!isi) return
-    void bukaBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
+    setSibuk('buka')
+    try {
+      await bukaBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
+    } finally { setSibuk('') }
+  }
+
+  /**
+   * Menyimpan berkas.
+   *
+   * DULU ini `<a href={dataUri} download>` telanjang — satu-satunya tempat di
+   * aplikasi ini yang tidak melewati lib/unduhBerkas. Di WebView Android,
+   * tautan seperti itu TIDAK mengunduh apa pun dan TIDAK melempar apa pun:
+   * ditekan, tidak terjadi apa-apa, tanpa satu pun pesan. Persis keluhan
+   * "tidak bisa buka file tagihan dari vendor".
+   */
+  async function simpan() {
+    if (!isi) return
+    setSibuk('simpan')
+    try {
+      await simpanBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
+    } finally { setSibuk('') }
   }
 
   return (
@@ -89,13 +116,16 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
           <img data-berkas-gambar src={isi.uri} alt={isi.nama}
             className="max-w-full max-h-full object-contain rounded-lg" />
         ) : (
-          <div className="text-center space-y-3 text-white">
+          <div className="text-center space-y-3 text-white max-w-xs mx-auto">
             <FileText className="w-12 h-12 mx-auto opacity-70" />
-            <p className="text-sm">
-              {keteranganBerkas(isi?.mime)} ini dibuka di tab baru.
-            </p>
-            {adalahPdf(isi?.mime) && (
-              <p className="text-xs opacity-70 max-w-xs mx-auto">
+            {/* Kalimat PERINTAH, bukan laporan. Versi sebelumnya berbunyi "PDF
+                ini dibuka di tab baru" — mengabarkan sesuatu yang belum
+                terjadi, sehingga yang membacanya mengira berkasnya sudah
+                terbuka di tempat yang tidak bisa ia temukan, lalu berhenti
+                mencari tombol yang sebenarnya ada di bawah layar. */}
+            <p className="text-sm leading-relaxed">{ajakanBuka(isi?.mime, diApk)}</p>
+            {adalahPdf(isi?.mime) && !diApk && (
+              <p className="text-xs opacity-70">
                 Penampil PDF di dalam halaman tidak bisa diandalkan pada peramban ponsel.
               </p>
             )}
@@ -105,16 +135,25 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
 
       {isi && (
         <div className="p-3 flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
-          <button data-buka-tab onClick={bukaTabBaru}
+          <button data-buka-tab onClick={() => void bukaTabBaru()} disabled={!!sibuk}
             className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15
-              text-white px-4 py-3 text-sm font-bold">
-            <ExternalLink className="w-4 h-4" /> Buka di tab baru
+              text-white px-4 py-3 text-sm font-bold disabled:opacity-50">
+            {sibuk === 'buka'
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : diApk ? <Share2 className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+            {labelBuka(diApk)}
           </button>
-          <a href={isi.uri} download={isi.nama}
+          {/* Tombol, bukan <a download>. Di WebView Android tautan seperti itu
+              tidak mengunduh apa pun dan tidak melempar apa pun — dan ini
+              satu-satunya tempat di aplikasi yang masih memakainya. */}
+          <button data-simpan-berkas onClick={() => void simpan()} disabled={!!sibuk}
             className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gold
-              text-navy px-4 py-3 text-sm font-bold">
-            <Download className="w-4 h-4" /> Simpan
-          </a>
+              text-navy px-4 py-3 text-sm font-bold disabled:opacity-50">
+            {sibuk === 'simpan'
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Download className="w-4 h-4" />}
+            Simpan
+          </button>
         </div>
       )}
     </div>
