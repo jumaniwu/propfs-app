@@ -5,6 +5,7 @@ import {
   dataUriBerkas, base64Telanjang, bisaTampilInline, adalahPdf,
   namaBerkasAman, labelBuka, ajakanBuka,
 } from '@/lib/berkasLampiran'
+import { PADDING_BAWAH_TIRAI } from '@/lib/lapisan'
 
 /**
  * Membuka berkas yang tersimpan bersama sebuah dokumen.
@@ -93,7 +94,12 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
   }
 
   return (
-    <div data-lihat-berkas className="fixed inset-0 z-50 bg-black/80 flex flex-col" onClick={onTutup}>
+    // z-[60], BUKAN z-50. BottomNav berdiri di z-50 dan dirender SETELAH
+    // <Routes>, jadi pada nilai yang sama ia yang menang — dan yang kalah
+    // hanya 64 piksel paling bawah, persis tempat kedua tombol ini berada.
+    // Yang terlihat bukan cacat lapisan, melainkan tombol yang "terlalu di
+    // bawah" dan terpotong. Lihat lib/lapisan.ts.
+    <div data-lihat-berkas className="fixed inset-0 z-[60] bg-black/80 flex flex-col" onClick={onTutup}>
       <div className="flex items-center justify-between gap-2 p-3 text-white shrink-0"
         onClick={e => e.stopPropagation()}>
         <p className="text-sm font-bold truncate">{isi?.nama || nama || 'Berkas'}</p>
@@ -134,7 +140,12 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
       </div>
 
       {isi && (
-        <div className="p-3 flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+        // Ruang tambahan di dasar layar untuk bilah gestur. Tombol yang
+        // menempel persis di tepi berbagi tempat dengan sapuan "kembali ke
+        // beranda" — dan yang terjadi bukan tombolnya tertekan, melainkan
+        // aplikasinya tertutup.
+        <div className={`p-3 pt-2 flex gap-2 shrink-0 ${PADDING_BAWAH_TIRAI}`}
+          onClick={e => e.stopPropagation()}>
           <button data-buka-tab onClick={() => void bukaTabBaru()} disabled={!!sibuk}
             className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-white/15
               text-white px-4 py-3 text-sm font-bold disabled:opacity-50">

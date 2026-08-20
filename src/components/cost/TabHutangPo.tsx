@@ -255,7 +255,7 @@ function KartuTagihan({ r, bayar, bolehUbah, formTerbuka, onBukaForm, onTutupFor
       )}
 
       {lihatBukti && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
           onClick={() => setLihatBukti(null)}>
           <img src={lihatBukti} alt="Bukti pembayaran" className="max-w-full max-h-full rounded-lg" />
         </div>

@@ -38,7 +38,7 @@ export default function UpgradeModal({ planId, initialMonths = 1, onClose, onSuc
   }, [planId, months])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-navy/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-card w-full max-w-lg rounded-3xl shadow-2xl border border-border overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
         
         {/* Header */}

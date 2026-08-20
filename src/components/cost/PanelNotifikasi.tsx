@@ -179,7 +179,7 @@ export default function PanelNotifikasi() {
       </button>
 
       {buka && (
-        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-label="Daftar notifikasi">
+        <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-label="Daftar notifikasi">
           <button className="absolute inset-0 bg-black/40" onClick={() => setBuka(false)} aria-label="Tutup" />
           <div className="relative w-full sm:max-w-sm bg-white h-full shadow-2xl flex flex-col text-navy">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-2">

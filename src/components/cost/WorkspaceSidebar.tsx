@@ -175,7 +175,7 @@ export default function WorkspaceSidebar({
       {/* Backdrop */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          className="md:hidden fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -183,7 +183,7 @@ export default function WorkspaceSidebar({
       {/* Drawer */}
       <div
         className={`
-          md:hidden fixed left-0 top-0 bottom-0 z-50 w-72 bg-white shadow-2xl
+          md:hidden fixed left-0 top-0 bottom-0 z-[61] w-72 bg-white shadow-2xl
           transform transition-transform duration-300 ease-out flex flex-col
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
