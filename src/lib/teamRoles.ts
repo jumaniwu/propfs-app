@@ -112,6 +112,10 @@ export const MENU_KE_MODUL: Record<string, Modul> = {
   akuntan: 'akuntan', konsolidasi: 'akuntan',
   spk: 'spk',
   lapangan: 'lapangan',
+  // Gambar kerja ikut modul lapangan: yang paling sering membukanya orang yang
+  // sedang berdiri di depan pekerjaannya. Siapa yang boleh MENGUNGGAH revisi
+  // dijaga terpisah di halamannya — membaca dan menerbitkan bukan hak yang sama.
+  gambar_kerja: 'lapangan',
   material_lapangan: 'material',
   procurement: 'procurement',
   feasibility: 'studi',
