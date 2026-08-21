@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { bukaBerkas, simpanBerkas, diAndroid, jembatanNativeAda, blobDariBase64 } from '@/lib/unduhBerkas'
-import { pdfKeGambar } from '@/lib/pdf-utils'
+import { pdfKeGambar, type HalamanPdf } from '@/lib/pdf-utils'
+import PenampilZoom from '@/components/cost/PenampilZoom'
 import { X, ExternalLink, Download, Loader2, FileText, AlertTriangle, Share2 } from 'lucide-react'
 import {
   dataUriBerkas, base64Telanjang, bisaTampilInline, adalahPdf,
@@ -24,7 +25,21 @@ import { PADDING_BAWAH_TIRAI } from '@/lib/lapisan'
  */
 export default function LihatBerkas({ muat, nama, onTutup }: {
   /** Diambil saat dibuka, bukan saat daftarnya dimuat. */
-  muat: () => Promise<{ berkas_nama: string; berkas_mime: string; berkas_data: string | null } | null>
+  muat: () => Promise<{
+    berkas_nama: string
+    berkas_mime: string
+    /** base64 / data URI. Dipakai lampiran yang tersimpan di dalam baris. */
+    berkas_data?: string | null
+    /**
+     * Berkas yang sudah diambil sendiri pemanggilnya.
+     *
+     * Ada karena gambar kerja disimpan di Storage, bukan di dalam baris.
+     * Mengubahnya menjadi base64 lebih dulu hanya untuk diubah kembali di sini
+     * berarti menyalin berkas belasan megabita dua kali di memori HP — dan
+     * base64 sendiri menambah sepertiga ukurannya.
+     */
+    berkas_blob?: Blob | null
+  } | null>
   /** Nama yang sudah diketahui, untuk judul selagi memuat. */
   nama?: string
   onTutup: () => void
@@ -45,7 +60,7 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
   // pdf.js menggambar ke canvas dengan kode kita sendiri. Tidak ada penampil
   // bawaan yang dipanggil dan tidak ada jembatan yang harus terpasang, jadi ia
   // berjalan sama di peramban dan di APK versi mana pun.
-  const [halaman, setHalaman] = useState<string[]>([])
+  const [halaman, setHalaman] = useState<HalamanPdf[]>([])
   const [totalHalaman, setTotalHalaman] = useState(0)
   const [gambarPdf, setGambarPdf] = useState(false)
   const [gagalGambar, setGagalGambar] = useState('')
@@ -56,7 +71,8 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
       .then(b => {
         if (!hidup) return
         const data = base64Telanjang(b?.berkas_data)
-        if (!b || !data) {
+        const blob = b?.berkas_blob ?? null
+        if (!b || (!data && !blob)) {
           setGalat('Berkasnya tidak tersimpan bersama tagihan ini. '
             + 'Tagihan yang dikirim sebelum fitur ini ada, atau berkasnya terlalu besar saat dikirim.')
           return
@@ -64,7 +80,10 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
         const berkas = {
           nama: namaBerkasAman(b.berkas_nama || nama, b.berkas_mime, 'tagihan'),
           mime: b.berkas_mime,
-          uri: dataUriBerkas(b.berkas_mime, data),
+          // Blob dibuat objek URL, bukan diubah jadi data URI: data URI
+          // berkas besar adalah teks belasan megabita yang harus disimpan
+          // utuh di memori, dan itulah yang membuat tab mati sendiri.
+          uri: blob ? URL.createObjectURL(blob) : dataUriBerkas(b.berkas_mime, data),
         }
         setIsi(berkas)
 
@@ -77,7 +96,7 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
           const lebar = Math.min(1400, Math.round(
             (window.innerWidth || 390) * Math.min(3, window.devicePixelRatio || 1),
           ))
-          blobDariBase64(data, 'application/pdf').arrayBuffer()
+          ;(blob ?? blobDariBase64(data, 'application/pdf')).arrayBuffer()
             .then(buf => pdfKeGambar(buf, { lebarTarget: lebar }))
             .then(h => {
               if (!hidup) return
@@ -165,8 +184,10 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
             <p className="text-sm">{galat}</p>
           </div>
         ) : isi && bisaTampilInline(isi.mime) ? (
-          <img data-berkas-gambar src={isi.uri} alt={isi.nama}
-            className="max-w-full max-h-full object-contain rounded-lg" />
+          <PenampilZoom label={isi.nama}>
+            <img data-berkas-gambar src={isi.uri} alt={isi.nama}
+              className="max-w-[92vw] max-h-[70vh] object-contain rounded-lg" />
+          </PenampilZoom>
         ) : gambarPdf ? (
           <div className="text-center space-y-2 text-white">
             <Loader2 className="w-6 h-6 animate-spin mx-auto" />
@@ -178,8 +199,22 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
           // muat dalam satu layar 390px tidak bisa dibaca siapa pun.
           <div data-pdf-halaman className="w-full h-full overflow-auto overscroll-contain space-y-3 py-1">
             {halaman.map((h, i) => (
-              <img key={i} src={h} alt={`Halaman ${i + 1}`}
-                className="w-full rounded-lg bg-white" />
+              // Tiap halaman punya zoom-nya sendiri. Satu zoom untuk seluruh
+              // tumpukan terdengar lebih rapi, tetapi memperbesar halaman 3
+              // akan ikut menggeser halaman 1 dan 2 keluar layar — dan yang
+              // terjadi adalah daftar yang tidak bisa digulung lagi.
+              // Kotaknya BERBENTUK seperti halamannya, dibatasi tinggi layar.
+              // Kotak bertinggi tetap membuat denah lanskap A3 duduk di tengah
+              // bidang kosong yang lebih besar daripada gambarnya sendiri —
+              // dan bidang kosong itu tampak seperti gambar yang gagal dimuat.
+              <div key={i}
+                style={{ aspectRatio: `${h.lebar} / ${h.tinggi}` }}
+                className="w-full max-h-[72vh] bg-white rounded-lg overflow-hidden">
+                <PenampilZoom label={`Halaman ${i + 1}`}>
+                  <img src={h.src} alt={`Halaman ${i + 1}`}
+                    className="w-full h-full object-contain" />
+                </PenampilZoom>
+              </div>
             ))}
             {totalHalaman > halaman.length && (
               <p className="text-center text-[11px] text-white/70 pb-2">
