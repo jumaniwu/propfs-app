@@ -1,7 +1,7 @@
 // Halaman PUBLIK (tanpa login): vendor membuka link, membaca SPK,
 // lalu menandatangani secara digital.
 import { useEffect, useState } from 'react'
-import { bukaBerkas } from '@/lib/unduhBerkas'
+import LihatBerkas from '@/components/cost/LihatBerkas'
 import { useParams } from 'react-router-dom'
 import { KopPublik, KakiPublik, useBrandingPublik } from '@/components/KopPublik'
 import { Loader2, CheckCircle2, FileSignature } from 'lucide-react'
@@ -23,6 +23,13 @@ export default function SpkSignPage() {
   const [signature, setSignature] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
+  // Lampiran dibuka DI DALAM halaman ini.
+  //
+  // Yang membacanya vendor, dari tautan WhatsApp, di HP, dan ia diminta
+  // menandatangani sesuatu berdasarkan isi lampiran itu. Menyerahkannya ke
+  // aplikasi lain berarti ia harus keluar dari halaman ini — dan halaman
+  // tanda tangan yang ditinggalkan biasanya tidak dikunjungi lagi hari itu.
+  const [lihatLampiran, setLihatLampiran] = useState(false)
 
   useEffect(() => {
     spkApi().getSpkByToken(token)
@@ -92,9 +99,7 @@ export default function SpkSignPage() {
                 // dan satu-satunya tanda bahwa ada yang salah adalah ketukan
                 // yang tidak menghasilkan apa-apa.
                 <button type="button"
-                  onClick={() => void bukaBerkas(
-                    spk.lampiran_data, spk.lampiran_nama ?? 'lampiran',
-                  )}
+                  onClick={() => setLihatLampiran(true)}
                   className="w-full text-left flex items-center gap-2 bg-blue-lt border border-blue-200 rounded-xl px-3 py-2.5 text-xs text-blue-dk hover:bg-blue-100 transition-colors">
                   <span className="text-base">📎</span>
                   <span className="flex-1 min-w-0">
@@ -245,6 +250,25 @@ export default function SpkSignPage() {
           Dokumen digital ini diterbitkan melalui propfs.id · Kontraktor AI
         </p>
       </div>
+
+      {lihatLampiran && spk?.lampiran_data && (
+        <LihatBerkas
+          nama={spk.lampiran_nama ?? 'Lampiran'}
+          // Datanya sudah ada di tangan — `muat` tetap sebuah janji karena
+          // itulah bentuk yang diminta komponennya, bukan karena ada yang
+          // perlu diambil dari jaringan.
+          muat={async () => ({
+            berkas_nama: spk.lampiran_nama ?? 'lampiran',
+            // Mime dibaca dari awalan data URI-nya sendiri, bukan dari kolom
+            // terpisah — SpkView tidak punya kolom itu, dan menebaknya dari
+            // nama berkas akan salah untuk lampiran yang namanya tanpa
+            // akhiran.
+            berkas_mime: /^data:([^;,]+)/.exec(spk.lampiran_data ?? '')?.[1] ?? 'application/pdf',
+            berkas_data: spk.lampiran_data ?? null,
+          })}
+          onTutup={() => setLihatLampiran(false)}
+        />
+      )}
     </div>
   )
 }
