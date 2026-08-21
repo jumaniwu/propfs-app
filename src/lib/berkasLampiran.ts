@@ -85,7 +85,13 @@ export function keteranganBerkas(mime: unknown): string {
  * menyimpulkan tombolnya rusak.
  */
 export function labelBuka(diApk: boolean): string {
-  return diApk ? 'Buka dengan aplikasi lain' : 'Buka di tab baru'
+  // "Kirim / Buka", bukan "Buka dengan aplikasi lain": yang panjang membungkus
+  // jadi dua baris di layar 390px dan membuat tombolnya terlihat sesak — dan
+  // sejak PDF bisa dibaca langsung di dalam aplikasi, tombol ini bukan lagi
+  // jalan utama yang pantas menuntut ruang sebanyak itu. Menu yang muncul
+  // memang melakukan keduanya: mengirim ke WhatsApp, atau membuka dengan
+  // pembaca PDF.
+  return diApk ? 'Kirim / Buka' : 'Buka di tab baru'
 }
 
 /**

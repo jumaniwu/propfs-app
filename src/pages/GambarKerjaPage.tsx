@@ -31,6 +31,7 @@ import {
   type BarisGambar, type KategoriGambar, type KelompokGambar,
 } from '@/lib/gambarKerja'
 import { useCostStore } from '@/store/costStore'
+import LihatBerkas from '@/components/cost/LihatBerkas'
 
 const inputCls = 'w-full h-10 px-3 rounded-xl border border-border bg-white text-sm '
   + 'focus:outline-none focus:ring-2 focus:ring-gold'
@@ -164,25 +165,38 @@ function KartuGambar({ k, terbuka, onToggle, bolehHapus, onHapus, toast }: {
   toast: ReturnType<typeof useToast>['toast']
 }) {
   const [sibuk, setSibuk] = useState('')
+  const [lihat, setLihat] = useState<BarisGambar | null>(null)
 
-  async function bukaBerkas(b: BarisGambar) {
+  /**
+   * Buka gambar DI DALAM aplikasi.
+   *
+   * Dulu `window.open(url, '_blank')`. Di WebView Android tidak ada tab baru,
+   * dan jendela yang diminta tanpa ada yang membukanya berakhir sebagai
+   * ketukan yang tidak menghasilkan apa-apa — persis keluhan "tombol buka
+   * gambar tidak bisa".
+   *
+   * Yang lebih menentukan daripada bisa-tidaknya membuka: denah dibaca dengan
+   * mencari ANGKA di sudut gambar, dan angka yang ditulis untuk kertas A1
+   * tidak terbaca di layar 390 piksel. Menyerahkannya ke aplikasi lain berarti
+   * tukang harus mengunduh dulu setiap kali ingin memeriksa satu dimensi.
+   * Penampil di dalam aplikasi bisa dicubit dan digeser.
+   */
+  function buka(b: BarisGambar) {
     if (!b.path) return
-    setSibuk(b.id ?? '')
-    try {
-      const url = await gambarKerjaApi().tautan(b.path)
-      // Dibuka di tab baru, bukan diunduh paksa: yang bisa ditampilkan
-      // peramban (PDF, foto) langsung terbaca tanpa mampir ke aplikasi lain —
-      // dan itu bedanya membuka gambar di lapangan dengan satu ketukan versus
-      // tiga.
-      window.open(url, '_blank', 'noopener')
-    } catch (e) {
-      toast({
-        title: 'Gagal membuka gambar',
-        description: e instanceof Error ? e.message : String(e),
-        variant: 'destructive',
-      })
-    } finally { setSibuk('') }
+    setLihat(b)
   }
+
+  /** Ambil berkasnya dari Storage saat penampilnya dibuka, bukan sebelumnya. */
+  const ambilBerkas = useCallback(async (b: BarisGambar) => {
+    const url = await gambarKerjaApi().tautan(b.path ?? '')
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Gagal mengunduh gambar (HTTP ${res.status}).`)
+    return {
+      berkas_nama: b.berkas_nama || b.nama || 'gambar',
+      berkas_mime: b.mime || 'application/pdf',
+      berkas_blob: await res.blob(),
+    }
+  }, [])
 
   return (
     <div className="rounded-2xl bg-white border border-border overflow-hidden">
@@ -222,7 +236,7 @@ function KartuGambar({ k, terbuka, onToggle, bolehHapus, onHapus, toast }: {
         )}
 
         <div className="flex gap-2 flex-wrap">
-          <button onClick={() => void bukaBerkas(k.terbaru)} disabled={!!sibuk}
+          <button onClick={() => buka(k.terbaru)} disabled={!!sibuk}
             className="h-9 px-4 rounded-xl bg-navy text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
             {sibuk === k.terbaru.id
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -241,6 +255,14 @@ function KartuGambar({ k, terbuka, onToggle, bolehHapus, onHapus, toast }: {
         </div>
       </div>
 
+      {lihat && (
+        <LihatBerkas
+          nama={`${k.nama} — ${tandaVersi(lihat.versi, lihat.id === k.terbaru.id)}`}
+          muat={() => ambilBerkas(lihat)}
+          onTutup={() => setLihat(null)}
+        />
+      )}
+
       {terbuka && k.riwayat.length > 0 && (
         <div className="border-t border-border bg-slate-50/60 divide-y divide-border">
           {/* Versi lama TIDAK disembunyikan — ia satu-satunya cara menjelaskan
@@ -257,7 +279,7 @@ function KartuGambar({ k, terbuka, onToggle, bolehHapus, onHapus, toast }: {
                   {b.created_at ? ` · ${new Date(b.created_at).toLocaleDateString('id-ID')}` : ''}
                 </p>
               </div>
-              <button onClick={() => void bukaBerkas(b)} disabled={!!sibuk}
+              <button onClick={() => buka(b)} disabled={!!sibuk}
                 className="h-8 px-3 rounded-lg border border-border text-[11px] font-bold text-navy shrink-0 disabled:opacity-50">
                 Buka
               </button>

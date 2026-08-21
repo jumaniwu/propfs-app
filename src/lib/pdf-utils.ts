@@ -42,10 +42,24 @@ export async function pdfToCanvases(file: File, maxPages = 3): Promise<HTMLCanva
  * diandalkan pada peramban ponsel" — benar untuk <iframe> dan <embed>, yang
  * menyerahkan pekerjaannya kepada sistem. Ia tidak berlaku di sini.
  */
+export interface HalamanPdf {
+  src: string
+  /**
+   * Ukuran piksel hasil render.
+   *
+   * Ikut dikembalikan supaya penampilnya bisa memberi tiap halaman kotak yang
+   * BERBENTUK seperti halamannya. Tanpa itu, satu-satunya pilihan adalah kotak
+   * bertinggi tetap — dan denah lanskap A3 di dalam kotak setinggi layar
+   * menyisakan bidang kosong lebih besar daripada gambarnya sendiri.
+   */
+  lebar: number
+  tinggi: number
+}
+
 export async function pdfKeGambar(
   data: ArrayBuffer | Uint8Array,
   opsi: { maksHalaman?: number; lebarTarget?: number } = {},
-): Promise<{ halaman: string[]; total: number }> {
+): Promise<{ halaman: HalamanPdf[]; total: number }> {
   const maks = Math.max(1, Math.floor(opsi.maksHalaman ?? 12))
   const lebarTarget = Math.max(320, Math.floor(opsi.lebarTarget ?? 1000))
 
@@ -59,7 +73,7 @@ export async function pdfKeGambar(
   const salinan = data instanceof Uint8Array ? data.slice() : new Uint8Array(data).slice()
   const doc = await pdfjs.getDocument({ data: salinan }).promise
 
-  const halaman: string[] = []
+  const halaman: HalamanPdf[] = []
   const n = Math.min(doc.numPages, maks)
   for (let i = 1; i <= n; i++) {
     const page = await doc.getPage(i)
@@ -77,7 +91,11 @@ export async function pdfKeGambar(
     canvas.width = Math.round(viewport.width)
     canvas.height = Math.round(viewport.height)
     await page.render({ canvas, viewport }).promise
-    halaman.push(canvas.toDataURL('image/jpeg', 0.85))
+    halaman.push({
+      src: canvas.toDataURL('image/jpeg', 0.85),
+      lebar: canvas.width,
+      tinggi: canvas.height,
+    })
     // Dibebaskan segera: pada PDF belasan halaman, canvas yang menumpuk di
     // memori HP kelas bawah cukup untuk membuat halamannya dimuat ulang
     // sendiri di tengah jalan.

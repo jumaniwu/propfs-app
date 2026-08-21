@@ -97,7 +97,9 @@ assert(keteranganBerkas('') === 'Berkas', 'tanpa jenis tetap punya sebutan')
   assert(/WhatsApp|aplikasi pembaca/.test(apk), 'menyebut yang benar-benar akan muncul')
 
   assert(labelBuka(false) === 'Buka di tab baru', 'label peramban')
-  assert(labelBuka(true) === 'Buka dengan aplikasi lain', 'label APK')
+  assert(labelBuka(true) === 'Kirim / Buka', 'label APK — pendek, muat satu baris di 390px')
+  assert(labelBuka(true).length < labelBuka(false).length + 4,
+    'tidak lebih panjang daripada label peramban; tombolnya berdampingan di layar sempit')
   assert(labelBuka(true) !== labelBuka(false), 'keduanya memang berbeda')
 
   assert(/Gambar/.test(ajakanBuka('image/png', false)), 'jenis lain ikut disebut')
