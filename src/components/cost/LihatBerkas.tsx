@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { bukaBerkas, simpanBerkas, diAndroid, jembatanNativeAda } from '@/lib/unduhBerkas'
+import { bukaBerkas, simpanBerkas, diAndroid, jembatanNativeAda, blobDariBase64 } from '@/lib/unduhBerkas'
+import { pdfKeGambar } from '@/lib/pdf-utils'
 import { X, ExternalLink, Download, Loader2, FileText, AlertTriangle, Share2 } from 'lucide-react'
 import {
   dataUriBerkas, base64Telanjang, bisaTampilInline, adalahPdf,
@@ -32,6 +33,23 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
 
+  // Halaman PDF yang sudah digambar sendiri oleh aplikasi ini.
+  //
+  // INILAH perbaikan yang sesungguhnya. Sebelumnya PDF hanya bisa dilihat
+  // dengan menyerahkannya ke aplikasi lain — tab baru di peramban, atau menu
+  // Bagikan Android di dalam APK. Keduanya menuntut sesuatu di luar kendali
+  // aplikasi ini: peramban yang mau menavigasi ke data URI panjang, atau
+  // jembatan native yang benar-benar terpasang di APK-nya. Ketika salah
+  // satunya tidak ada, yang tersisa tombol yang tidak menghasilkan apa-apa.
+  //
+  // pdf.js menggambar ke canvas dengan kode kita sendiri. Tidak ada penampil
+  // bawaan yang dipanggil dan tidak ada jembatan yang harus terpasang, jadi ia
+  // berjalan sama di peramban dan di APK versi mana pun.
+  const [halaman, setHalaman] = useState<string[]>([])
+  const [totalHalaman, setTotalHalaman] = useState(0)
+  const [gambarPdf, setGambarPdf] = useState(false)
+  const [gagalGambar, setGagalGambar] = useState('')
+
   useEffect(() => {
     let hidup = true
     muat()
@@ -43,11 +61,38 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
             + 'Tagihan yang dikirim sebelum fitur ini ada, atau berkasnya terlalu besar saat dikirim.')
           return
         }
-        setIsi({
+        const berkas = {
           nama: namaBerkasAman(b.berkas_nama || nama, b.berkas_mime, 'tagihan'),
           mime: b.berkas_mime,
           uri: dataUriBerkas(b.berkas_mime, data),
-        })
+        }
+        setIsi(berkas)
+
+        if (adalahPdf(b.berkas_mime)) {
+          setGambarPdf(true)
+          // Lebar layar dikalikan rasio piksel: layar 390px pada HP modern
+          // sebenarnya 1170 piksel sungguhan, dan merender pada 390 membuat
+          // angka nota terbaca kabur — padahal nomor rekening di situlah yang
+          // dicari orang.
+          const lebar = Math.min(1400, Math.round(
+            (window.innerWidth || 390) * Math.min(3, window.devicePixelRatio || 1),
+          ))
+          blobDariBase64(data, 'application/pdf').arrayBuffer()
+            .then(buf => pdfKeGambar(buf, { lebarTarget: lebar }))
+            .then(h => {
+              if (!hidup) return
+              setHalaman(h.halaman)
+              setTotalHalaman(h.total)
+            })
+            .catch(e => {
+              if (!hidup) return
+              // Gagal menggambar bukan gagal total: tombol "buka dengan
+              // aplikasi lain" tetap ada di bawah, dan menyebut sebabnya jauh
+              // lebih berguna daripada layar kosong.
+              setGagalGambar(e instanceof Error ? e.message : 'PDF ini tidak bisa ditampilkan.')
+            })
+            .finally(() => { if (hidup) setGambarPdf(false) })
+        }
       })
       .catch(e => hidup && setGalat(e instanceof Error ? e.message : 'Gagal memuat berkas.'))
       .finally(() => hidup && setMemuat(false))
@@ -109,7 +154,8 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 flex items-center justify-center p-3"
+      <div className={`flex-1 min-h-0 p-3 ${
+        halaman.length > 0 ? 'overflow-hidden' : 'flex items-center justify-center'}`}
         onClick={e => e.stopPropagation()}>
         {memuat ? (
           <Loader2 className="w-6 h-6 animate-spin text-white" />
@@ -121,6 +167,27 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
         ) : isi && bisaTampilInline(isi.mime) ? (
           <img data-berkas-gambar src={isi.uri} alt={isi.nama}
             className="max-w-full max-h-full object-contain rounded-lg" />
+        ) : gambarPdf ? (
+          <div className="text-center space-y-2 text-white">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+            <p className="text-xs opacity-80">Menyiapkan halaman PDF…</p>
+          </div>
+        ) : halaman.length > 0 ? (
+          // Digulung, bukan dipaskan ke layar: nota vendor dibaca untuk mencari
+          // angka — nomor rekening, total, nomor PO — dan angka yang dipaksa
+          // muat dalam satu layar 390px tidak bisa dibaca siapa pun.
+          <div data-pdf-halaman className="w-full h-full overflow-auto overscroll-contain space-y-3 py-1">
+            {halaman.map((h, i) => (
+              <img key={i} src={h} alt={`Halaman ${i + 1}`}
+                className="w-full rounded-lg bg-white" />
+            ))}
+            {totalHalaman > halaman.length && (
+              <p className="text-center text-[11px] text-white/70 pb-2">
+                Menampilkan {halaman.length} dari {totalHalaman} halaman. Buka dengan
+                aplikasi lain untuk melihat seluruhnya.
+              </p>
+            )}
+          </div>
         ) : (
           <div className="text-center space-y-3 text-white max-w-xs mx-auto">
             <FileText className="w-12 h-12 mx-auto opacity-70" />
@@ -129,7 +196,9 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
                 terjadi, sehingga yang membacanya mengira berkasnya sudah
                 terbuka di tempat yang tidak bisa ia temukan, lalu berhenti
                 mencari tombol yang sebenarnya ada di bawah layar. */}
-            <p className="text-sm leading-relaxed">{ajakanBuka(isi?.mime, diApk)}</p>
+            <p className="text-sm leading-relaxed">
+              {gagalGambar || ajakanBuka(isi?.mime, diApk)}
+            </p>
             {adalahPdf(isi?.mime) && !diApk && (
               <p className="text-xs opacity-70">
                 Penampil PDF di dalam halaman tidak bisa diandalkan pada peramban ponsel.
