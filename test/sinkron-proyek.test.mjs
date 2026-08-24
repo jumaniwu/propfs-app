@@ -1,6 +1,7 @@
 // Test penyatuan daftar proyek antar-perangkat.
 import {
   gabungProyek, sisipkanProyek, ringkasSinkron, kalimatSinkron, waktuUbah,
+  gabungIsiProyek, gabungNisan, tandaiDihapus, nisanProyek, UMUR_NISAN_HARI,
 } from '../src/lib/sinkronProyek.ts'
 
 let ok = 0
@@ -200,6 +201,140 @@ assert(kalimatSinkron(ringkasSinkron([], [])) === 'Belum ada proyek.', 'belum ad
   const satu = gabungIsiProyek(a, b)
   assert(satu.projectName === 'baru', 'medan biasa tetap dari dokumen yang lebih baru')
   assert(!satu.realisasiEntries, 'proyek tanpa entri tidak diberi daftar kosong karangan')
+}
+
+
+// ── NISAN: penghapusan yang bertahan melewati penggabungan ─────────────────
+//
+// Keluhannya: "sudah hapus terus tapi dia mengulang, seperti tidak menyimpan
+// apa yang sudah update."
+//
+// Sebabnya mendasar dan bukan soal penyimpanan sama sekali. Penggabungan
+// menyatukan baris dari KEDUA sisi, dan penyatuan seperti itu tidak bisa
+// menyatakan penghapusan: ketiadaan sebuah baris di satu sisi tidak bisa
+// dibedakan dari "belum pernah ada di sisi itu". Baris yang dihapus di HP
+// karena itu hidup lagi dari salinan laptop — dihapus, kembali, dihapus,
+// kembali.
+//
+// Berkas ini dulu memuat alasan kenapa itu "dipilih dengan sadar": baris yang
+// muncul kembali terlihat dan bisa dihapus lagi. Alasan itu keliru pada satu
+// titik — menghapusnya lagi tidak menyelesaikan apa pun, karena penghapusan
+// berikutnya menghasilkan dokumen yang sekali lagi hanya TIDAK MEMUAT baris
+// itu.
+{
+  const KEMARIN = '2026-08-20T00:00:00.000Z'
+  const HARI_INI = '2026-08-21T00:00:00.000Z'
+
+  // Laptop belum tahu; HP sudah menghapus baris b.
+  const laptop = {
+    info: { id: 'p1' }, updatedAt: KEMARIN,
+    realisasiEntries: [{ id: 'a', jumlah: 1 }, { id: 'b', jumlah: 2 }],
+  }
+  const hp = {
+    info: { id: 'p1' }, updatedAt: HARI_INI,
+    realisasiEntries: [{ id: 'a', jumlah: 1 }],
+    dihapus: [{ id: 'b', at: HARI_INI }],
+  }
+
+  const satu = gabungIsiProyek(laptop, hp)
+  const idSatu = satu.realisasiEntries.map(e => e.id)
+  assert(!idSatu.includes('b'), 'baris yang dihapus TIDAK hidup lagi — inti perbaikannya')
+  assert(idSatu.includes('a'), 'yang tidak dihapus tetap ada')
+  assert(satu.dihapus.some(n => n.id === 'b'), 'nisannya ikut terbawa ke hasil')
+
+  // Arahnya tidak boleh berpengaruh: satu perangkat yang menghapus sudah cukup,
+  // dan yang belum tahu bukan berarti tidak setuju.
+  const balik = gabungIsiProyek(hp, laptop)
+  assert(!balik.realisasiEntries.map(e => e.id).includes('b'),
+    'urutan argumen tidak mengubah hasilnya')
+
+  // Dan ini yang menghentikan LINGKARANNYA: hasil gabungan itu digabung lagi
+  // dengan salinan laptop yang masih lama — persis yang terjadi pada
+  // sinkronisasi berikutnya.
+  const putaranKedua = gabungIsiProyek(satu, laptop)
+  assert(!putaranKedua.realisasiEntries.map(e => e.id).includes('b'),
+    'putaran berikutnya pun tidak menghidupkannya kembali')
+  const putaranKetiga = gabungIsiProyek(putaranKedua, laptop)
+  assert(!putaranKetiga.realisasiEntries.map(e => e.id).includes('b'),
+    'dan seterusnya — lingkarannya berhenti')
+
+  // Baris yang dihapus lalu SENGAJA dibuat ulang dengan id baru tetap hidup:
+  // yang dicatat penghapusannya adalah id, bukan isinya.
+  const buatUlang = gabungIsiProyek(satu, {
+    info: { id: 'p1' }, updatedAt: '2026-08-22T00:00:00.000Z',
+    realisasiEntries: [{ id: 'b-baru', jumlah: 2 }],
+  })
+  assert(buatUlang.realisasiEntries.map(e => e.id).includes('b-baru'),
+    'baris baru dengan id lain tidak ikut tertahan nisan')
+}
+
+// ── Nisan: menyatukan, mengingat yang terbaru, melupakan yang usang ────────
+{
+  const SEKARANG = Date.parse('2026-08-21T00:00:00.000Z')
+  const hari = (n) => new Date(SEKARANG - n * 86400000).toISOString()
+
+  const g = gabungNisan([{ id: 'a', at: hari(1) }], [{ id: 'b', at: hari(2) }], SEKARANG)
+  assert(g.length === 2, 'kedua sisi disatukan')
+
+  // Yang paling baru menang: baris yang dihapus lagi setelah sempat dibuat
+  // ulang harus memakai tanggal penghapusan yang TERAKHIR, karena tanggal
+  // itulah yang menentukan kapan ia boleh dilupakan.
+  const dua = gabungNisan([{ id: 'a', at: hari(10) }], [{ id: 'a', at: hari(1) }], SEKARANG)
+  assert(dua.length === 1, 'id yang sama tidak digandakan')
+  assert(dua[0].at === hari(1), 'yang dipakai tanggal terbaru')
+
+  // Yang sudah lewat umurnya dibuang supaya daftarnya tidak tumbuh selamanya.
+  const usang = gabungNisan([{ id: 'a', at: hari(UMUR_NISAN_HARI + 1) }], [], SEKARANG)
+  assert(usang.length === 0, 'nisan kedaluwarsa dibuang')
+  const masih = gabungNisan([{ id: 'a', at: hari(UMUR_NISAN_HARI - 1) }], [], SEKARANG)
+  assert(masih.length === 1, 'yang masih dalam umurnya dipertahankan')
+  assert(UMUR_NISAN_HARI >= 90,
+    'umurnya harus jauh lebih lama daripada jeda terlama sebuah HP proyek tidak dibuka')
+
+  // Nisan TANPA tanggal tidak dibuang: ketiadaan tanggal berarti asalnya tidak
+  // diketahui, dan membuang penghapusan yang tidak diketahui umurnya berarti
+  // menghidupkan kembali baris yang sudah sengaja dihapus.
+  assert(gabungNisan([{ id: 'a' }], [], SEKARANG).length === 1, 'nisan tanpa tanggal dipertahankan')
+
+  assert(gabungNisan([{ id: '' }], [], SEKARANG).length === 0, 'id kosong dibuang')
+  assert(gabungNisan(null, undefined, SEKARANG).length === 0, 'masukan kosong aman')
+}
+
+// ── tandaiDihapus ────────────────────────────────────────────────────────
+{
+  const p = { info: { id: 'p1' }, realisasiEntries: [{ id: 'a' }, { id: 'b' }] }
+  const t = tandaiDihapus(p, ['b'], '2026-08-21T00:00:00.000Z')
+  assert(nisanProyek(t).some(n => n.id === 'b'), 'penghapusan tercatat')
+  assert(t.realisasiEntries.length === 2, 'barisnya sendiri tidak ikut disentuh di sini')
+  assert(tandaiDihapus(p, []) === p, 'tanpa id: dokumen yang sama, bukan salinan baru')
+  assert(nisanProyek({}).length === 0, 'dokumen tanpa nisan aman')
+  assert(nisanProyek(null).length === 0, 'null aman')
+}
+
+// ── Penghapusan DIDORONG ke cloud, bukan dianggap tidak ada yang baru ─────
+//
+// Cacat yang kebalikannya: setelah sebuah baris dihapus, hasil gabungan lebih
+// SEDIKIT daripada salinan cloud. Pemeriksaan lama hanya menanyakan "apakah
+// lebih banyak" — jawabannya tidak, cloud tetap memuat baris yang sudah
+// dihapus, dan penggabungan berikutnya menghidupkannya kembali. Lingkaran yang
+// sama, hanya berpindah tempat.
+{
+  const HARI_INI = '2026-08-21T00:00:00.000Z'
+  const lokal = {
+    info: { id: 'p1' }, updatedAt: HARI_INI,
+    realisasiEntries: [{ id: 'a' }],
+    dihapus: [{ id: 'b', at: HARI_INI }],
+  }
+  const cloud = {
+    info: { id: 'p1' }, updatedAt: '2026-08-20T00:00:00.000Z',
+    realisasiEntries: [{ id: 'a' }, { id: 'b' }],
+  }
+  const { perluDorong } = gabungProyek([lokal], [cloud])
+  assert(perluDorong.length === 1, 'penghapusan menjadi alasan mendorong ke cloud')
+  assert(!perluDorong[0].realisasiEntries.map(e => e.id).includes('b'),
+    'yang didorong sudah tanpa baris yang dihapus')
+  assert(perluDorong[0].dihapus.some(n => n.id === 'b'),
+    'berikut nisannya, supaya perangkat lain ikut berhenti menghidupkannya')
 }
 
 console.log(`sinkron-proyek: ${ok} assert lulus`)

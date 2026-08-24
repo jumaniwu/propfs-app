@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { BudgetPlan, BudgetComponent, MaterialScheduleItem } from '../types/cost.types'
 import { RealisasiEntry } from '../lib/ai-realisasi'
 import { supabase } from '../lib/supabase'
-import { gabungProyek, sisipkanProyek } from '../lib/sinkronProyek'
+import { gabungProyek, sisipkanProyek, gabungNisan, type Nisan } from '../lib/sinkronProyek'
 import { dataOwnerId } from '../lib/teamApi'
 import { tandaiMenyimpan, tandaiTersimpan, tandaiGagal } from '../lib/syncStatus'
 
@@ -22,6 +22,17 @@ export interface SavedCostProject {
   plan: BudgetPlan | null
   materialSchedule: MaterialScheduleItem[]
   realisasiEntries: RealisasiEntry[]
+  /**
+   * Baris realisasi yang sudah DIHAPUS, berikut kapan dihapusnya.
+   *
+   * Ikut disimpan dan ikut naik ke cloud — di sanalah gunanya: perangkat lain
+   * membacanya lalu berhenti menghidupkan kembali baris yang sudah dihapus di
+   * sini. Tanpa medan ini, penggabungan antar-perangkat tidak punya cara
+   * membedakan "sudah dihapus" dari "belum pernah ada di sisi itu".
+   *
+   * Opsional supaya seluruh dokumen lama tetap terbaca apa adanya.
+   */
+  dihapus?: Nisan[]
   updatedAt: string
 }
 
@@ -34,6 +45,8 @@ interface CostStore {
   draftComponents: BudgetComponent[]
   materialSchedule: MaterialScheduleItem[]
   realisasiEntries: RealisasiEntry[]  // persisten
+  /** Penghapusan pada proyek yang sedang dibuka. Lihat SavedCostProject.dihapus. */
+  nisanRealisasi: Nisan[]
   
   // States
   isProcessingUpload: boolean
@@ -194,6 +207,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
   draftComponents: [],
   materialSchedule: [],
   realisasiEntries: [],
+  nisanRealisasi: [],
   
   isProcessingUpload: false,
   isGeneratingMaterial: false,
@@ -270,6 +284,10 @@ export const useCostStore = create<CostStore>((set, get) => ({
       plan: activePlan,
       materialSchedule,
       realisasiEntries: get().realisasiEntries,
+      // Ikut disimpan dan ikut naik ke cloud — di sanalah gunanya: perangkat
+      // lain membacanya lalu berhenti menghidupkan kembali baris yang sudah
+      // dihapus di sini.
+      dihapus: get().nisanRealisasi,
       updatedAt: now
     }
 
@@ -288,7 +306,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
   },
 
   initProject: (info) => {
-    set({ projectInfo: info, activePlan: null, draftComponents: [], materialSchedule: [], realisasiEntries: [] })
+    set({ projectInfo: info, activePlan: null, draftComponents: [], materialSchedule: [], realisasiEntries: [], nisanRealisasi: [] })
     setTimeout(() => get().saveToStorage(), 100)
   },
 
@@ -300,13 +318,14 @@ export const useCostStore = create<CostStore>((set, get) => ({
         activePlan: p.plan, 
         materialSchedule: p.materialSchedule || [],
         realisasiEntries: p.realisasiEntries || [],
+        nisanRealisasi: gabungNisan((p as { dihapus?: Nisan[] }).dihapus ?? []),
         draftComponents: []
       })
     }
   },
 
   clearProject: () => {
-    set({ projectInfo: null, activePlan: null, draftComponents: [], materialSchedule: [], realisasiEntries: [] })
+    set({ projectInfo: null, activePlan: null, draftComponents: [], materialSchedule: [], realisasiEntries: [], nisanRealisasi: [] })
     get().loadProjects()
   },
 
@@ -418,14 +437,33 @@ export const useCostStore = create<CostStore>((set, get) => ({
   },
 
   deleteRealisasiEntry: (id) => {
+    // Penghapusan DICATAT, bukan sekadar dijalankan.
+    //
+    // Penggabungan antar-perangkat menyatukan baris dari kedua sisi, dan
+    // penyatuan seperti itu tidak bisa menyatakan penghapusan sama sekali:
+    // ketiadaan sebuah baris di satu sisi tidak bisa dibedakan dari "belum
+    // pernah ada di sisi itu". Tanpa catatan ini, baris yang dihapus di HP
+    // hidup lagi dari salinan laptop, dihapus lagi, hidup lagi — dan
+    // pemakainya menyimpulkan aplikasinya tidak menyimpan apa-apa.
     set(state => ({
-      realisasiEntries: state.realisasiEntries.filter(e => e.id !== id)
+      realisasiEntries: state.realisasiEntries.filter(e => e.id !== id),
+      nisanRealisasi: gabungNisan(state.nisanRealisasi, [{ id, at: new Date().toISOString() }]),
     }))
     setTimeout(() => get().saveToStorage(), 300)
   },
 
   clearRealisasiEntries: () => {
-    set({ realisasiEntries: [] })
+    // Seluruh id yang dibuang ikut dicatat. Mengosongkan tanpa mencatat berarti
+    // seluruhnya kembali pada sinkronisasi berikutnya — kerugian yang persis
+    // sama, hanya sekaligus.
+    const waktu = new Date().toISOString()
+    set(state => ({
+      realisasiEntries: [],
+      nisanRealisasi: gabungNisan(
+        state.nisanRealisasi,
+        state.realisasiEntries.map(e => ({ id: String(e.id ?? ''), at: waktu })),
+      ),
+    }))
     setTimeout(() => get().saveToStorage(), 300)
   },
 

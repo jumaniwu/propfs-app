@@ -182,6 +182,80 @@ interface EntriBerId { id?: string; [k: string]: unknown }
 /** Daftar yang digabung per-baris ketika dua perangkat sama-sama menyuntingnya. */
 const DAFTAR_ISI = ['realisasiEntries'] as const
 
+/** Satu baris yang sudah dihapus, berikut kapan dihapusnya. */
+export interface Nisan { id: string; at?: string }
+
+/** Medan tempat catatan penghapusan disimpan di dalam dokumen proyek. */
+export const MEDAN_NISAN = 'dihapus'
+
+/**
+ * Berapa lama catatan penghapusan disimpan.
+ *
+ * Ada dua kerugian, dan keduanya nyata:
+ *
+ *   TERLALU PENDEK — perangkat yang lama tidak dibuka membawa salinan lamanya,
+ *   catatan penghapusannya sudah dibuang, dan baris yang sudah dihapus hidup
+ *   lagi. Persis keadaan sebelum catatan ini ada.
+ *
+ *   TERLALU PANJANG — daftarnya tumbuh terus di dalam tiap dokumen proyek dan
+ *   ikut naik-turun pada setiap sinkronisasi.
+ *
+ * 180 hari dipilih karena ia jauh lebih lama daripada jeda terlama yang masuk
+ * akal untuk sebuah HP proyek yang tidak dibuka, sementara satu baris nisan
+ * hanya berisi id dan tanggal — seribu di antaranya masih di bawah 60 KB.
+ */
+export const UMUR_NISAN_HARI = 180
+
+const waktuNisan = (n: Nisan | null | undefined): number => {
+  const t = Date.parse(String(n?.at ?? ''))
+  return Number.isFinite(t) ? t : 0
+}
+
+/** Catatan penghapusan pada sebuah dokumen proyek. */
+export function nisanProyek(p: ProyekTersimpan | null | undefined): Nisan[] {
+  const raw = (p as Record<string, unknown> | null | undefined)?.[MEDAN_NISAN]
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(n => ({ id: String((n as Nisan)?.id ?? '').trim(), at: (n as Nisan)?.at }))
+    .filter(n => !!n.id)
+}
+
+/**
+ * Satukan dua daftar nisan, buang yang sudah kedaluwarsa.
+ *
+ * Yang PALING BARU menang untuk id yang sama: nisan yang tanggalnya lebih baru
+ * berarti barisnya dihapus lagi setelah sempat dibuat ulang, dan tanggal itulah
+ * yang menentukan kapan ia boleh dilupakan.
+ */
+export function gabungNisan(
+  a: Nisan[] = [], b: Nisan[] = [], sekarang = Date.now(),
+): Nisan[] {
+  const batas = sekarang - UMUR_NISAN_HARI * 86_400_000
+  const peta = new Map<string, Nisan>()
+  for (const n of [...(a ?? []), ...(b ?? [])]) {
+    const id = String(n?.id ?? '').trim()
+    if (!id) continue
+    const ada = peta.get(id)
+    if (!ada || waktuNisan(n) > waktuNisan(ada)) peta.set(id, { id, at: n?.at })
+  }
+  // Nisan tanpa tanggal TIDAK dibuang: ketiadaan tanggal berarti asalnya tidak
+  // diketahui, dan membuang penghapusan yang tidak diketahui umurnya berarti
+  // menghidupkan kembali baris yang sudah sengaja dihapus.
+  return [...peta.values()].filter(n => waktuNisan(n) === 0 || waktuNisan(n) >= batas)
+}
+
+/** Tambahkan catatan penghapusan ke sebuah dokumen proyek. */
+export function tandaiDihapus(
+  p: ProyekTersimpan, ids: string[], waktu = new Date().toISOString(),
+): ProyekTersimpan {
+  const baru = (ids ?? [])
+    .map(id => String(id ?? '').trim())
+    .filter(Boolean)
+    .map(id => ({ id, at: waktu }))
+  if (!baru.length) return p
+  return { ...p, [MEDAN_NISAN]: gabungNisan(nisanProyek(p), baru) }
+}
+
 /**
  * Satukan isi dua salinan proyek yang sama.
  *
@@ -200,18 +274,49 @@ const DAFTAR_ISI = ['realisasiEntries'] as const
  * daftar yang sifatnya BERTAMBAH: entri biaya. Barisnya dicocokkan lewat `id`,
  * dan versi dari dokumen yang lebih baru yang menang bila keduanya memuatnya.
  *
- * Batasan yang disadari: tanpa catatan penghapusan, baris yang dihapus di satu
- * perangkat bisa hidup lagi dari salinan perangkat lain yang belum tahu. Itu
- * dipilih dengan sadar — baris yang muncul kembali TERLIHAT dan bisa dihapus
- * lagi, sedangkan dua puluh baris yang hilang diam-diam tidak terlihat sama
- * sekali sampai ada yang menghitung ulang.
+ * BATASAN ITU KINI DITUTUP. Dulu di sini tertulis bahwa baris yang dihapus di
+ * satu perangkat bisa hidup lagi dari salinan perangkat lain, dan bahwa itu
+ * "dipilih dengan sadar karena baris yang muncul kembali terlihat dan bisa
+ * dihapus lagi".
+ *
+ * Alasan itu keliru pada satu titik yang menentukan: menghapusnya lagi TIDAK
+ * MENYELESAIKAN APA PUN. Penghapusan berikutnya hanya menghasilkan dokumen
+ * yang, sekali lagi, tidak memuat baris itu — sementara salinan sebelah masih
+ * memuatnya, dan penggabungan berikutnya menghidupkannya kembali. Yang terjadi
+ * bukan gangguan sesekali melainkan LINGKARAN: dihapus, kembali, dihapus,
+ * kembali, dan pemakainya menyimpulkan aplikasinya tidak menyimpan apa-apa.
+ *
+ * Penggabungan berdasarkan gabungan (union) memang tidak bisa menyatakan
+ * penghapusan sama sekali — ketiadaan sebuah baris di satu sisi tidak bisa
+ * dibedakan dari "belum pernah ada di sisi itu". Satu-satunya jalan adalah
+ * menuliskan penghapusannya, bukan menyiratkannya. Itulah nisan di bawah:
+ * yang sudah dihapus tetap tercatat sebagai dihapus, dan penggabungan
+ * menghormatinya.
  */
-/** Apakah hasil gabungan memuat baris yang belum ada pada salinan cloud. */
+/**
+ * Apakah salinan cloud perlu diperbarui dari hasil gabungan ini.
+ *
+ * Membandingkan JUMLAH saja tidak cukup lagi, dan cacatnya persis kebalikan
+ * dari yang dulu dijaga. Setelah sebuah baris dihapus, hasil gabungan justru
+ * lebih SEDIKIT daripada salinan cloud — pemeriksaan `g.length > c.length`
+ * menjawab "tidak perlu didorong", cloud tetap memuat baris yang sudah
+ * dihapus, dan penggabungan berikutnya menghidupkannya kembali. Lingkaran yang
+ * sama, hanya berpindah tempat.
+ *
+ * Karena itu catatan penghapusan ikut diperiksa: nisan yang belum sampai ke
+ * cloud adalah alasan yang cukup untuk mendorong, apa pun jumlah barisnya.
+ */
 function adaYangBelumDiCloud(gabung: ProyekTersimpan, cloud: ProyekTersimpan): boolean {
+  const nisanCloud = new Set(nisanProyek(cloud).map(n => n.id))
+  if (nisanProyek(gabung).some(n => !nisanCloud.has(n.id))) return true
+
   for (const medan of DAFTAR_ISI) {
     const g = Array.isArray(gabung[medan]) ? gabung[medan] as EntriBerId[] : []
     const c = Array.isArray(cloud[medan]) ? cloud[medan] as EntriBerId[] : []
-    if (g.length > c.length) return true
+    // Beda jumlah ke ARAH MANA PUN berarti kedua sisi belum sama. Yang lebih
+    // banyak berarti ada baris baru; yang lebih sedikit berarti ada yang sudah
+    // dihapus dan cloud belum tahu.
+    if (g.length !== c.length) return true
   }
   return false
 }
@@ -221,6 +326,14 @@ export function gabungIsiProyek(
 ): ProyekTersimpan {
   const [tua, muda] = waktuUbah(a) >= waktuUbah(b) ? [b, a] : [a, b]
   const hasil: ProyekTersimpan = { ...tua, ...muda }
+
+  // Catatan penghapusan dari KEDUA sisi. Satu perangkat yang menghapus sudah
+  // cukup: yang tidak tahu bukan berarti tidak setuju, ia hanya belum
+  // mendengar.
+  const nisan = gabungNisan(nisanProyek(tua), nisanProyek(muda))
+  const dihapus = new Set(nisan.map(n => n.id))
+  if (nisan.length) hasil[MEDAN_NISAN] = nisan
+  else delete (hasil as Record<string, unknown>)[MEDAN_NISAN]
 
   for (const medan of DAFTAR_ISI) {
     const dariTua = Array.isArray(tua[medan]) ? tua[medan] as EntriBerId[] : []
@@ -232,11 +345,11 @@ export function gabungIsiProyek(
     // bila id-nya sama.
     for (const e of dariTua) {
       const id = String(e?.id ?? '').trim()
-      if (id) peta.set(id, e)
+      if (id && !dihapus.has(id)) peta.set(id, e)
     }
     for (const e of dariMuda) {
       const id = String(e?.id ?? '').trim()
-      if (id) peta.set(id, e)
+      if (id && !dihapus.has(id)) peta.set(id, e)
     }
     hasil[medan] = [...peta.values()]
   }
