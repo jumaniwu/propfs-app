@@ -30,6 +30,8 @@ import {
   type Urgensi, type StokMaterial,
 } from '@/lib/materialApi'
 import { downscaleImage } from '@/lib/imageUtil'
+import AmbilFoto from '@/components/lapangan/AmbilFoto'
+import { sisaMuat, petunjukFoto } from '@/lib/sumberFoto'
 
 type Tab = 'laporan' | 'pakai' | 'request' | 'pekerja'
 
@@ -152,15 +154,15 @@ function PilihFoto({ photos, setPhotos, max = 8 }: {
   max?: number
 }) {
   const [busy, setBusy] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
 
-  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    e.target.value = ''
+  async function pick(files: File[]) {
     if (!files.length) return
     setBusy(true)
     try {
-      for (const f of files) {
+      // Dipotong SEBELUM dikecilkan. Mengecilkan dua puluh foto lalu membuang
+      // lima belas di antaranya adalah belasan detik yang dihabiskan pemakai
+      // untuk menunggu pekerjaan yang memang akan dibuang.
+      for (const f of files.slice(0, sisaMuat(max, photos.length))) {
         const small = await downscaleImage(f)
         setPhotos(prev => prev.length < max ? [...prev, small] : prev)
       }
@@ -182,13 +184,16 @@ function PilihFoto({ photos, setPhotos, max = 8 }: {
         </div>
       )}
       {photos.length < max && (
-        <Button variant="outline" className="gap-2 border-dashed w-full" disabled={busy}
-          onClick={() => fileRef.current?.click()}>
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
-          Ambil / Pilih Foto
-        </Button>
+        <>
+          {/* Dua tombol, bukan satu. Tombol lama bertuliskan "Ambil / Pilih
+              Foto" — menjanjikan keduanya — sementara `capture` pada input-nya
+              menghilangkan pilihan galeri sama sekali. Pengawas yang memotret
+              sambil berjalan lalu mengisi laporan sore hari tidak punya cara
+              memasukkan fotonya, selain memotret ulang layar HP-nya sendiri. */}
+          <AmbilFoto onPilih={pick} sibuk={busy} banyak />
+          <p className="text-[10px] text-muted-foreground">{petunjukFoto(max, photos.length)}</p>
+        </>
       )}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={pick} />
     </div>
   )
 }
@@ -326,12 +331,10 @@ function FotoAbsen({ foto, onFoto, nama }: {
   onFoto: (f: string | undefined) => void
   nama: string
 }) {
-  const ref = useRef<HTMLInputElement>(null)
   const [sibuk, setSibuk] = useState(false)
 
-  async function pilih(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
+  async function pilih(berkas: File[]) {
+    const f = berkas[0]
     if (!f) return
     setSibuk(true)
     try {
@@ -352,17 +355,14 @@ function FotoAbsen({ foto, onFoto, nama }: {
       </div>
     )
   }
-  return (
-    <>
-      <button type="button" onClick={() => ref.current?.click()} disabled={sibuk}
-        aria-label={`Foto ${nama}`}
-        className="h-8 px-2.5 rounded-lg border border-dashed border-border bg-white flex items-center gap-1.5
-          text-[11px] font-semibold text-muted-foreground hover:border-navy/40 hover:text-navy">
-        {sibuk ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Camera className="w-3.5 h-3.5" />} Foto
-      </button>
-      <input ref={ref} type="file" accept="image/*" capture="environment" hidden onChange={pilih} />
-    </>
-  )
+  // Galeri ikut dibuka di sini, dan itu keputusan yang disadari.
+  //
+  // `capture` sempat terasa seperti pagar: foto absensi harus diambil saat itu
+  // juga. Ia tidak pernah menjadi pagar. Sebagian peramban mengabaikannya, dan
+  // bahkan ketika dipatuhi, memotret layar berisi foto lama tetap menghasilkan
+  // "foto kamera". Yang ditinggalkannya hanya kerepotan bagi pengawas jujur
+  // yang sudah memotret timnya sekaligus di awal hari.
+  return <AmbilFoto onPilih={pilih} sibuk={sibuk} kecil labelKamera="Foto" />
 }
 
 // ── 1. Laporan harian ───────────────────────────────────────────────────────
@@ -861,7 +861,6 @@ function FormPekerja({ token, pekerja, onUbah }: {
   const [kirim, setKirim] = useState(false)
   const [galat, setGalat] = useState('')
   const [pesan, setPesan] = useState('')
-  const fotoRef = useRef<HTMLInputElement>(null)
 
   const calon = {
     nama, peran, no_hp: noHp, jenis,
@@ -869,9 +868,8 @@ function FormPekerja({ token, pekerja, onUbah }: {
   }
   const periksa = siapDaftarPekerja(calon, pekerja)
 
-  async function pilihFoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
+  async function pilihFoto(berkas: File[]) {
+    const f = berkas[0]
     if (!f) return
     try { setFoto(await downscaleImage(f, 400, 0.7)) } catch { setGalat('Foto tidak terbaca.') }
   }
@@ -953,16 +951,17 @@ function FormPekerja({ token, pekerja, onUbah }: {
                 <Camera className="w-5 h-5 text-muted-foreground" />
               </span>}
           <div className="flex-1 space-y-1">
-            <Button type="button" variant="outline" size="sm" className="h-8 text-[11px] gap-1.5"
-              onClick={() => fotoRef.current?.click()}>
-              <Camera className="w-3.5 h-3.5" /> {foto ? 'Ganti Foto' : 'Foto Pekerja'}
-            </Button>
+            {/* Foto pengenal boleh datang dari album: yang mendaftarkan
+                pekerja sering sudah punya fotonya, dan memaksanya memotret
+                ulang di tempat hanya menunda pendaftaran yang seharusnya
+                selesai dalam satu menit. */}
+            <AmbilFoto onPilih={pilihFoto} arah="depan" kecil
+              labelKamera={foto ? 'Ganti' : 'Kamera'} />
             <p className="text-[10px] text-muted-foreground leading-tight">
               Untuk mengenali nama di daftar absen — di proyek besar, "Adi" bisa
               berarti tiga orang.
             </p>
           </div>
-          <input ref={fotoRef} type="file" accept="image/*" capture="user" hidden onChange={pilihFoto} />
         </div>
 
         <div className="grid grid-cols-2 gap-2.5">
