@@ -15,7 +15,7 @@ import {
   itemRevisiDariKurang, bolehRevisiPo, siapRevisiPo, adaPerubahan,
   perluApprovalUlang, akibatRevisi, bacaRiwayatRevisi,
   alamatKirimAwal, siapAlamatKirim, adaAlamatKirim, alamatBerbedaDariProyek,
-  rapikanWa, ALAMAT_KOSONG,
+  rapikanWa, ALAMAT_KOSONG, satuanDiperbaiki,
 } from '../src/lib/revisiPo.ts'
 
 let ok = 0
@@ -251,5 +251,84 @@ assert(!alamatBerbedaDariProyek('Jl. Merdeka 12', 'jl.  merdeka 12'),
   'beda huruf besar & spasi bukan alamat berbeda')
 assert(!alamatBerbedaDariProyek('', 'Jl. Merdeka 12'), 'kosong tidak dianggap berbeda')
 assert(!alamatBerbedaDariProyek('Jl. A', ''), 'proyek tanpa lokasi tidak dianggap berbeda')
+
+
+// ── Satuan ikut bisa diperbaiki ────────────────────────────────────────────
+//
+// PO tertulis "1 Kg paku" padahal yang dipesan "1 Kotak". Salah ketik, bukan
+// salah jumlah.
+//
+// Sebelum ini, koreksi itu MUSTAHIL: jumlahnya benar, harganya benar, jadi
+// `adaPerubahan` menjawab "tidak ada yang berubah" dan `siapRevisiPo`
+// menolak menyimpan — sementara dokumen yang dipegang vendor tetap salah, dan
+// barang yang datang dihitung dengan satuan yang tidak pernah dipakai siapa
+// pun di gudang.
+{
+  const lama = [{ nama: 'Paku kayu 3 inch', satuan: 'Kg', qty: 1, harga: 100000, subtotal: 100000 }]
+
+  // Hanya satuannya yang berubah — jumlah dan harga persis sama.
+  const satuanSaja = [{ ...lama[0], satuan: 'Kotak' }]
+  assert(adaPerubahan(lama, satuanSaja) === true,
+    'satuan yang berbeda DIHITUNG sebagai perubahan — tanpa ini koreksinya mustahil')
+
+  const siap = siapRevisiPo({ lama, baru: satuanSaja, alasan: 'Satuan salah ketik, seharusnya Kotak' })
+  assert(siap.boleh === true, 'dan revisinya boleh disimpan')
+
+  // Perbandingannya longgar: mengetik ulang dengan huruf besar bukan revisi.
+  assert(adaPerubahan(lama, [{ ...lama[0], satuan: 'KG' }]) === false, 'beda huruf besar-kecil: bukan perubahan')
+  assert(adaPerubahan(lama, [{ ...lama[0], satuan: ' Kg ' }]) === false, 'spasi di tepi diabaikan')
+  assert(adaPerubahan(lama, lama) === false, 'tanpa perubahan apa pun tetap ditolak')
+
+  // Harga TIDAK ikut disesuaikan sendiri. "Dulu per Kg, sekarang per Kotak,
+  // jadi harganya dikali sekian" adalah mengarang angka yang tidak pernah
+  // disepakati vendor.
+  assert(satuanSaja[0].harga === lama[0].harga, 'harga satuan tidak ikut berubah')
+  assert(satuanSaja[0].subtotal === lama[0].subtotal, 'subtotal pun tidak')
+
+  // Total tidak berubah, jadi tidak perlu disetujui ulang: ini koreksi
+  // keterangan, bukan komitmen belanja baru.
+  assert(perluApprovalUlang(100000, 100000) === false, 'koreksi satuan tidak menuntut approval ulang')
+}
+
+// ── Satuan tidak boleh DIKOSONGKAN ────────────────────────────────────────
+//
+// Lebih buruk daripada satuan yang salah: PO bertuliskan "5" tanpa keterangan
+// apa pun, dan vendor menebak sendiri.
+{
+  const lama = [{ nama: 'Paku', satuan: 'Kg', qty: 2, harga: 50000, subtotal: 100000 }]
+  const kosong = [{ ...lama[0], satuan: '' }]
+  const p = siapRevisiPo({ lama, baru: kosong, alasan: 'perbaikan satuan' })
+  assert(p.boleh === false, 'satuan kosong ditolak')
+  assert(/Paku/.test(p.alasan), 'alasannya menyebut barang MANA yang kosong')
+  assert(/[Ss]atuan/.test(p.alasan), 'dan menyebut apa yang kurang')
+
+  // Baris yang memang dibatalkan (qty 0) tidak ikut diperiksa satuannya —
+  // ia disaring lebih dulu, dan menuntut satuan pada barang yang batal hanya
+  // menghalangi revisi yang sah.
+  const batal = [
+    { nama: 'Paku', satuan: 'Kg', qty: 2, harga: 50000, subtotal: 100000 },
+    { nama: 'Semen', satuan: '', qty: 0, harga: 60000, subtotal: 0 },
+  ]
+  const lamaDua = [
+    { nama: 'Paku', satuan: 'Kg', qty: 3, harga: 50000, subtotal: 150000 },
+    { nama: 'Semen', satuan: 'Sak', qty: 1, harga: 60000, subtotal: 60000 },
+  ]
+  assert(siapRevisiPo({ lama: lamaDua, baru: batal, alasan: 'semen tidak datang' }).boleh === true,
+    'barang yang batal tidak dituntut satuannya')
+}
+
+// ── satuanDiperbaiki: menandai koreksi, bukan perubahan pesanan ───────────
+//
+// Keduanya terlihat sama di layar — angka yang berubah — padahal yang satu
+// berarti "barangnya datang kurang" dan yang lain "dulu salah ketik".
+{
+  const a = { nama: 'Paku', satuan: 'Kg', qty: 1, harga: 1, subtotal: 1 }
+  assert(satuanDiperbaiki(a, { ...a, satuan: 'Kotak' }) === true, 'satuan berbeda: ditandai')
+  assert(satuanDiperbaiki(a, { ...a, satuan: 'kg' }) === false, 'beda huruf saja: bukan koreksi')
+  assert(satuanDiperbaiki(a, a) === false, 'sama: bukan koreksi')
+  assert(satuanDiperbaiki(a, { ...a, satuan: '' }) === false,
+    'satuan kosong bukan "koreksi" — ia kolom yang belum diisi, dan ditolak di tempat lain')
+  assert(satuanDiperbaiki(null, undefined) === false, 'masukan kosong aman')
+}
 
 console.log(`revisi-po: ${ok} assert lulus`)
