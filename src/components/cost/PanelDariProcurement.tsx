@@ -6,6 +6,7 @@ import type { PurchaseOrder } from '@/lib/procurement'
 import type { DeliveryOrder, PoPayment } from '@/lib/penerimaan'
 import { LABEL_STATUS_BAYAR, TONE_STATUS_BAYAR } from '@/lib/penerimaan'
 import { penerimaanBelumTercatat, ringkasUsul, type UsulDariPo } from '@/lib/sinkronRealisasi'
+import { usulUntukProyek, poTanpaProyek, peringatanTanpaProyek } from '@/lib/lingkupPo'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 
@@ -23,14 +24,23 @@ const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
  *
  * Satu ketukan konfirmasi jauh lebih murah daripada itu. Yang dihapus panel
  * ini adalah MENGETIK ULANG, bukan memutuskan.
+ *
+ * DISARING MENURUT PROYEK. Buku pengeluaran dipegang per proyek, tetapi PO
+ * disimpan satu kolam untuk seluruh workspace — sehingga panel ini dulu
+ * menawarkan setiap surat jalan kepada setiap proyek. Membuka Noble Cove
+ * menampilkan pembelian kayu milik proyek Pak Soni, lengkap dengan tombolnya,
+ * dan satu ketukan di proyek yang keliru membukukan biaya itu di sana. Ketukan
+ * yang sama di proyek yang benar membukukannya lagi.
  */
 export default function PanelDariProcurement({
-  dos, pos, entries, bayar, onCatat, onSelesai,
+  dos, pos, entries, bayar, namaProyek, onCatat, onSelesai,
 }: {
   dos: DeliveryOrder[]
   pos: PurchaseOrder[]
   entries: RealisasiEntry[]
   bayar: PoPayment[]
+  /** Proyek yang bukunya sedang dibuka. Kosong = semua proyek. */
+  namaProyek: string
   onCatat: (baris: RealisasiEntry[]) => void
   onSelesai: () => void
 }) {
@@ -38,8 +48,8 @@ export default function PanelDariProcurement({
   const [proses, setProses] = useState('')
 
   const usul = useMemo(
-    () => penerimaanBelumTercatat(dos, pos, entries, bayar),
-    [dos, pos, entries, bayar],
+    () => usulUntukProyek(penerimaanBelumTercatat(dos, pos, entries, bayar), namaProyek),
+    [dos, pos, entries, bayar, namaProyek],
   )
 
   if (usul.length === 0) return null
@@ -73,7 +83,8 @@ export default function PanelDariProcurement({
 
       <div className="space-y-2">
         {usul.map(u => (
-          <div key={u.suratJalan.id} className="rounded-xl border border-border p-3 space-y-2">
+          <div key={u.suratJalan.id} className={`rounded-xl border p-3 space-y-2 ${
+            poTanpaProyek(u.po) ? 'border-amber-300 bg-amber-50/40' : 'border-border'}`}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-bold text-navy truncate">
@@ -93,6 +104,17 @@ export default function PanelDariProcurement({
                 </span>
               </div>
             </div>
+
+            {/* PO yang belum menyebut proyek tetap ditawarkan — menyembunyikan-
+                nya membuatnya tidak bisa dicatat dari layar mana pun, dan data
+                lama banyak yang begini. Tetapi ia DITANDAI, karena hanya ia
+                yang bisa muncul di dua proyek sekaligus. */}
+            {poTanpaProyek(u.po) && (
+              <p className="flex items-start gap-1.5 text-[10px] font-bold text-amber-900">
+                <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
+                {peringatanTanpaProyek(u.po.nomor)}
+              </p>
+            )}
 
             {/* Hutangnya disebut di sini juga. Yang mencatat biayanya sering
                 orang yang sama dengan yang mengurus pembayarannya, dan angka

@@ -652,6 +652,7 @@ export default function TabRealisasiBiaya() {
             neraca tanpa ada yang menyadarinya. */}
         <PanelDariProcurement
           dos={dosDo} pos={posPo} entries={entries} bayar={bayarPo}
+          namaProyek={projectInfo?.projectName ?? ''}
           onCatat={addRealisasiEntries}
           onSelesai={() => void muatProcurement()}
         />

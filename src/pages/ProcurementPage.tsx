@@ -32,6 +32,7 @@ import { getBrandingCache } from '@/lib/branding'
 import SignaturePad from '@/components/cost/SignaturePad'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
+import { pilihanProyekPo } from '@/lib/lingkupPo'
 import { useToast } from '@/hooks/use-toast'
 import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
@@ -1019,7 +1020,33 @@ function FormPo({
   // Request yang menang: barang inilah yang benar-benar dipesan, jadi
   // proyeknya pasti. Proyek aktif hanya cadangan bila requestnya belum
   // membawa nama proyek sama sekali.
-  const proyekPo = proyekDariRequest || projectName.trim()
+  const proyekTerbaca = proyekDariRequest || projectName.trim()
+
+  /**
+   * Proyek PO ini — sekarang BISA DIPILIH, bukan hanya disimpulkan.
+   *
+   * Selama ini proyeknya ditebak dari barang yang dipilih, dengan proyek yang
+   * kebetulan sedang aktif sebagai cadangan. Tebakan itu benar hampir selalu,
+   * dan ketika salah tidak ada satu pun cara memperbaikinya dari layar ini —
+   * PO terbit menyandang nama proyek yang keliru, lalu muncul di buku
+   * pengeluaran proyek itu sebagai tawaran "catat ke buku pengeluaran".
+   *
+   * `proyekDisentuh` menjaga pilihan yang sudah dibuat orang: begitu ia
+   * memilih sendiri, tebakan tidak boleh menimpanya lagi — termasuk ketika
+   * ia menambah satu barang lagi dan tebakannya ikut berubah.
+   */
+  const daftarProyekSimpan = useCostStore(st => st.savedProjects)
+  const opsiProyek = useMemo(
+    () => pilihanProyekPo(daftarProyekSimpan.map(x => ({ projectName: x.info.projectName }))),
+    [daftarProyekSimpan],
+  )
+  const [proyekPilihan, setProyekPilihan] = useState('')
+  const [proyekDisentuh, setProyekDisentuh] = useState(false)
+  useEffect(() => {
+    if (proyekDisentuh) return
+    setProyekPilihan(proyekTerbaca)
+  }, [proyekTerbaca, proyekDisentuh])
+  const proyekPo = proyekDisentuh ? proyekPilihan : proyekTerbaca
 
   // Harga terisi otomatis dari katalog vendor; tetap bisa diubah manual karena
   // vendor belum tentu mendaftarkan setiap barang yang diminta.
@@ -1520,11 +1547,37 @@ function FormPo({
           {siapManual.alasan}
         </p>
       )}
-      {!nonProyek && dipilih.length > 0 && proyekPo && (
-        <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5">
-          PO ini untuk proyek <b>{proyekPo}</b>
-          {proyekDariRequest ? ' — diambil dari barang yang dipilih.' : ' — dari proyek yang sedang aktif.'}
-        </p>
+      {/* Proyek PO ini — bisa diperbaiki, tidak hanya ditebak.
+          Yang ditebak benar hampir selalu; ketika salah, dulu tidak ada satu
+          pun cara memperbaikinya dari layar ini. PO terbit menyandang nama
+          proyek yang keliru, lalu muncul di buku pengeluaran proyek itu
+          sebagai tawaran "catat ke buku pengeluaran" — dan sekali diketuk,
+          biayanya terhitung di proyek yang tidak membelinya. */}
+      {!nonProyek && dipilih.length > 0 && (
+        <label className="block space-y-1">
+          <span className="text-[10px] font-medium text-muted-foreground">
+            Proyek (pencatatan internal — tidak dicetak di PDF vendor)
+          </span>
+          <select data-po-proyek value={proyekPo}
+            onChange={e => { setProyekDisentuh(true); setProyekPilihan(e.target.value) }}
+            className={inputCls}>
+            {/* Nama proyek yang terbaca tetapi belum ada di daftar tersimpan —
+                proyek lama, atau yang dibuat di perangkat lain — tetap harus
+                bisa dipilih. Tanpa ini, membuka dropdown akan diam-diam
+                mengubah proyek PO menjadi yang pertama di daftar. */}
+            {proyekPo && !opsiProyek.some(o => o.nilai === proyekPo) && (
+              <option value={proyekPo}>{proyekPo}</option>
+            )}
+            {opsiProyek.map(o => <option key={o.nilai || '-'} value={o.nilai}>{o.label}</option>)}
+          </select>
+          {proyekPo && !proyekDisentuh && (
+            <span className="block text-[10px] text-muted-foreground">
+              {proyekDariRequest
+                ? 'Diambil dari barang yang dipilih.'
+                : 'Dari proyek yang sedang aktif.'} Ganti bila keliru.
+            </span>
+          )}
+        </label>
       )}
 
       <Button onClick={terbitkan} disabled={kirim || !bolehTerbit} data-terbitkan-po
