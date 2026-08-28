@@ -154,6 +154,12 @@ export function siapRevisiPo(input: {
   if (String(input.alasan ?? '').trim().length < 3) {
     return { boleh: false, alasan: 'Tulis alasan revisinya — nanti yang membaca perlu tahu kenapa.' }
   }
+  // Satuan yang dikosongkan lebih buruk daripada satuan yang salah: PO
+  // bertuliskan "5" tanpa keterangan apa pun, dan vendor menebak sendiri.
+  const tanpaSatuan = baru.find(it => !String(it.satuan ?? '').trim())
+  if (tanpaSatuan) {
+    return { boleh: false, alasan: `Satuan "${tanpaSatuan.nama}" belum diisi.` }
+  }
   if (baru.length === 0) {
     return { boleh: false, alasan: 'Semua barang berjumlah nol. Kalau memang batal, hapus PO-nya.' }
   }
@@ -163,7 +169,19 @@ export function siapRevisiPo(input: {
   return { boleh: true, alasan: '' }
 }
 
-/** Apakah jumlah atau harga ada yang berbeda dari daftar sebelumnya. */
+/**
+ * Apakah jumlah, SATUAN, atau harga ada yang berbeda dari daftar sebelumnya.
+ *
+ * Satuan ikut dihitung, dan tanpa itu satu jenis koreksi menjadi mustahil:
+ * PO yang tertulis "1 Kg paku" padahal yang dipesan "1 Kotak" tidak bisa
+ * diperbaiki sama sekali. Jumlahnya benar, harganya benar — jadi pemeriksaan
+ * yang hanya melihat keduanya menjawab "tidak ada yang berubah" dan menolak
+ * menyimpan, sementara dokumen yang dipegang vendor tetap salah.
+ *
+ * Perbandingannya longgar: "Kg", "kg", dan "KG " adalah satuan yang sama, dan
+ * memperlakukannya sebagai berbeda akan membuat revisi tersimpan karena
+ * pemakainya kebetulan mengetik ulang dengan huruf besar.
+ */
 export function adaPerubahan(
   lama: PoItem[] | null | undefined,
   baru: PoItem[] | null | undefined,
@@ -177,8 +195,26 @@ export function adaPerubahan(
     if (!asal) return true
     if (angka(asal.qty) !== angka(it.qty)) return true
     if (angka(asal.harga) !== angka(it.harga)) return true
+    if (kunci(asal.satuan) !== kunci(it.satuan)) return true
   }
   return false
+}
+
+/**
+ * Apakah satuan sebuah baris diperbaiki dalam revisi ini.
+ *
+ * Dipakai UI untuk menandainya sebagai koreksi, bukan sebagai perubahan
+ * pesanan. Keduanya terlihat sama di layar — angka yang berubah — padahal
+ * yang satu berarti "barangnya datang kurang" dan yang lain berarti "dulu
+ * salah ketik". Vendor yang membaca revisinya perlu bisa membedakannya.
+ */
+export function satuanDiperbaiki(
+  lama: PoItem | null | undefined,
+  baru: PoItem | null | undefined,
+): boolean {
+  const a = kunci(lama?.satuan)
+  const b = kunci(baru?.satuan)
+  return !!a && !!b && a !== b
 }
 
 /**

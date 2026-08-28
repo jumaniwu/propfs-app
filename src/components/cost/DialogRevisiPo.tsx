@@ -21,8 +21,9 @@ import { hitungTotalPo, type PoItem, type PurchaseOrder } from '@/lib/procuremen
 import { ringkasTerima, type DeliveryOrder } from '@/lib/penerimaan'
 import {
   itemRevisiDariKurang, siapRevisiPo, akibatRevisi, perluApprovalUlang,
-  nomorPoTampil, revisiKe,
+  nomorPoTampil, revisiKe, satuanDiperbaiki,
 } from '@/lib/revisiPo'
+import { SATUAN_UMUM } from '@/lib/satuanPo'
 
 const fmt = (n: number) => `Rp ${Math.round(n || 0).toLocaleString('id-ID')}`
 const angka = (n: number) => (n || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -52,6 +53,18 @@ export default function DialogRevisiPo({ po, dos, namaSaya, onTutup, onSukses }:
     [po.items, items, alasan],
   )
   const naik = perluApprovalUlang(po.total, total.total)
+
+  /**
+   * Memperbaiki satuan.
+   *
+   * Harga dan jumlah TIDAK ikut disentuh — dan itu bukan kelalaian. Satuan
+   * yang salah ketik adalah koreksi pada keterangan, bukan pernyataan bahwa
+   * harganya berbeda. Menyesuaikan harga sendiri saat satuannya diganti
+   * ("dulu per Kg, sekarang per Kotak, jadi harganya dikali sekian") berarti
+   * mengarang angka yang tidak pernah disepakati vendor.
+   */
+  const ubahSatuan = (i: number, satuan: string) =>
+    setItems(list => list.map((it, n) => (n === i ? { ...it, satuan } : it)))
 
   const ubahQty = (i: number, qty: number) =>
     setItems(list => list.map((it, n) => (n === i
@@ -116,13 +129,26 @@ export default function DialogRevisiPo({ po, dos, namaSaya, onTutup, onSukses }:
             lalu simpan — tagihan vendor dan sisa hutang ikut menyesuaikan.
             Harga satuan tidak ikut berubah.
           </p>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Salah ketik satuan juga bisa diperbaiki di sini — ketik langsung di
+            kolom satuannya.
+          </p>
+
+          {/* Saran satuan, dipakai bersama seluruh baris. Hanya saran: satuan
+              di lapangan tidak terbatas, dan memaksanya masuk daftar hanya
+              membuat orang memilih satuan yang salah supaya formulirnya mau
+              lanjut. */}
+          <datalist id="satuan-revisi-po">
+            {SATUAN_UMUM.map(x => <option key={x} value={x} />)}
+          </datalist>
 
           <div className="space-y-2">
             {items.map((it, i) => {
               const asal = po.items?.[i]
               const lama = Number(asal?.qty) || 0
               const baru = Number(it.qty) || 0
-              const berubah = lama !== baru
+              const satuanBeda = satuanDiperbaiki(asal, it)
+              const berubah = lama !== baru || satuanBeda
               return (
                 <div key={`${it.nama}-${i}`}
                   className={`rounded-xl border p-2.5 ${berubah ? 'border-amber-300 bg-amber-50/50' : 'border-border'}`}>
@@ -133,19 +159,36 @@ export default function DialogRevisiPo({ po, dos, namaSaya, onTutup, onSukses }:
                     </p>
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
-                      {angka(lama)} {it.satuan}
+                    <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                      {angka(lama)} {asal?.satuan}
                     </span>
                     <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
                     <input type="number" min={0} step="any" value={baru || ''}
                       onChange={e => ubahQty(i, Number(e.target.value) || 0)}
                       aria-label={`Jumlah revisi ${it.nama}`}
-                      className="w-20 h-9 rounded-lg border border-input bg-white px-2 text-sm text-right text-navy" />
-                    <span className="text-[11px] text-muted-foreground">{it.satuan}</span>
+                      className="w-16 h-9 rounded-lg border border-input bg-white px-2 text-sm text-right text-navy" />
+                    {/* Satuan kini BISA DIKETIK. Sebelumnya ia hanya tulisan,
+                        dan PO yang tertulis "1 Kg paku" padahal yang dipesan
+                        "1 Kotak" tidak bisa diperbaiki sama sekali — jumlahnya
+                        benar, harganya benar, jadi pemeriksaan perubahan
+                        menjawab "tidak ada yang berubah" dan menolak menyimpan
+                        sementara dokumen yang dipegang vendor tetap salah. */}
+                    <input value={it.satuan ?? ''} list="satuan-revisi-po"
+                      onChange={e => ubahSatuan(i, e.target.value)}
+                      aria-label={`Satuan revisi ${it.nama}`}
+                      placeholder={asal?.satuan || 'satuan'}
+                      className="w-20 h-9 rounded-lg border border-input bg-white px-2 text-sm text-navy" />
                     {baru === 0 && (
-                      <span className="text-[10px] font-bold text-rose-600 ml-auto">batal</span>
+                      <span className="text-[10px] font-bold text-rose-600 ml-auto shrink-0">batal</span>
                     )}
                   </div>
+
+                  {satuanBeda && (
+                    <p className="mt-1.5 text-[10px] leading-relaxed text-amber-900 bg-amber-100/70 rounded-lg px-2 py-1">
+                      Satuan diperbaiki: <b>{asal?.satuan}</b> → <b>{it.satuan}</b>.
+                      Harga satuan tidak ikut diubah.
+                    </p>
+                  )}
                 </div>
               )
             })}
