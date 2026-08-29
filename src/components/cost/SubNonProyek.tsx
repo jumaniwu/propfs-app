@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Wrench, Building2, Plus, Trash2, Loader2, RefreshCw, MapPin, Download, X,
+  ArrowRightLeft,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -25,6 +26,12 @@ import {
   ASET_KOSONG, PILIHAN_UMUR, LABEL_KONDISI, TONE_KONDISI,
   type AsetAlat, type KondisiAlat,
 } from '@/lib/asetAlat'
+import { asetPinjamApi } from '@/lib/asetPinjamApi'
+import {
+  keberadaanAlat, ringkasLacak, kalimatLacak, pinjamanBerjalan, terlambat,
+  type Peminjaman,
+} from '@/lib/lacakAlat'
+import SerahAlat from './SerahAlat'
 import { poKantorBelumTercatat, type UsulDariPo } from '@/lib/sinkronRealisasi'
 import DaftarBulanan from './DaftarBulanan'
 import { jenisPo } from '@/lib/procurement'
@@ -236,6 +243,8 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
   const [buka, setBuka] = useState(false)
   const [draf, setDraf] = useState<Omit<AsetAlat, 'id'>>({ ...ASET_KOSONG })
   const [simpan, setSimpan] = useState(false)
+  const [pinjaman, setPinjaman] = useState<Peminjaman[]>([])
+  const [serah, setSerah] = useState<AsetAlat | null>(null)
 
   async function muat() {
     setMemuat(true)
@@ -243,7 +252,21 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
     catch (e) { setGalat(e instanceof Error ? e.message : String(e)) }
     finally { setMemuat(false) }
   }
-  useEffect(() => { void muat() }, [])
+
+  /**
+   * Catatan serah-terima dimuat TERPISAH, dan kegagalannya tidak dijadikan
+   * `galat`.
+   *
+   * Tabelnya baru; sebagian pemakai belum menjalankan migrasinya. Kalau
+   * kegagalan memuatnya ikut memerahkan panel ini, seluruh daftar aset —
+   * yang sama sekali tidak bermasalah — akan tampak rusak karena satu tabel
+   * tambahan yang belum ada.
+   */
+  async function muatPinjaman() {
+    try { setPinjaman(await asetPinjamApi().list()) }
+    catch { setPinjaman([]) }
+  }
+  useEffect(() => { void muat(); void muatPinjaman() }, [])
 
   const hariIni = useMemo(() => new Date(), [])
   const hidup = daftar.filter(masihDimiliki)
@@ -330,6 +353,18 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
         <b>Nilai buku</b>-lah yang masuk neraca sebagai aset tetap. Yang membebani laba
         setiap bulan hanya penyusutannya, bukan seluruh harga belinya.
       </p>
+
+      {/* Ringkasan keberadaan alat, di atas daftarnya. Yang perlu diketahui
+          sebelum menggulir adalah berapa alat yang sedang tidak ada di gudang —
+          bukan setelah menemukannya satu per satu. */}
+      {daftar.length > 0 && (
+        <p data-ringkas-lacak className={`text-[11px] font-semibold rounded-xl px-2.5 py-2 ${
+          ringkasLacak(pinjaman).terlambat > 0
+            ? 'text-rose-800 bg-rose-50 border border-rose-200'
+            : 'text-navy bg-slate-50 border border-border'}`}>
+          {kalimatLacak(ringkasLacak(pinjaman))}
+        </p>
+      )}
 
       {galat && (
         <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200
@@ -455,8 +490,18 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full
                   ${TONE_KONDISI[a.kondisi]}`}>{LABEL_KONDISI[a.kondisi]}</span>
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <MapPin className="w-3 h-3" /> {lokasiAlat(a, daftarProyek)}
+                {/* Keberadaan alat dibaca dari catatan serah-terima bila ada,
+                    karena hanya di sanalah ada NAMA orangnya — dan ketika
+                    sebuah alat dicari, yang ditelepon orangnya; proyek tidak
+                    mengangkat telepon. Alat yang belum pernah dipinjamkan
+                    lewat aplikasi tetap memakai kolom lokasi lamanya. */}
+                <span className={`flex items-center gap-1 text-[10px] ${
+                  pinjamanBerjalan(pinjaman, a.id) && terlambat(pinjamanBerjalan(pinjaman, a.id))
+                    ? 'font-bold text-rose-700' : 'text-muted-foreground'}`}>
+                  <MapPin className="w-3 h-3 shrink-0" />
+                  {pinjamanBerjalan(pinjaman, a.id)
+                    ? keberadaanAlat(pinjaman, a.id)
+                    : lokasiAlat(a, daftarProyek)}
                 </span>
                 {masihDimiliki(a) && (
                   <span className="text-[10px] text-muted-foreground">
@@ -467,24 +512,38 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
 
               {bolehUbah && masihDimiliki(a) && (
                 <div className="grid grid-cols-2 gap-2">
-                  <select value={a.lokasi_project_id ?? ''} aria-label={`Lokasi ${a.nama}`}
-                    onChange={e => void ubah(a.id, {
-                      lokasi_project_id: e.target.value || null,
-                      lokasi_nama: daftarProyek.find(p => p.id === e.target.value)?.nama ?? '',
-                    })}
-                    className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-navy">
-                    <option value="">🏠 Gudang</option>
-                    {daftarProyek.map(p => (
-                      <option key={p.id} value={p.id}>🏗️ {p.nama}</option>
-                    ))}
-                  </select>
-                  <select value={a.kondisi} aria-label={`Kondisi ${a.nama}`}
-                    onChange={e => void ubah(a.id, { kondisi: e.target.value as KondisiAlat })}
-                    className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-navy">
-                    {(Object.keys(LABEL_KONDISI) as KondisiAlat[]).map(k => (
-                      <option key={k} value={k}>{LABEL_KONDISI[k]}</option>
-                    ))}
-                  </select>
+                  {/* Dulu di sini ada dropdown lokasi. Ia menjawab "alat ini di
+                      mana" dan tidak lebih: menggantinya MENIMPA jawaban lama,
+                      sehingga siapa yang membawanya kemarin tidak tersimpan di
+                      mana pun — dan itu justru yang dicari ketika alatnya tidak
+                      ketemu. Tombol ini mencatat peristiwanya, dan lokasi alat
+                      mengikutinya sendiri. */}
+                  <button data-serah-alat onClick={() => setSerah(a)}
+                    className="h-8 rounded-lg border border-navy/30 bg-navy/[0.04] px-2
+                      flex items-center justify-center gap-1
+                      text-[11px] font-bold text-navy hover:bg-navy/10">
+                    <ArrowRightLeft className="w-3 h-3 shrink-0" />
+                    {pinjamanBerjalan(pinjaman, a.id) ? 'Catat kembali' : 'Serahkan'}
+                  </button>
+                  {/* Kondisi hanya bisa diubah langsung selama alatnya di
+                      gudang. Ketika ia sedang di luar, kondisinya ditentukan
+                      foto pengembaliannya — membiarkannya diubah dari sini
+                      memberi dua penulis untuk satu jawaban, dan keduanya pasti
+                      berselisih. */}
+                  {pinjamanBerjalan(pinjaman, a.id) ? (
+                    <span className="h-8 rounded-lg border border-dashed border-border px-2
+                      flex items-center justify-center text-[10px] text-muted-foreground text-center">
+                      Kondisi diisi saat kembali
+                    </span>
+                  ) : (
+                    <select value={a.kondisi} aria-label={`Kondisi ${a.nama}`}
+                      onChange={e => void ubah(a.id, { kondisi: e.target.value as KondisiAlat })}
+                      className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-navy">
+                      {(Object.keys(LABEL_KONDISI) as KondisiAlat[]).map(k => (
+                        <option key={k} value={k}>{LABEL_KONDISI[k]}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               )}
 
@@ -498,6 +557,17 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
             </div>
           ))}
         </div>
+      )}
+
+      {serah && (
+        <SerahAlat alat={serah} daftar={pinjaman} daftarProyek={daftarProyek}
+          bolehUbah={bolehUbah} onTutup={() => setSerah(null)}
+          onBerubah={async () => {
+            // Keduanya dimuat ulang: pemicu di database ikut memperbarui lokasi
+            // dan kondisi di `aset_alat`, jadi memuat catatan peminjaman saja
+            // akan menyisakan baris alat yang masih menyebut tempat lamanya.
+            await muatPinjaman(); await muat(); onUbah()
+          }} />
       )}
     </div>
   )

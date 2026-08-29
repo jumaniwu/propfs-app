@@ -145,7 +145,15 @@ export function buatPoPdf(po: PurchaseOrder, kop?: IdentitasLaporan): jsPDF {
     ['Tanggal', tgl(po.tanggal)],
     ['Dibutuhkan', tgl(po.butuh_tanggal)],
     ['Pembayaran', teksTerm(po.term, po.term_hari)],
-    ...(po.project_name ? [['Proyek', po.project_name] as [string, string]] : []),
+    // Nama proyek TIDAK dicetak, dan itu disengaja.
+    //
+    // Ia catatan internal: yang membedakan pembelian Noble Cove dari pembelian
+    // proyek Pak Soni di buku pengeluaran kita sendiri. Vendor tidak
+    // memerlukannya — yang ia perlukan alamat antar dan nama penerima, dan
+    // keduanya sudah dicetak di blok "Dikirim ke" di bawah.
+    //
+    // Mencetaknya justru merugikan: nama proyek sering nama pemiliknya, dan
+    // setiap vendor yang menerima PO jadi tahu siapa saja klien kita.
     // "Revisi ke" TIDAK dicantumkan di sini. Nomornya sudah berakhiran -Rev1
     // dan pitanya sudah menyebutkannya dengan huruf besar; baris ketiga hanya
     // membuat blok data terbaca seperti formulir yang mengulang-ulang dirinya.

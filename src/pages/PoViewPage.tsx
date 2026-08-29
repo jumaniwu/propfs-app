@@ -9,10 +9,11 @@
 // ============================================================
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Download, Loader2, FileText, CheckCircle2 } from 'lucide-react'
+import { Download, Loader2, FileText, CheckCircle2, MapPin } from 'lucide-react'
 import { procurementApi } from '@/lib/procurementApi'
 import { downloadPoPdf } from '@/lib/poPdf'
 import { teksTerm, type PurchaseOrder } from '@/lib/procurement'
+import { adaAlamatKirim } from '@/lib/revisiPo'
 import type { PoPublik } from '@/lib/procurementApi'
 import type { IdentitasLaporan } from '@/lib/branding'
 
@@ -102,12 +103,16 @@ export default function PoViewPage() {
         {/* ── Ringkasan pesanan ── */}
         <div className="bg-white rounded-2xl border border-border p-5 space-y-2.5">
           <h2 className="font-bold text-navy text-sm">Data Pesanan</h2>
+          {/* Nama proyek TIDAK ditampilkan. Ia catatan internal — yang
+              membedakan pembelian satu proyek dari proyek lain di buku kita
+              sendiri. Nama proyek sering nama pemiliknya, dan setiap vendor
+              yang menerima PO jadi tahu siapa saja klien kita. Yang vendor
+              perlukan ada di blok "Dikirim ke" di bawah. */}
           {([
             ['Nomor', po.nomor],
             ['Tanggal', tglPanjang(po.tanggal)],
             ['Dibutuhkan', tglPanjang(po.butuh_tanggal)],
             ['Pembayaran', teksTerm(po.term, po.term_hari)],
-            ...(po.project_name ? [['Proyek', po.project_name]] : []),
           ] as Array<[string, string]>).map(([k, v]) => (
             <div key={k} className="flex gap-2 text-xs">
               <span className="text-muted-foreground w-28 shrink-0">{k}</span>
@@ -115,6 +120,48 @@ export default function PoViewPage() {
             </div>
           ))}
         </div>
+
+        {/* ── Dikirim ke ──
+            Diletakkan SEBELUM rincian barang, bukan di kaki halaman: yang
+            membacanya orang gudang yang menyiapkan muatan, dan ia berhenti
+            membaca begitu sampai di daftar barang.
+
+            Sampai sekarang bagian ini tidak pernah ada di sini — bukan karena
+            lupa dipasang, melainkan karena `po_get_by_token` menyebutkan
+            kolomnya satu per satu dan keempat kolom alamat tidak masuk
+            daftarnya. Di aplikasi alamatnya tampak tersimpan; di halaman ini
+            ia tidak pernah sampai, dan sopir tetap menelepon menanyakannya. */}
+        {adaAlamatKirim(po) && (
+          <div data-alamat-kirim className="bg-white rounded-2xl border-2 border-gold/50 p-5 space-y-2.5">
+            <h2 className="font-bold text-navy text-sm flex items-center gap-1.5">
+              <MapPin className="w-4 h-4 text-gold shrink-0" /> Dikirim ke
+            </h2>
+            {po.kirim_alamat && (
+              <div className="flex gap-2 text-xs">
+                <span className="text-muted-foreground w-28 shrink-0">Alamat</span>
+                <span className="font-semibold text-navy whitespace-pre-wrap break-words">
+                  {po.kirim_alamat}
+                </span>
+              </div>
+            )}
+            {(po.kirim_nama || po.kirim_wa) && (
+              <div className="flex gap-2 text-xs">
+                <span className="text-muted-foreground w-28 shrink-0">Penerima</span>
+                <span className="font-semibold text-navy break-words">
+                  {[po.kirim_nama, po.kirim_wa].filter(Boolean).join(' — ')}
+                </span>
+              </div>
+            )}
+            {po.kirim_catatan && (
+              <div className="flex gap-2 text-xs">
+                <span className="text-muted-foreground w-28 shrink-0">Catatan</span>
+                <span className="font-semibold text-navy whitespace-pre-wrap break-words">
+                  {po.kirim_catatan}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Rincian barang ── */}
         <div className="bg-white rounded-2xl border border-border overflow-hidden">

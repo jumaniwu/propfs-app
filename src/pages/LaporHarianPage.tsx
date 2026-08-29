@@ -18,12 +18,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { fieldApi, uploadToDrive, type FieldHeader } from '@/lib/fieldReports'
 import {
-  JENIS_UPAH, siapDaftarPekerja, barisDariPekerja, belumDiabsen,
+  JENIS_UPAH, siapDaftarPekerja,
   type JenisUpah, type PekerjaLapangan,
 } from '@/lib/pekerjaLapangan'
 import {
-  STATUS_HADIR, LEMBUR_MAKS, siapKirimAbsensi, ringkasAbsensi, cariPekerja,
-  rapikanNama, type BarisAbsensi, type StatusHadir,
+  STATUS_HADIR, LEMBUR_MAKS, cariPekerja,
+  rapikanNama, type StatusHadir,
 } from '@/lib/absensiPekerja'
 import {
   materialApi, stokLapangan, cariMaterial,
@@ -32,8 +32,12 @@ import {
 import { downscaleImage } from '@/lib/imageUtil'
 import AmbilFoto from '@/components/lapangan/AmbilFoto'
 import { sisaMuat, petunjukFoto } from '@/lib/sumberFoto'
+import {
+  susunCentang, centangKeAbsensi, alihCentang, ubahBaris, centangSemua,
+  ringkasCentang, kalimatCentang, type BarisCentang,
+} from '@/lib/absenCepat'
 
-type Tab = 'laporan' | 'pakai' | 'request' | 'pekerja'
+type Tab = 'laporan' | 'absen' | 'pakai' | 'request' | 'pekerja'
 
 /** Angka ringkas untuk layar HP: tanpa desimal bila bulat. */
 const angkaRingkas = (n: number) =>
@@ -50,7 +54,7 @@ export default function LaporHarianPage() {
   const [header, setHeader] = useState<Header | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<Tab>('laporan')
+  const [tab, setTab] = useState<Tab>('absen')
   const [done, setDone] = useState('')
 
   useEffect(() => {
@@ -75,7 +79,14 @@ export default function LaporHarianPage() {
     if (header?.pekerja?.length) setPekerja(p => (p.length ? p : header.pekerja!))
   }, [header])
 
+  // Absensi berdiri SENDIRI, tidak lagi menempel di laporan harian.
+  //
+  // Menyatukannya dulu dimaksudkan supaya mandor cukup mengirim sekali. Yang
+  // terjadi justru sebaliknya: absensi terkubur di tengah formulir panjang
+  // berisi kegiatan, catatan, dan foto — dan yang paling sering dibutuhkan
+  // menjadi yang paling dalam untuk dicapai.
   const TABS: Array<[Tab, string, JSX.Element]> = [
+    ['absen', 'Absensi', <Users key="i" className="w-4 h-4" />],
     ['laporan', 'Laporan Harian', <HardHat key="i" className="w-4 h-4" />],
     ['pekerja', 'Pekerja', <UserCog key="i" className="w-4 h-4" />],
     ['pakai', 'Pakai Material', <PackageOpen key="i" className="w-4 h-4" />],
@@ -107,7 +118,7 @@ export default function LaporHarianPage() {
             </div>
 
             {/* Tab */}
-            <div className="grid grid-cols-4 border-b border-border">
+            <div className="grid grid-cols-5 border-b border-border">
               {TABS.map(([key, label, icon]) => (
                 <button key={key} onClick={() => { setTab(key); setDone('') }}
                   className={`flex flex-col items-center gap-1 py-2.5 text-[9px] font-bold transition-colors ${
@@ -129,6 +140,9 @@ export default function LaporHarianPage() {
               </div>
             ) : (
               <>
+                {tab === 'absen' && (
+                  <FormAbsensi token={token} header={header} pekerja={pekerja} onDone={setDone} />
+                )}
                 {tab === 'laporan' && (
                   <FormLaporan token={token} header={header} pekerja={pekerja} onDone={setDone} />
                 )}
@@ -210,117 +224,197 @@ function kirimDrive(header: Header, photos: string[], prefix: string) {
   })
 }
 
-// ── Absensi: daftar pekerja terdaftar, tidak diketik ───────────────────────
-//
-// Dulu blok ini meminta nama DIKETIK setiap hari. Di lapangan itu berarti
-// mandor mengetik lima belas nama tiap sore, dari HP, dengan tangan yang baru
-// selesai memegang semen — dan rekap upahnya lalu memecah "Yono", "yono",
-// "Pak Yono" menjadi tiga orang.
-//
-// Sekarang pekerja didaftarkan sekali di tab Pekerja, dan yang tersisa di
-// sini hanyalah mengetuk: siapa masuk, siapa tidak, dan fotonya sebagai bukti.
-function BlokAbsensi({ pekerja, baris, setBaris }: {
-  pekerja: PekerjaLapangan[]
-  baris: BarisAbsensi[]
-  setBaris: React.Dispatch<React.SetStateAction<BarisAbsensi[]>>
-}) {
-  const belum = useMemo(() => belumDiabsen(pekerja, baris), [pekerja, baris])
 
-  const ubah = (i: number, patch: Partial<BarisAbsensi>) =>
-    setBaris(prev => prev.map((b, j) => j === i ? { ...b, ...patch } : b))
+// ── Absensi: satu daftar centang, semua pekerja sekaligus ──────────────────
+//
+// Bentuk lamanya menuntut DUA langkah per orang: ketuk namanya supaya
+// barisnya muncul, lalu pilih statusnya di antara empat tombol. Untuk lima
+// belas tukang itu tiga puluh ketukan setiap sore, dari HP, oleh orang yang
+// baru selesai memegang semen.
+//
+// Yang sebenarnya terjadi di lapangan lebih sederhana: hampir semua orang
+// masuk, dan yang perlu ditandai justru YANG TIDAK. Maka seluruh pekerja
+// tampil sekaligus, mencentang berarti hadir, dan status lain hanya disentuh
+// untuk satu-dua orang yang memang berbeda.
+//
+// Bukan soal kenyamanan: absensi yang merepotkan diisi belakangan, dikira-kira
+// dari ingatan, atau tidak diisi sama sekali — dan upah dihitung dari situ.
+function FormAbsensi({ token, header, pekerja, onDone }: {
+  token: string; header: Header; pekerja: PekerjaLapangan[]; onDone: (msg: string) => void
+}) {
+  const [tanggal, setTanggal] = useState(hariIni)
+  const [pelapor, setPelapor] = useState('')
+  const [daftar, setDaftar] = useState<BarisCentang[]>(() => susunCentang(pekerja, []))
+  const [error, setError] = useState('')
+  const [kirim, setKirim] = useState(false)
+
+  // Pekerja yang baru didaftarkan di tab sebelah harus langsung bisa dicentang,
+  // tanpa memuat ulang halaman. Yang sudah dicentang dipertahankan.
+  useEffect(() => {
+    setDaftar(lama => susunCentang(pekerja, centangKeAbsensi(lama)))
+  }, [pekerja])
+
+  const ringkas = useMemo(() => ringkasCentang(daftar), [daftar])
+
+  async function submit() {
+    if (pelapor.trim().length < 2) { setError('Isi nama pengawas yang mengabsen.'); return }
+    const absensi = centangKeAbsensi(daftar)
+    if (absensi.length === 0) { setError('Centang dulu siapa yang masuk hari ini.'); return }
+
+    setKirim(true); setError('')
+    try {
+      // Dikirim sebagai laporan harian bertanggal sama, berisi absensi saja.
+      // Bentuk datanya tidak diubah: rekap upah, kalender owner, dan seluruh
+      // hitungan yang sudah ada membaca dari tempat yang sama seperti sebelumnya.
+      const ok = await fieldApi().submitReport(token, {
+        tanggal, pelapor: pelapor.trim(),
+        kegiatan: ['Absensi harian'], catatan: '', photos: [], absensi,
+      })
+      if (!ok) throw new Error('Gagal mengirim — link tidak berlaku.')
+      onDone(`Absensi ${tanggal} sudah masuk: ${ringkas.dicentang} pekerja tercatat.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally { setKirim(false) }
+  }
 
   return (
-    <div className="rounded-xl border border-border bg-slate-50/70 p-3 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-bold text-navy flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5" /> Absensi Pekerja
-        </p>
-        <span className="text-[10px] text-muted-foreground">
-          {baris.length === 0 ? 'boleh dikosongkan' : ringkasAbsensi(baris)}
-        </span>
+    <div className="p-4 sm:p-5 space-y-3 text-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Tanggal</label>
+          <input type="date" value={tanggal} onChange={e => setTanggal(e.target.value)}
+            data-absen-tanggal className={inputCls} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Yang mengabsen</label>
+          <input value={pelapor} onChange={e => setPelapor(e.target.value)}
+            data-absen-pelapor placeholder="mis. Pak Yono" className={inputCls} />
+        </div>
       </div>
 
-      {pekerja.length === 0 && baris.length === 0 && (
-        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
-          Belum ada pekerja terdaftar. Buka tab <b>Pekerja</b> di atas untuk mendaftarkan
-          mereka sekali di awal — setelah itu absensi harian tinggal diketuk.
+      {daftar.length === 0 ? (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
+          Belum ada pekerja terdaftar. Buka tab <b>Pekerja</b> untuk mendaftarkan mereka
+          sekali di awal — setelah itu absensi harian tinggal dicentang.
         </p>
-      )}
-
-      {baris.map((b, i) => (
-        <div key={b.pekerja_id || `${b.nama}-${i}`} className="rounded-lg bg-white border border-border p-2.5 space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-navy truncate">{b.nama}</p>
-              {b.peran && <p className="text-[10px] text-muted-foreground truncate">{b.peran}</p>}
-            </div>
-            <button type="button" aria-label={`Hapus ${b.nama}`}
-              onClick={() => setBaris(prev => prev.filter((_, j) => j !== i))}
-              className="text-muted-foreground hover:text-red-600 shrink-0 p-1">
-              <Trash2 className="w-3.5 h-3.5" />
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <p data-ringkas-absen className="text-[11px] font-semibold text-navy min-w-0">
+              {kalimatCentang(ringkas)}
+            </p>
+            <button type="button" data-hadir-semua onClick={() => setDaftar(centangSemua)}
+              className="shrink-0 rounded-full border border-navy/30 bg-navy/5 px-3 py-1.5
+                text-[11px] font-bold text-navy hover:bg-navy/10">
+              Hadir semua
             </button>
           </div>
 
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="space-y-1.5">
+            {daftar.map(r => (
+              <BarisAbsen key={r.kunci} r={r}
+                onAlih={() => setDaftar(d => alihCentang(d, r.kunci))}
+                onUbah={patch => setDaftar(d => ubahBaris(d, r.kunci, patch))} />
+            ))}
+          </div>
+        </>
+      )}
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <Button onClick={submit} disabled={kirim || daftar.length === 0}
+        data-kirim-absen className="w-full gap-2 bg-navy hover:bg-navy/90 font-bold h-11">
+        {kirim ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+        Kirim Absensi
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * Satu baris centang.
+ *
+ * Seluruh baris bisa diketuk untuk mencentang, bukan hanya kotak kecilnya.
+ * Sasaran seluas satu baris terkena oleh ibu jari yang kotor; kotak 16 piksel
+ * tidak.
+ */
+function BarisAbsen({ r, onAlih, onUbah }: {
+  r: BarisCentang
+  onAlih: () => void
+  onUbah: (patch: Partial<BarisCentang>) => void
+}) {
+  const masuk = r.dicentang && (r.status === 'hadir' || r.status === 'setengah')
+  return (
+    <div data-baris-absen={r.kunci} className={`rounded-xl border p-2 transition-colors ${
+      r.dicentang
+        ? r.status === 'izin' || r.status === 'alpa'
+          ? 'border-amber-300 bg-amber-50/60'
+          : 'border-emerald-300 bg-emerald-50/60'
+        : 'border-border bg-white'}`}>
+      <button type="button" onClick={onAlih} data-centang={r.kunci}
+        className="w-full flex items-center gap-2.5 text-left">
+        {/* Kotak centangnya digambar sendiri, bukan <input type="checkbox">:
+            kotak bawaan Android hanya sekitar 16 piksel dan sulit dikenai jari
+            di layar yang terkena debu. */}
+        <span className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
+          r.dicentang ? 'bg-navy border-navy' : 'border-slate-300 bg-white'}`}>
+          {r.dicentang && <CheckCircle2 className="w-4 h-4 text-white" />}
+        </span>
+        {r.foto
+          ? <img src={r.foto} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+          : <span className="w-8 h-8 rounded-full bg-navy/10 flex items-center justify-center
+              text-[11px] font-black text-navy shrink-0">{r.nama.charAt(0).toUpperCase()}</span>}
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-navy truncate">{r.nama}</span>
+          <span className="block text-[10px] text-muted-foreground truncate">
+            {r.peran || 'tanpa peran'}
+            {/* Pekerja yang sudah tidak terdaftar tetapi absensinya sudah
+                terisi. Ditandai supaya tidak dikira orang baru. */}
+            {r.yatim && ' · sudah tidak terdaftar'}
+          </span>
+        </span>
+      </button>
+
+      {/* Tombol status SELALU terlihat, tidak hanya setelah dicentang.
+          Sempat disembunyikan supaya layarnya tidak penuh tombol yang jarang
+          dipakai — tetapi akibatnya menandai seseorang IZIN menuntut
+          mencentangnya hadir lebih dulu, yaitu mencatat kebalikan dari yang
+          dimaksud. Keadaan yang tidak bisa dicapai lebih buruk daripada
+          layar yang sedikit lebih ramai. */}
+      <div className="mt-2 pl-8 space-y-1.5">
+          <div className="grid grid-cols-4 gap-1">
             {STATUS_HADIR.map(st => (
-              <button key={st.key} type="button" onClick={() => ubah(i, { status: st.key as StatusHadir })}
-                className={`h-9 rounded-lg border-2 text-[11px] font-bold transition-all ${
-                  b.status === st.key ? `${st.tone} shadow` : 'bg-white text-muted-foreground border-border font-medium'}`}>
+              <button key={st.key} type="button" data-status={`${r.kunci}-${st.key}`}
+                onClick={() => onUbah({ status: st.key as StatusHadir, dicentang: true })}
+                className={`h-8 rounded-lg border text-[10px] font-bold transition-all ${
+                  r.dicentang && r.status === st.key
+                    ? `${st.tone} shadow-sm`
+                    : 'bg-white text-muted-foreground border-border font-medium'}`}>
                 {st.label}
               </button>
             ))}
           </div>
-
-          {(b.status === 'hadir' || b.status === 'setengah') && (
+          {masuk && (
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Foto orangnya hari itu — bukti hadir, bukan potret. */}
-              <FotoAbsen foto={b.foto} onFoto={f => ubah(i, { foto: f })} nama={b.nama} />
-              {b.lembur === undefined ? (
-                <button type="button" onClick={() => ubah(i, { lembur: 1 })}
-                  className="text-[11px] font-semibold text-navy/70 hover:text-navy">+ Lembur</button>
-              ) : (
+              <FotoAbsen foto={r.fotoAbsen} onFoto={f => onUbah({ fotoAbsen: f })} nama={r.nama} />
+              {r.lembur > 0 ? (
                 <div className="flex items-center gap-1.5">
                   <label className="text-[11px] text-muted-foreground">Lembur</label>
-                  <input type="number" inputMode="decimal" min="0" max={LEMBUR_MAKS} value={b.lembur}
-                    onChange={e => ubah(i, { lembur: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  <input type="number" inputMode="decimal" min="0" max={LEMBUR_MAKS} value={r.lembur}
+                    data-lembur={r.kunci}
+                    onChange={e => onUbah({ lembur: e.target.value === '' ? 0 : Number(e.target.value) })}
                     className="w-14 h-8 rounded-lg border border-input bg-background px-2 text-sm" />
                   <span className="text-[11px] text-muted-foreground">jam</span>
-                  <button type="button" onClick={() => ubah(i, { lembur: undefined })}
+                  <button type="button" onClick={() => onUbah({ lembur: 0 })}
                     className="text-[11px] text-muted-foreground hover:text-red-600">Batal</button>
                 </div>
+              ) : (
+                <button type="button" data-tambah-lembur={r.kunci} onClick={() => onUbah({ lembur: 1 })}
+                  className="text-[11px] font-semibold text-navy/70 hover:text-navy">+ Lembur</button>
               )}
             </div>
           )}
-        </div>
-      ))}
-
-      {/* Yang belum diabsen: diketuk satu per satu, atau sekaligus. */}
-      {belum.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Belum diabsen ({belum.length})
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {belum.map(p => (
-              <button key={p.id} type="button" data-tambah-pekerja={p.id}
-                onClick={() => setBaris(prev => [...prev, barisDariPekerja(p)])}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-white pl-1 pr-2.5 py-1
-                  text-[11px] font-semibold text-navy hover:border-navy/40">
-                {p.foto
-                  ? <img src={p.foto} alt="" className="w-6 h-6 rounded-full object-cover" />
-                  : <span className="w-6 h-6 rounded-full bg-navy/10 flex items-center justify-center text-[10px] font-black text-navy">
-                      {p.nama.charAt(0).toUpperCase()}
-                    </span>}
-                {p.nama}
-              </button>
-            ))}
-          </div>
-          <Button type="button" variant="outline" size="sm" className="w-full h-9 gap-1.5 text-xs border-dashed"
-            onClick={() => setBaris(prev => [...prev, ...belum.map(barisDariPekerja)])}>
-            <UserPlus className="w-3.5 h-3.5" /> Hadirkan semua ({belum.length})
-          </Button>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -371,7 +465,6 @@ function FormLaporan({ token, header, pekerja, onDone }: {
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
   const [pelapor, setPelapor] = useState('')
-  const [absensi, setAbsensi] = useState<BarisAbsensi[]>([])
   const [kegiatan, setKegiatan] = useState<string[]>([''])
   const [catatan, setCatatan] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
@@ -385,26 +478,15 @@ function FormLaporan({ token, header, pekerja, onDone }: {
     if (pelapor.trim().length < 2 || keg.length === 0) {
       setError('Isi nama pelapor dan minimal 1 kegiatan.'); return
     }
-    // Absensi yang cacat dihentikan DI SINI, bukan di server: nama kembar
-    // menjadi hari kerja ganda di rekap upah, dan pemakainya harus tahu
-    // sebelum menekan kirim, bukan sesudahnya.
-    const periksa = siapKirimAbsensi(absensi)
-    if (!periksa.ok) { setError(periksa.pesan); return }
-
     setSubmitting(true); setError('')
     try {
       const ok = await fieldApi().submitReport(token, {
         tanggal, pelapor: pelapor.trim(), kegiatan: keg, catatan: catatan.trim(), photos,
-        absensi,
+        absensi: [],
       })
       if (!ok) throw new Error('Gagal mengirim — link tidak berlaku.')
       kirimDrive(header, photos, `${tanggal}_${pelapor.trim()}`)
-      const jumlah = absensi.filter(a => a.status === 'hadir' || a.status === 'setengah').length
-      onDone(
-        `Laporan tanggal ${tanggal} sudah masuk`
-        + (jumlah > 0 ? `, dengan ${jumlah} pekerja tercatat masuk` : '')
-        + '. Terima kasih.',
-      )
+      onDone(`Laporan tanggal ${tanggal} sudah masuk. Terima kasih.`)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally { setSubmitting(false) }
@@ -423,7 +505,12 @@ function FormLaporan({ token, header, pekerja, onDone }: {
         </div>
       </div>
 
-      <BlokAbsensi pekerja={pekerja} baris={absensi} setBaris={setAbsensi} />
+      {/* Absensi TIDAK lagi di sini — ia punya tab sendiri.
+          Dua tempat yang menulis fakta yang sama pasti berselisih suatu hari,
+          dan yang berselisih diam-diam lebih buruk daripada yang tidak ada. */}
+      <p className="text-[11px] text-muted-foreground bg-slate-50 border border-border rounded-xl p-2.5 leading-relaxed">
+        Absensi pekerja sekarang ada di tab <b>Absensi</b> — tinggal dicentang siapa yang masuk.
+      </p>
 
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-muted-foreground">Kegiatan Hari Ini</label>

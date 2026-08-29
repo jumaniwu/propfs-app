@@ -155,6 +155,53 @@ with penanda(urut, migrasi, keterangan, ada) as (values
   -- `query_to_xml` dipakai karena kueri terhadap tabel yang belum ada gagal
   -- saat DIURAI, bukan saat dijalankan; `to_regclass(...) is null or ...`
   -- tetap meledak. Dengan query_to_xml, kuerinya baru diurai saat dijalankan.
+  -- ── Yang belum pernah masuk daftar ini ──────────────────────────────────
+  --
+  -- Sembilan migrasi di bawah sudah ada di folder tetapi tidak pernah
+  -- didaftarkan di sini, jadi tidak ada satu pun cara memeriksa apakah ia
+  -- sudah dijalankan — selain menunggu fiturnya gagal. Beberapa keluhan
+  -- "kok datanya tidak tersimpan" ternyata memang begitu sebabnya.
+
+  (31, 'migration_aset_alat.sql', 'tabel aset_alat (Aset & Alat Kerja)',
+     to_regclass('public.aset_alat') is not null),
+
+  (32, 'migration_absensi_pekerja.sql', 'kolom field_reports.absensi',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'field_reports'
+                and column_name = 'absensi')),
+
+  (33, 'migration_pekerja_lapangan.sql', 'tabel pekerja_lapangan (daftar tukang & upah)',
+     to_regclass('public.pekerja_lapangan') is not null),
+
+  (34, 'migration_po_revisi_pengiriman.sql', 'kolom purchase_orders.kirim_alamat',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'purchase_orders'
+                and column_name = 'kirim_alamat')),
+
+  (35, 'migration_po_satuan_penuhi.sql', 'po_tandai_terkirim memakai kolom penuhi',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'po_tandai_terkirim'
+                and p.prosrc like '%penuhi%')),
+
+  (36, 'migration_gambar_kerja.sql', 'tabel gambar_kerja (Gambar Kerja & Denah)',
+     to_regclass('public.gambar_kerja') is not null),
+
+  (37, 'migration_aset_pinjam.sql', 'tabel aset_pinjam (serah-terima alat)',
+     to_regclass('public.aset_pinjam') is not null),
+
+  -- Penandanya ISI fungsinya, bukan namanya: fungsinya sudah lama ada, yang
+  -- berubah adalah absensi tidak lagi ikut terkirim ke halaman owner.
+  (38, 'migration_owner_tanpa_absensi.sql', 'field_log_by_view_token membuang kolom absensi',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'field_log_by_view_token'
+                and p.prosrc like '%''absensi''%')),
+
+  -- Sama: yang berubah tipe kembaliannya, bukan namanya.
+  (39, 'migration_po_token_alamat.sql', 'po_get_by_token mengirim alamat pengiriman',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'po_get_by_token'
+                and pg_get_function_result(p.oid) like '%kirim_alamat%')),
+
   (30, '(data) PO tanpa nama proyek', 'tidak ada PO yang kehilangan nama proyek',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(

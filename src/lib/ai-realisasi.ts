@@ -12,6 +12,7 @@ import { panggilGemini } from './gemini'
 import { buatAnggaran, pantasDicobaLagi, WAKTU_HABIS } from './anggaranWaktu'
 import { riwayatUntukModel } from './riwayatChat'
 import { bersihkanBalasan } from './balasanChat'
+import { angkaRupiah, bersihkanPatch, MEDAN_BIAYA } from './suntingBiaya'
 
 // ── Data Structures ───────────────────────────────────────────────────────────
 
@@ -114,25 +115,41 @@ export interface RealisasiParsedResult {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/**
+ * Angka dari sebuah medan yang dikirim AI.
+ *
+ * TIDAK memakai `Number()` telanjang. Model kerap mengirim nominal sebagai
+ * teks bergaya Indonesia — "135.000" — dan `Number("135.000")` bernilai 135,
+ * karena JavaScript membaca titiknya sebagai koma desimal. Rp 135 ribu masuk
+ * ke buku sebagai Rp 135, seperseribu dari yang dimaksud, tanpa satu pun
+ * tanda bahwa ada yang salah. Lima baris "Pembelian alat kerja" pernah
+ * tercatat begitu.
+ */
+function angkaAi(v: unknown): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined
+  const n = angkaRupiah(v)
+  return n === 0 && v !== 0 && String(v).trim() !== '0' ? undefined : n
+}
+
 function parseEntry(item: any): RealisasiEntry {
   return {
     id: item.id || uuidv4(),
     tipe: item.tipe || (['upah','operasional','lainnya'].includes(item.tipe) ? item.tipe : 'material'),
     tanggal: item.tanggal || new Date().toISOString().split('T')[0],
     namaMaterial: item.namaMaterial || undefined,
-    volume: item.volume ? Number(item.volume) : undefined,
+    volume: angkaAi(item.volume),
     satuan: item.satuan || undefined,
-    hargaSatuan: item.hargaSatuan ? Number(item.hargaSatuan) : undefined,
+    hargaSatuan: angkaAi(item.hargaSatuan),
     namaSupplier: item.namaSupplier || item.supplier || undefined,
     nomorNota: item.nomorNota || undefined,
     namaTukang: item.namaTukang || undefined,
     jenisKerja: item.jenisKerja || undefined,
-    jumlahOrang: item.jumlahOrang ? Number(item.jumlahOrang) : undefined,
-    hariKerja: item.hariKerja ? Number(item.hariKerja) : undefined,
-    upahHarian: item.upahHarian ? Number(item.upahHarian) : undefined,
+    jumlahOrang: angkaAi(item.jumlahOrang),
+    hariKerja: angkaAi(item.hariKerja),
+    upahHarian: angkaAi(item.upahHarian),
     keterangan: item.keterangan || item.pekerjaan || '-',
     kategori: item.kategori || 'bangunan',
-    jumlah: Number(item.jumlah) || 0,
+    jumlah: angkaAi(item.jumlah) ?? 0,
     status: item.status || '✅ Dicatat',
     metodePembayaran: item.metodePembayaran || 'Cash',
     linkedComponentId: item.linkedComponentId || undefined,
@@ -160,8 +177,22 @@ function extractEntriesFromText(text: string): RealisasiParsedResult {
       } else {
         // Handle object with actions
         if (Array.isArray(parsed.added)) added = parsed.added.map(parseEntry)
-        if (Array.isArray(parsed.updated)) updated = parsed.updated
-        if (Array.isArray(parsed.deleted)) deleted = parsed.deleted
+        // Tambalan revisi ikut dibersihkan DI SINI, bukan hanya di
+        // pemanggilnya. Dulu `added` melewati `parseEntry` sementara `updated`
+        // diterima mentah-mentah — asimetri yang membuat nominal berupa teks
+        // lolos justru pada jalur PERBAIKAN, tempat orang mengharapkan
+        // angkanya akhirnya benar.
+        if (Array.isArray(parsed.updated)) {
+          updated = parsed.updated
+            .filter((u: any) => u && String(u.id ?? '').trim())
+            .map((u: any) => ({
+              id: String(u.id).trim(),
+              data: bersihkanPatch(u.data, MEDAN_BIAYA) as Partial<RealisasiEntry>,
+            }))
+        }
+        if (Array.isArray(parsed.deleted)) {
+          deleted = parsed.deleted.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
+        }
         
         // Fallback for older structure
         if (Array.isArray(parsed.transaksi)) added = parsed.transaksi.map(parseEntry)
@@ -211,9 +242,19 @@ Kamu bertugas membantu site manager / kontraktor merekap SEMUA pengeluaran lapan
 - Pecah nota berukuran besar menjadi beberapa baris entry JSON secara mendetail.
 - JANGAN HANYA MERANGKUM TOTALNYA SAJA, catat setiap item material atau upah agar bisa jadi laporan jelas.
 
+## ATURAN ANGKA (WAJIB)
+Semua nominal ditulis sebagai ANGKA JSON polos tanpa pemisah ribuan dan tanpa tanda kutip.
+- BENAR: "jumlah": 135000
+- SALAH: "jumlah": "135.000"  ← titiknya terbaca sebagai desimal, tersimpan jadi 135
+- SALAH: "jumlah": "Rp 135.000"
+Kalau user menyebut "135 ribu", tulis 135000. Kalau "1,5 juta", tulis 1500000.
+
 ## DAFTAR TRANSAKSI SAAT INI (REALISASI)
 Berikut adalah daftar transaksi yang SUDAH dicatat di sistem saat ini. Jika user meminta revisi atau penghapusan, cari ID transaksi yang relevan dari daftar ini:
 ${currentEntriesList}
+
+PENTING untuk revisi: "id" di \`updated\` HARUS disalin PERSIS dari daftar di atas.
+Id yang tidak ada di daftar akan ditolak dan revisinya tidak jadi.
 
 ## CARA MENJAWAB
 
