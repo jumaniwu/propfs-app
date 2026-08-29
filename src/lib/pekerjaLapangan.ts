@@ -368,3 +368,149 @@ export function upahBelumDiisi(minggu: MingguUpah | null | undefined): UpahPeker
     r => r.jenis === 'harian' && r.hok > 0 && r.upahHarian <= 0,
   )
 }
+
+// ── Upah bulanan ────────────────────────────────────────────────────────────
+//
+// Mingguan yang dipakai membayar; bulanan yang dipakai MEMPERTANGGUNG-
+// JAWABKAN. Keduanya dibutuhkan, dan menjumlahkan empat rekap mingguan tidak
+// menghasilkan yang kedua: minggu kerja melintasi pergantian bulan, sehingga
+// satu minggu yang sama menyumbang hari ke dua bulan berbeda. Menghitungnya
+// dari tanggal aslinya adalah satu-satunya cara yang benar.
+
+export interface BulanUpah {
+  /** YYYY-MM */
+  bulan: string
+  label: string
+  baris: UpahPekerja[]
+  totalUpah: number
+  totalHok: number
+  jumlahBorongan: number
+  /** Berapa hari kalender yang benar-benar ada laporannya. */
+  hariKerja: number
+}
+
+const NAMA_BULAN = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+]
+
+/** "2026-08" → "Agustus 2026". */
+export function labelBulanUpah(bulan: unknown): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(bulan ?? '').trim())
+  if (!m) return String(bulan ?? '')
+  const i = Number(m[2]) - 1
+  return NAMA_BULAN[i] ? `${NAMA_BULAN[i]} ${m[1]}` : String(bulan)
+}
+
+/**
+ * Rekap upah per BULAN kalender.
+ *
+ * Dihitung ulang dari tanggal absensinya, bukan dijumlahkan dari rekap
+ * mingguan — lihat catatan di atas.
+ *
+ * Aturan "satu orang, satu tanggal, satu hitungan" tetap berlaku: dua mandor
+ * yang melapor di hari yang sama tidak boleh membuat seseorang dibayar dua
+ * kali. Itu bukan kehati-hatian berlebihan; di proyek dengan dua pengawas ia
+ * terjadi hampir setiap minggu.
+ */
+export function rekapUpahBulanan(
+  laporan: LaporanAbsensi[] | null | undefined,
+  pekerja: PekerjaLapangan[] | null | undefined,
+): BulanUpah[] {
+  const tarif = new Map<string, PekerjaLapangan>()
+  for (const p of pekerja ?? []) {
+    tarif.set(p.id, p)
+    tarif.set(kunciPekerja(p.nama), p)
+  }
+
+  const bulan = new Map<string, Map<string, UpahPekerja>>()
+  const hari = new Map<string, Set<string>>()
+  const sudah = new Set<string>()
+
+  for (const lap of laporan ?? []) {
+    const tgl = String(lap?.tanggal ?? '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl)) continue
+    const bln = tgl.slice(0, 7)
+
+    for (const b of lap?.absensi ?? []) {
+      const nama = rapikanNama(b?.nama)
+      if (!nama) continue
+      const k = b?.pekerja_id || kunciPekerja(nama)
+      if (!k) continue
+
+      const cap = `${k}@${tgl}`
+      if (sudah.has(cap)) continue
+      sudah.add(cap)
+
+      let isi = bulan.get(bln)
+      if (!isi) { isi = new Map(); bulan.set(bln, isi) }
+      let hset = hari.get(bln)
+      if (!hset) { hset = new Set(); hari.set(bln, hset) }
+      hset.add(tgl)
+
+      const asal = tarif.get(k) ?? tarif.get(kunciPekerja(nama)) ?? null
+      let r = isi.get(k)
+      if (!r) {
+        r = {
+          kunci: k, pekerja_id: b?.pekerja_id ?? '',
+          nama: asal?.nama || nama,
+          peran: asal?.peran || b?.peran || '',
+          jenis: asal ? asal.jenis : 'harian',
+          hadir: 0, setengah: 0, izin: 0, alpa: 0, hok: 0, jamLembur: 0,
+          upahHarian: asal?.upah_harian ?? 0, upah: 0, tanggal: [],
+        }
+        isi.set(k, r)
+      }
+
+      const status = b?.status ?? 'hadir'
+      if (status === 'hadir' || status === 'setengah' || status === 'izin' || status === 'alpa') {
+        r[status] += 1
+      }
+      r.hok += hokStatus(status)
+      r.jamLembur += angka(b?.lembur)
+      r.tanggal.push(tgl)
+    }
+  }
+
+  const hasil: BulanUpah[] = []
+  for (const [bln, isi] of bulan) {
+    const baris = [...isi.values()]
+    for (const r of baris) {
+      r.tanggal.sort((a, b) => b.localeCompare(a))
+      // null BUKAN nol. Nol berarti "bekerja tanpa dibayar"; null berarti
+      // "tidak dibayar dengan cara ini".
+      r.upah = r.jenis === 'borongan' ? null : Math.round(r.hok * r.upahHarian)
+    }
+    baris.sort((a, b) => (b.upah ?? -1) - (a.upah ?? -1) || a.nama.localeCompare(b.nama, 'id-ID'))
+    hasil.push({
+      bulan: bln,
+      label: labelBulanUpah(bln),
+      baris,
+      totalUpah: baris.reduce((s, r) => s + (r.upah ?? 0), 0),
+      totalHok: baris.reduce((s, r) => s + r.hok, 0),
+      jumlahBorongan: baris.filter(r => r.jenis === 'borongan').length,
+      hariKerja: (hari.get(bln)?.size ?? 0),
+    })
+  }
+  return hasil.sort((a, b) => b.bulan.localeCompare(a.bulan))
+}
+
+/** Pekerja harian yang upahnya belum diisi padahal bulan ini ia bekerja. */
+export function upahBelumDiisiBulan(bulan: BulanUpah | null | undefined): UpahPekerja[] {
+  return (bulan?.baris ?? []).filter(r => r.jenis === 'harian' && r.hok > 0 && r.upahHarian <= 0)
+}
+
+/**
+ * Peringatan sebelum daftar upah dicetak.
+ *
+ * Dicetak berarti dibawa ke orangnya dan dibayarkan. Angka nol yang diam jauh
+ * lebih berbahaya di atas kertas daripada di layar: di layar ia masih bisa
+ * diperbaiki, di atas kertas ia sudah menjadi jumlah yang diterima orang.
+ */
+export function peringatanCetakUpah(belum: UpahPekerja[] | null | undefined): string {
+  const n = (belum ?? []).length
+  if (!n) return ''
+  const nama = (belum ?? []).slice(0, 3).map(r => r.nama).join(', ')
+  return `${n} pekerja belum punya upah harian (${nama}${n > 3 ? ', …' : ''}).`
+    + ' Kalau dicetak sekarang, upah mereka tercetak Rp 0.'
+}

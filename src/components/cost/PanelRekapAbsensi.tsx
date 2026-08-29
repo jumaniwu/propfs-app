@@ -16,18 +16,24 @@
 // boleh tersebar bersama link laporan.
 // ============================================================
 import { useMemo, useState } from 'react'
-import { Users, FileSpreadsheet, CalendarRange } from 'lucide-react'
+import { Users, FileSpreadsheet, CalendarRange, Printer, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   rekapAbsensi, totalRekap, bulat, STATUS_HADIR, type SumberAbsensi,
 } from '@/lib/absensiPekerja'
 import {
-  rekapUpahMingguan, upahBelumDiisi, type PekerjaLapangan,
+  rekapUpahMingguan, rekapUpahBulanan, upahBelumDiisi, upahBelumDiisiBulan,
+  peringatanCetakUpah, type PekerjaLapangan, type UpahPekerja,
 } from '@/lib/pekerjaLapangan'
+import { unduhUpahPdf } from '@/lib/upahPdf'
+import { identitasLaporan, getBrandingCache } from '@/lib/branding'
+import { useToast } from '@/hooks/use-toast'
 import {
   kelompokPerBulan, pilihanBulan, labelBulanPanjang, bulanBerjalan, SEMUA_BULAN,
 } from '@/lib/kelompokBulan'
+
+export type Lingkup = 'bulanan' | 'mingguan' | 'upahBulan'
 
 export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
   laporan: SumberAbsensi[]
@@ -38,7 +44,7 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
   // Dua pertanyaan yang berbeda, jadi dua tampilan:
   //   BULANAN  — siapa masuk berapa hari (HOK). Untuk mengawasi.
   //   MINGGUAN — berapa yang harus dibayar Sabtu ini. Untuk membayar.
-  const [lingkup, setLingkup] = useState<'bulanan' | 'mingguan'>('bulanan')
+  const [lingkup, setLingkup] = useState<Lingkup>('bulanan')
   // Hanya laporan yang MEMBAWA absensi yang ikut menyusun pemilih bulan.
   // Bulan-bulan sebelum fitur ini ada tidak punya satu nama pun di dalamnya,
   // dan menawarkannya berarti menawarkan halaman kosong.
@@ -113,11 +119,12 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
     )
   }
 
-  if (lingkup === 'mingguan') {
+  if (lingkup === 'mingguan' || lingkup === 'upahBulan') {
     return (
       <div className="space-y-3">
         <PilihLingkup lingkup={lingkup} setLingkup={setLingkup} />
-        <RekapMingguan laporan={berabsensi} pekerja={pekerja ?? []} namaProyek={namaProyek} />
+        <RekapUpah periode={lingkup === 'mingguan' ? 'minggu' : 'bulan'}
+          laporan={berabsensi} pekerja={pekerja ?? []} namaProyek={namaProyek} />
       </div>
     )
   }
@@ -226,14 +233,15 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
 
 /** Dua pertanyaan berbeda: mengawasi (bulanan) vs membayar (mingguan). */
 function PilihLingkup({ lingkup, setLingkup }: {
-  lingkup: 'bulanan' | 'mingguan'
-  setLingkup: (v: 'bulanan' | 'mingguan') => void
+  lingkup: Lingkup
+  setLingkup: (v: Lingkup) => void
 }) {
   return (
     <div className="flex gap-1.5">
       {([
-        ['bulanan', 'Per Bulan', 'siapa masuk berapa hari'],
-        ['mingguan', 'Upah Mingguan', 'berapa yang dibayar'],
+        ['bulanan', 'Absensi', 'siapa masuk berapa hari'],
+        ['mingguan', 'Upah Mingguan', 'dibayar Sabtu ini'],
+        ['upahBulan', 'Upah Bulanan', 'rekap & arsip'],
       ] as const).map(([key, label, untuk]) => (
         <button key={key} onClick={() => setLingkup(key)}
           data-lingkup={key}
@@ -254,18 +262,76 @@ function PilihLingkup({ lingkup, setLingkup }: {
  * dan tidak dibayar sepeser pun"; kosong berkata "orang ini tidak dibayar
  * dengan cara ini". Yang pertama akan ditanyakan orang di akhir minggu.
  */
-function RekapMingguan({ laporan, pekerja, namaProyek }: {
+function RekapUpah({ periode, laporan, pekerja, namaProyek }: {
+  /** 'minggu' dipakai MEMBAYAR; 'bulan' dipakai MEMPERTANGGUNGJAWABKAN. */
+  periode: 'minggu' | 'bulan'
   laporan: SumberAbsensi[]
   pekerja: PekerjaLapangan[]
   namaProyek: string
 }) {
-  const minggu = useMemo(
-    () => rekapUpahMingguan(laporan as never, pekerja),
-    [laporan, pekerja],
+  const { toast } = useToast()
+  const [cetak, setCetak] = useState(false)
+
+  // Bulanan TIDAK dijumlahkan dari mingguan. Minggu kerja melintasi pergantian
+  // bulan, jadi satu minggu yang sama menyumbang hari ke dua bulan berbeda;
+  // menjumlahkannya menaruh seluruh minggu itu di salah satu bulan saja.
+  const daftar = useMemo(
+    () => periode === 'minggu'
+      ? rekapUpahMingguan(laporan as never, pekerja)
+      : rekapUpahBulanan(laporan as never, pekerja),
+    [periode, laporan, pekerja],
   )
   const [pilihan, setPilihan] = useState(0)
-  const m = minggu[Math.min(pilihan, Math.max(0, minggu.length - 1))] ?? null
-  const belumAdaTarif = useMemo(() => upahBelumDiisi(m), [m])
+  const m = daftar[Math.min(pilihan, Math.max(0, daftar.length - 1))] ?? null
+  const belumAdaTarif = useMemo<UpahPekerja[]>(
+    () => periode === 'minggu'
+      ? upahBelumDiisi(m as never)
+      : upahBelumDiisiBulan(m as never),
+    [periode, m],
+  )
+
+  /**
+   * Cetak daftar upah BERIKUT absensinya, dalam satu dokumen.
+   *
+   * Daftar gaji yang hanya berisi jumlah tidak bisa dipertanggungjawabkan:
+   * tukang yang merasa dibayar kurang bertanya "berapa hari saya masuk", dan
+   * selembar kertas berisi satu angka tidak menjawab apa pun. Dua berkas
+   * terpisah akan terpisah juga nasibnya — yang satu ikut dibawa, yang satu
+   * tertinggal, tepat pada saat perselisihannya terjadi.
+   */
+  async function cetakPdf() {
+    if (!m || cetak) return
+    const peringatan = peringatanCetakUpah(belumAdaTarif)
+    if (peringatan && !window.confirm(`${peringatan}\n\nTetap cetak?`)) return
+    setCetak(true)
+    try {
+      // Hanya tanggal yang MASUK periode ini yang ikut dilampirkan. Melampirkan
+      // seluruh riwayat membuat lampirannya tidak lagi membuktikan hitungan di
+      // halaman depan — dan lampiran yang tidak cocok lebih buruk daripada
+      // tidak ada lampiran.
+      const ikut = new Set(m.baris.flatMap(r => r.tanggal))
+      const rincian = laporan
+        .filter(l => ikut.has(String(l.tanggal ?? '').slice(0, 10)))
+        .flatMap(l => (l.absensi ?? []).map(b => ({
+          tanggal: String(l.tanggal ?? '').slice(0, 10),
+          nama: b.nama, status: String(b.status ?? 'hadir'), lembur: Number(b.lembur) || 0,
+        })))
+        .sort((a, b) => a.tanggal.localeCompare(b.tanggal) || a.nama.localeCompare(b.nama, 'id-ID'))
+
+      const ok = await unduhUpahPdf({
+        judul: periode === 'minggu' ? 'Daftar Upah Mingguan' : 'Daftar Upah Bulanan',
+        periode: m.label, namaProyek,
+        baris: m.baris, totalUpah: m.totalUpah, totalHok: m.totalHok,
+        jumlahBorongan: m.jumlahBorongan, rincian,
+      }, identitasLaporan(getBrandingCache()))
+      if (ok) toast({ title: 'Daftar upah dicetak', description: 'Absensinya ikut di halaman lampiran.' })
+    } catch (e) {
+      toast({
+        title: 'Gagal mencetak', variant: 'destructive',
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally { setCetak(false) }
+  }
 
   async function unduh() {
     if (!m) return
@@ -283,12 +349,13 @@ function RekapMingguan({ laporan, pekerja, namaProyek }: {
       'Jam Lembur': r.jamLembur,
       'Upah/Hari': r.jenis === 'borongan' ? '' : r.upahHarian,
       // Sengaja string kosong, bukan 0 — di Excel pun bedanya harus terbaca.
-      'Upah Minggu Ini': r.upah === null ? '' : r.upah,
+      [periode === 'minggu' ? 'Upah Minggu Ini' : 'Upah Bulan Ini']: r.upah === null ? '' : r.upah,
     }))
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(baris), 'Upah Mingguan')
+    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(baris),
+      periode === 'minggu' ? 'Upah Mingguan' : 'Upah Bulanan')
     void simpanXlsx(
       xlsx.write(wb, { bookType: 'xlsx', type: 'array' }),
-      `Upah_${namaProyek || 'Proyek'}_${m.awal}.xlsx`,
+      `Upah_${namaProyek || 'Proyek'}_${m.label.replace(/\s+/g, '_')}.xlsx`,
     )
   }
 
@@ -307,19 +374,29 @@ function RekapMingguan({ laporan, pekerja, namaProyek }: {
   return (
     <div className="space-y-3">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        {minggu.length > 1 && (
+        {daftar.length > 1 && (
           <label className="flex items-center gap-2 flex-1 min-w-0">
             <CalendarRange className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <select value={pilihan} onChange={e => setPilihan(Number(e.target.value))}
-              aria-label="Pilih minggu" data-pilih-minggu
+              aria-label={periode === 'minggu' ? 'Pilih minggu' : 'Pilih bulan'} data-pilih-periode
               className="h-9 flex-1 min-w-0 rounded-xl border border-border bg-white pl-2.5 pr-8 text-[11px] font-bold text-navy">
-              {minggu.map((w, i) => <option key={w.awal} value={i}>{w.label}</option>)}
+              {daftar.map((w, i) => <option key={w.label} value={i}>{w.label}</option>)}
             </select>
           </label>
         )}
-        <Button size="sm" variant="outline" className="h-9 text-[11px] gap-1.5 shrink-0" onClick={unduh}>
-          <FileSpreadsheet className="w-3.5 h-3.5" /> Unduh Upah
-        </Button>
+        <div className="flex gap-1.5 shrink-0">
+          <Button size="sm" variant="outline" className="h-9 text-[11px] gap-1.5" onClick={unduh}>
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
+          </Button>
+          {/* Cetak = daftar upah + absensinya dalam SATU dokumen. Inilah yang
+              dibawa ke lapangan dan ditandatangani. */}
+          <Button size="sm" data-cetak-upah disabled={cetak}
+            onClick={() => void cetakPdf()}
+            className="h-9 text-[11px] gap-1.5 bg-navy hover:bg-navy/90 font-bold">
+            {cetak ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Printer className="w-3.5 h-3.5" />}
+            Cetak
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -328,7 +405,9 @@ function RekapMingguan({ laporan, pekerja, namaProyek }: {
           <p className="text-lg font-black text-navy tabular-nums leading-tight">{bulat(m.totalHok)}</p>
         </div>
         <div className="rounded-xl bg-navy text-white p-2.5">
-          <p className="text-[10px] uppercase tracking-wide text-white/60 font-bold">Upah Dibayar</p>
+          <p className="text-[10px] uppercase tracking-wide text-white/60 font-bold">
+            {periode === 'minggu' ? 'Upah Dibayar' : 'Upah Sebulan'}
+          </p>
           <p className="text-lg font-black tabular-nums leading-tight">
             Rp {Math.round(m.totalUpah).toLocaleString('id-ID')}
           </p>
@@ -337,7 +416,7 @@ function RekapMingguan({ laporan, pekerja, namaProyek }: {
 
       {belumAdaTarif.length > 0 && (
         <p data-upah-kosong className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
-          <b>{belumAdaTarif.map(r => r.nama).join(', ')}</b> bekerja minggu ini tetapi upah
+          <b>{belumAdaTarif.map(r => r.nama).join(', ')}</b> bekerja {periode === 'minggu' ? 'minggu' : 'bulan'} ini tetapi upah
           hariannya belum diisi, jadi terhitung nol. Isi di <b>Link Pekerja → tab Pekerja</b>
           supaya tidak ada yang kurang dibayar.
         </p>

@@ -23,6 +23,7 @@ import {
   type FieldLog, type FieldReport,
 } from '@/lib/fieldReports'
 import type { PekerjaLapangan } from '@/lib/pekerjaLapangan'
+import { kelompokkanBuku, bolehBuatBuku, pesanBelumPunyaBuku } from '@/lib/bukuLaporan'
 import ChipAbsensi from './ChipAbsensi'
 import PanelRekapAbsensi from './PanelRekapAbsensi'
 import PhotoLightbox from '@/components/PhotoLightbox'
@@ -52,10 +53,39 @@ export default function TabLaporanLapangan() {
   }
   useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  /**
+   * Buku proyek ini, dipisahkan dari buku proyek lain.
+   *
+   * Halaman ini dulu menampilkan JUDUL proyek yang sedang dibuka di kepala
+   * layar, lalu SELURUH buku milik semua proyek di bawahnya tanpa satu pun
+   * penanda. Membuka "Ruko Pak Soni" memperlihatkan kartu bertuliskan "Rumah
+   * Noble Cove", dan tidak ada apa pun yang mengatakan itu buku proyek lain.
+   *
+   * Yang terjadi berikutnya bisa ditebak: buku yang terlihat dianggap buku
+   * proyek ini, link pekerjanya dibagikan ke mandor, dan laporan hariannya
+   * masuk ke proyek yang salah. Dicari di proyek asalnya, tidak ada apa-apa —
+   * dan yang tampak dari luar adalah laporan yang HILANG.
+   *
+   * Yang milik proyek lain tidak dibuang, hanya dipisah dan diberi nama:
+   * laporan yang terlanjur masuk ke sana harus tetap bisa dibuka.
+   */
+  const namaProyek = projectInfo?.projectName?.trim() ?? ''
+  const { milikProyek, proyekLain } = kelompokkanBuku(logs, namaProyek)
+  const izinBuat = bolehBuatBuku(logs, namaProyek)
+
   async function handleCreate() {
+    // Dua penolakan, keduanya menutup jalan yang selama ini terbuka: buku
+    // tanpa proyek aktif dulu dibuat bernama harfiah "Proyek" — nama yang
+    // tidak cocok dengan proyek mana pun — dan buku kedua untuk proyek yang
+    // sama membelah laporannya ke dua tempat tanpa ada yang tahu mana yang
+    // dipakai mandor.
+    if (!izinBuat.boleh) {
+      toast({ title: 'Belum bisa dibuat', description: izinBuat.alasan, variant: 'destructive' })
+      return
+    }
     setCreating(true)
     try {
-      const log = await fieldApi().createLog(projectInfo?.projectName || 'Proyek', getDriveWebhook())
+      const log = await fieldApi().createLog(namaProyek, getDriveWebhook())
       toast({ title: '✅ Buku laporan dibuat!', description: 'Bagikan link pekerja & owner di bawah.' })
       setLogs(prev => [log, ...prev])
     } catch (e) {
@@ -90,45 +120,12 @@ export default function TabLaporanLapangan() {
     window.open(waShare(msg), '_blank')
   }
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl md:text-2xl font-serif font-bold text-navy flex items-center gap-2">
-          <HardHat className="w-6 h-6" /> Laporan Lapangan
-        </h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
-          </Button>
-          <Button size="sm" className="gap-1.5 bg-navy hover:bg-navy/90 font-bold" disabled={creating} onClick={handleCreate}>
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Buat Buku Laporan
-          </Button>
-        </div>
-      </div>
 
-      <p className="text-xs text-muted-foreground max-w-2xl">
-        Buat buku laporan → bagikan <b>Link Pekerja</b> (mandor mengisi absensi, kegiatan & foto
-        tiap hari dari HP tanpa login) → bagikan <b>Link Owner</b> (lihat kalender progres harian,
-        lengkap dengan foto). Kehadiran yang masuk direkap per pekerja di <b>Rekap Absensi</b>.
-      </p>
-
-      {error && (
-        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
-          {error} — pastikan migrasi <code>migration_field_reports.sql</code> sudah dijalankan di Supabase.
-        </p>
-      )}
-
-      {loading ? (
-        <div className="py-12 flex justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /></div>
-      ) : logs.length === 0 && !error ? (
-        <div className="py-12 text-center bg-white rounded-3xl border border-border">
-          <HardHat className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm text-muted-foreground">Belum ada buku laporan. Klik "Buat Buku Laporan".</p>
-        </div>
-      ) : (
-        <div className="grid md:grid-cols-2 gap-3">
-          {logs.map(log => (
-            <div key={log.id} className="bg-white rounded-2xl border border-border p-4 space-y-3">
+  /** Satu kartu buku laporan. `lain` = milik proyek selain yang dibuka. */
+  function kartuBuku(log: FieldLog, lain: boolean) {
+    return (
+            <div key={log.id} className={`bg-white rounded-2xl border p-4 space-y-3 ${
+              lain ? 'border-amber-300' : 'border-border'}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="font-bold text-navy text-sm truncate">🏗️ {log.project_name || 'Proyek'}</p>
                 <button onClick={async () => { if (window.confirm('Hapus buku laporan ini?')) { await fieldApi().deleteLog(log.id); load() } }}
@@ -178,8 +175,79 @@ export default function TabLaporanLapangan() {
                 <ImageIcon className="w-3.5 h-3.5" /> Lihat Laporan Masuk
               </Button>
             </div>
-          ))}
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h2 className="text-xl md:text-2xl font-serif font-bold text-navy flex items-center gap-2">
+          <HardHat className="w-6 h-6" /> Laporan Lapangan
+        </h2>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Muat Ulang
+          </Button>
+          <Button size="sm" className="gap-1.5 bg-navy hover:bg-navy/90 font-bold" disabled={creating} onClick={handleCreate}>
+            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Buat Buku Laporan
+          </Button>
         </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground max-w-2xl">
+        Buat buku laporan → bagikan <b>Link Pekerja</b> (mandor mengisi absensi, kegiatan & foto
+        tiap hari dari HP tanpa login) → bagikan <b>Link Owner</b> (lihat kalender progres harian,
+        lengkap dengan foto). Kehadiran yang masuk direkap per pekerja di <b>Rekap Absensi</b>.
+      </p>
+
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
+          {error} — pastikan migrasi <code>migration_field_reports.sql</code> sudah dijalankan di Supabase.
+        </p>
+      )}
+
+      {loading ? (
+        <div className="py-12 flex justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin" /></div>
+      ) : logs.length === 0 && !error ? (
+        <div className="py-12 text-center bg-white rounded-3xl border border-border">
+          <HardHat className="w-10 h-10 mx-auto mb-2 opacity-30" />
+          <p className="text-sm text-muted-foreground">Belum ada buku laporan. Klik "Buat Buku Laporan".</p>
+        </div>
+      ) : (
+        <>
+        {/* Proyek ini belum punya buku, padahal ada buku lain di layar.
+            Inilah jawaban atas "kenapa laporannya hilang" — dan menyebutkannya
+            jauh lebih berguna daripada membiarkan orang menyimpulkan sendiri
+            bahwa datanya lenyap. */}
+        {namaProyek && milikProyek.length === 0 && (
+          <p data-belum-punya-buku className="text-xs text-amber-900 bg-amber-50 border
+            border-amber-200 rounded-xl p-3 leading-relaxed">
+            {pesanBelumPunyaBuku(namaProyek, proyekLain.length)}
+          </p>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-3">
+          {milikProyek.map(log => kartuBuku(log, false))}
+        </div>
+
+        {/* Buku proyek lain: ditampilkan, tetapi terpisah dan diberi nama.
+            Tidak disembunyikan — laporan yang terlanjur masuk ke sana harus
+            tetap bisa dibuka. */}
+        {proyekLain.length > 0 && (
+          <div data-buku-proyek-lain className="space-y-2 pt-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Buku proyek lain ({proyekLain.length})
+            </p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed max-w-2xl">
+              Bukan milik {namaProyek || 'proyek ini'}. Laporan yang dikirim lewat link di bawah
+              masuk ke proyek yang tertulis di kartunya — periksa namanya sebelum dibagikan.
+            </p>
+            <div className="grid md:grid-cols-2 gap-3 opacity-75">
+              {proyekLain.map(log => kartuBuku(log, true))}
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {/* Panel laporan masuk — dua cara membaca data yang sama */}
