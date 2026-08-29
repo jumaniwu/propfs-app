@@ -220,8 +220,15 @@ const hadir = (id, nama, status = 'hadir', lembur = 0) => ({ pekerja_id: id, nam
   // Halaman laporan wajib memisahkan buku menurut proyek. Tanpa ini, keluhan
   // "laporan Pak Soni hilang" kembali persis seperti semula.
   const tab = baca('components/cost/TabLaporanLapangan.tsx')
-  assert(/kelompokkanBuku\(/.test(tab), 'buku dipisah menurut proyek')
-  assert(/bolehBuatBuku\(/.test(tab), 'dan buku kedua untuk proyek yang sama ditolak')
+  // Buku TIDAK lagi dipecah menjadi dua daftar. Pemisahan itu dimaksudkan
+  // supaya link tidak salah dibagikan, tetapi justru membuat buku yang dicari
+  // tampak hilang — keluhan yang sama persis dengan yang hendak diperbaikinya.
+  // Seluruh buku tampil dalam satu daftar; nama proyeknya tertulis di tiap
+  // kartu, dan yang dari proyek lain diberi penanda kecil.
+  assert(/logs\.map\(log => kartuBuku/.test(tab),
+    'seluruh buku tampil dalam satu daftar, tanpa dipecah')
+  assert(/Proyek lain/.test(tab), 'buku proyek lain tetap tampil, hanya diberi penanda')
+  assert(/bolehBuatBuku\(/.test(tab), 'buku kedua untuk proyek yang sama tetap ditolak')
   assert(!/createLog\(projectInfo\?\.projectName \|\| 'Proyek'/.test(tab),
     'buku tidak lagi bisa lahir bernama harfiah "Proyek" — nama yang tidak '
     + 'cocok dengan proyek mana pun, sehingga bukunya melayang selamanya')

@@ -124,10 +124,18 @@ export default function TabLaporanLapangan() {
   /** Satu kartu buku laporan. `lain` = milik proyek selain yang dibuka. */
   function kartuBuku(log: FieldLog, lain: boolean) {
     return (
-            <div key={log.id} className={`bg-white rounded-2xl border p-4 space-y-3 ${
-              lain ? 'border-amber-300' : 'border-border'}`}>
+            <div key={log.id} className="bg-white rounded-2xl border border-border p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
-                <p className="font-bold text-navy text-sm truncate">🏗️ {log.project_name || 'Proyek'}</p>
+                <div className="min-w-0">
+                  <p className="font-bold text-navy text-sm truncate">🏗️ {log.project_name || 'Proyek'}</p>
+                  {/* Buku milik proyek lain tetap ditampilkan dan tetap bisa
+                      dipakai; yang ditambahkan hanya penandanya, supaya link
+                      pekerjanya tidak salah dibagikan. Laporan yang dikirim
+                      lewat link sebuah buku masuk ke proyek buku itu. */}
+                  {lain && (
+                    <p className="text-[10px] font-bold text-amber-700">Proyek lain</p>
+                  )}
+                </div>
                 <button onClick={async () => { if (window.confirm('Hapus buku laporan ini?')) { await fieldApi().deleteLog(log.id); load() } }}
                   className="text-muted-foreground hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
@@ -215,10 +223,11 @@ export default function TabLaporanLapangan() {
         </div>
       ) : (
         <>
-        {/* Proyek ini belum punya buku, padahal ada buku lain di layar.
-            Inilah jawaban atas "kenapa laporannya hilang" — dan menyebutkannya
-            jauh lebih berguna daripada membiarkan orang menyimpulkan sendiri
-            bahwa datanya lenyap. */}
+        {/* Proyek ini belum punya buku sendiri.
+            Inilah jawaban atas "kenapa laporan Pak Soni tidak muncul": bukunya
+            memang belum pernah dibuat. Disebutkan satu baris, bukan dengan
+            menyembunyikan buku yang lain — seluruh buku tetap tampil, dan nama
+            proyeknya tertulis di tiap kartu. */}
         {namaProyek && milikProyek.length === 0 && (
           <p data-belum-punya-buku className="text-xs text-amber-900 bg-amber-50 border
             border-amber-200 rounded-xl p-3 leading-relaxed">
@@ -226,27 +235,16 @@ export default function TabLaporanLapangan() {
           </p>
         )}
 
+        {/* SATU daftar untuk seluruh proyek.
+            Sempat dipisah menjadi "buku proyek ini" dan "buku proyek lain"
+            supaya link tidak salah dibagikan. Itu terlalu jauh: buku laporan
+            memang sedikit, nama proyeknya sudah tertulis besar di tiap kartu,
+            dan memecahnya menjadi dua bagian justru membuat buku yang dicari
+            tampak hilang. Yang dijaga sekarang tinggal pembuatannya — satu
+            proyek satu buku. */}
         <div className="grid md:grid-cols-2 gap-3">
-          {milikProyek.map(log => kartuBuku(log, false))}
+          {logs.map(log => kartuBuku(log, !!namaProyek && !milikProyek.includes(log)))}
         </div>
-
-        {/* Buku proyek lain: ditampilkan, tetapi terpisah dan diberi nama.
-            Tidak disembunyikan — laporan yang terlanjur masuk ke sana harus
-            tetap bisa dibuka. */}
-        {proyekLain.length > 0 && (
-          <div data-buku-proyek-lain className="space-y-2 pt-1">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              Buku proyek lain ({proyekLain.length})
-            </p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed max-w-2xl">
-              Bukan milik {namaProyek || 'proyek ini'}. Laporan yang dikirim lewat link di bawah
-              masuk ke proyek yang tertulis di kartunya — periksa namanya sebelum dibagikan.
-            </p>
-            <div className="grid md:grid-cols-2 gap-3 opacity-75">
-              {proyekLain.map(log => kartuBuku(log, true))}
-            </div>
-          </div>
-        )}
         </>
       )}
 
