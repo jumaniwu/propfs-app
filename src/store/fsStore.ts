@@ -3,6 +3,9 @@
 // ============================================================
 
 import { create } from 'zustand'
+import {
+  buatPenunda, simpanDraf, bacaDraf, hapusDraf, drafLebihBaru, type Penunda,
+} from '@/lib/simpanDraf'
 import { v4 as uuidv4 } from 'uuid'
 import type { FSInputs, FSResults, SavedProject } from '../types/fs.types'
 import { DEFAULT_INPUTS, TEMPLATE_A, TEMPLATE_B } from '../types/fs.types'
@@ -34,6 +37,10 @@ interface FSStore {
   currentStep:      number
   isDarkMode:       boolean
   isSaving:         boolean
+  /** Pesan kegagalan penyimpanan terakhir; kosong bila aman. */
+  simpanGagal:      string
+  /** Kirim perubahan yang masih tertunda sekarang juga. */
+  simpanSegera:     () => void
 
   createProject:      (template?: 'A' | 'B' | null) => Promise<string>
   loadProject:        (id: string) => Promise<void>
@@ -109,6 +116,10 @@ function rowToProject(row: any): SavedProject {
 
 // ── STORE ────────────────────────────────────────────────────
 
+// Penunda penyimpanan, di luar store supaya satu-satunya. Lihat catatan di
+// `updateInputs`.
+let penundaSimpan: Penunda | null = null
+
 export const useFSStore = create<FSStore>((set, get) => ({
   projects:         IS_DEV_MODE ? loadLocalProjects() : [],
   currentProjectId: null,
@@ -117,6 +128,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
   currentStep:      1,
   isDarkMode:       localStorage.getItem(LS_DARK_KEY) === 'true',
   isSaving:         false,
+  simpanGagal:      '',
 
   // ── FETCH ALL PROJECTS ──────────────────────────────────
   fetchProjects: async () => {
@@ -238,7 +250,22 @@ export const useFSStore = create<FSStore>((set, get) => ({
 
     if (data) {
       const p = rowToProject(data)
-      const inputs = migrateInputs(p.inputs)
+      let inputs = migrateInputs(p.inputs)
+
+      // Draf lokal MENANG bila ia lebih baru daripada salinan server.
+      //
+      // Inilah yang membuat "muat ulang halaman" berhenti menghapus
+      // pekerjaan. Penyimpanan ke server bisa gagal diam-diam — ditolak RLS,
+      // sesi habis, sinyal hilang — dan sampai sebelum ini satu-satunya
+      // salinan isian ada di memori halaman.
+      //
+      // Hanya bila BENAR-BENAR lebih baru: draf basi dari sesi kemarin tidak
+      // boleh menimpa pekerjaan yang sudah dilakukan di perangkat lain.
+      const draf = bacaDraf<typeof inputs>(id)
+      if (draf && drafLebihBaru(draf, data.updated_at)) {
+        inputs = migrateInputs(draf.isi)
+      }
+
       let freshResults = null
       try { freshResults = calculateFS(inputs) } catch { /* ignore */ }
 
@@ -274,18 +301,40 @@ export const useFSStore = create<FSStore>((set, get) => ({
         return
       }
 
-      await supabase.from('projects').update({
+      const user = useAuthStore.getState().user
+      if (!user) throw new Error('Belum login — isian disimpan di perangkat ini dulu.')
+
+      // `upsert`, bukan `update`.
+      //
+      // `update` pada baris yang TIDAK ADA mengenai nol baris dan tidak
+      // dianggap galat oleh Postgres. Proyek yang gagal dibuat karena itu
+      // menerima setiap penyimpanan berikutnya dengan diam — isian mengalir
+      // ke sana selama berjam-jam tanpa satu pun tersimpan.
+      const { error } = await supabase.from('projects').upsert({
+        id: currentProjectId, user_id: user.id,
         name: currentInputs.namaProyek || 'Proyek Baru',
         inputs: currentInputs, results: currentResults, updated_at: now,
-      }).eq('id', currentProjectId)
+      }, { onConflict: 'id' })
+
+      // Hasilnya DIPERIKSA. Dulu baris ini tidak memeriksa apa pun: ditolak
+      // RLS, barisnya tidak ada, jaringan putus — ketiganya berakhir sama,
+      // tanpa satu pun tanda, dan penanda "sedang menyimpan" tetap padam
+      // seolah semuanya beres.
+      if (error) throw new Error(error.message || 'Gagal menyimpan ke server.')
 
       set(state => ({
+        simpanGagal: '',
         projects: state.projects.map(p =>
           p.id === currentProjectId
             ? { ...p, name: currentInputs.namaProyek || p.name, inputs: currentInputs, results: currentResults, updatedAt: now }
             : p
         ),
       }))
+      // Sudah aman di server; draf lokalnya tidak diperlukan lagi.
+      hapusDraf(currentProjectId)
+    } catch (e) {
+      // Draf lokalnya SENGAJA dibiarkan. Justru inilah saatnya ia berguna.
+      set({ simpanGagal: e instanceof Error ? e.message : String(e) })
     } finally {
       set({ isSaving: false })
     }
@@ -364,8 +413,30 @@ export const useFSStore = create<FSStore>((set, get) => ({
   // ── UPDATE INPUTS ───────────────────────────────────────
   updateInputs: (partial) => {
     set(state => ({ currentInputs: { ...state.currentInputs, ...partial }, currentResults: null }))
-    setTimeout(() => get().saveCurrentProject(), 800)
+
+    const { currentProjectId, currentInputs } = get()
+
+    // Draf lokal ditulis SEKARANG, tanpa penundaan.
+    //
+    // Menundanya berarti menyisakan jendela beberapa ratus milidetik ketika
+    // memuat ulang halaman tetap menghapus pekerjaan — dan itu persis jendela
+    // yang paling sering terkena, karena orang menutup halaman tepat setelah
+    // mengetik sesuatu.
+    if (currentProjectId) simpanDraf(currentProjectId, currentInputs)
+
+    // Penyimpanan ke server DITUNDA, dan penundaan sebelumnya DIBATALKAN.
+    //
+    // Dulu di sini ada `setTimeout(save, 800)` tanpa pembatalan. Mengetik dua
+    // puluh huruf menjadwalkan dua puluh penyimpanan, dan semuanya berangkat;
+    // yang menang bukan yang terakhir dikirim melainkan yang terakhir SAMPAI,
+    // sehingga muatan lama bisa mendarat sesudah yang baru dan menimpanya.
+    // Itu bukan sekadar boros — itu kehilangan data.
+    if (!penundaSimpan) penundaSimpan = buatPenunda(() => { void get().saveCurrentProject() })
+    penundaSimpan.jadwalkan()
   },
+
+  /** Kirim perubahan yang masih tertunda sekarang juga. */
+  simpanSegera: () => { penundaSimpan?.segera() },
 
   setCurrentStep: (step) => set({ currentStep: step }),
 

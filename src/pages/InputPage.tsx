@@ -14,6 +14,7 @@ import Step6SimulasiPenjualan from '@/components/inputs/Step6SimulasiPenjualan'
 import Step7PotongandanBagiHasil from '@/components/inputs/Step7PotongandanBagiHasil'
 import { useFSStore } from '@/store/fsStore'
 import { denganBatasWaktu, pesanGalatMuat } from '@/lib/muatHasil'
+import { labelSimpan } from '@/lib/simpanDraf'
 import { toast } from '@/hooks/use-toast'
 
 const STEP_TITLES = [
@@ -52,6 +53,14 @@ export default function InputPage() {
   // sengaja ketika belum login — dan ketika itu terjadi, yang terlihat pemakai
   // hanya lingkaran berputar tanpa satu pun keterangan.
   const [galatMuat, setGalatMuat] = useState('')
+  const isSaving = useFSStore(s => s.isSaving)
+  const simpanGagal = useFSStore(s => s.simpanGagal)
+  const simpanSegera = useFSStore(s => s.simpanSegera)
+
+  // Perubahan yang masih menunggu jedanya dikirim ketika halaman ditinggalkan.
+  // Tanpa ini, isian terakhir sebelum menekan "kembali" ikut hilang bersama
+  // halamannya — dan itu justru isian yang paling baru.
+  useEffect(() => () => simpanSegera(), [simpanSegera])
   useEffect(() => {
     let cancelled = false
     async function init() {
@@ -96,11 +105,23 @@ export default function InputPage() {
 
   async function handleSaveDraft() {
     await saveProject()
+    // Hasilnya diperiksa. Berkata "berhasil disimpan" atas penyimpanan yang
+    // gagal adalah cara paling pasti membuat orang kehilangan pekerjaannya:
+    // ia menutup halaman dengan tenang.
+    const gagal = useFSStore.getState().simpanGagal
+    if (gagal) {
+      toast({
+        title: 'Belum tersimpan ke server',
+        description: `${gagal} Isian aman di perangkat ini — coba lagi setelah sinyal membaik.`,
+        variant: 'destructive',
+      })
+      return
+    }
     toast({ title: 'Draft tersimpan', description: 'Data proyek berhasil disimpan.', variant: 'success' as any })
     navigate('/dashboard')
   }
 
-  function handleCalculate() {
+  async function handleCalculate() {
     try {
       // Basic validation
       if (!currentInputs.namaProyek) {
@@ -120,7 +141,30 @@ export default function InputPage() {
       }
 
       calculate()
-      toast({ title: 'Kalkulasi selesai!', description: 'Navigasi ke halaman hasil FS.', variant: 'success' })
+
+      // DITUNGGU sampai tersimpan, baru berpindah.
+      //
+      // Dulu halaman ini berpindah seketika sementara penyimpanan baru
+      // dijadwalkan 100 milidetik kemudian. Halaman hasil lalu mengambil
+      // barisnya dari server — yang masih berisi isian lama atau kosong — dan
+      // menampilkan seluruh angkanya sebagai Rp 0, di atas judul proyek yang
+      // sudah benar. Yang melihatnya menyimpulkan kalkulasinya rusak, padahal
+      // isiannya memang belum sampai ke sana.
+      await saveProject()
+
+      const gagal = useFSStore.getState().simpanGagal
+      if (gagal) {
+        // Tetap boleh dilihat — hasilnya dihitung dari isian di layar ini,
+        // bukan dari server. Yang tidak boleh adalah berpindah tanpa
+        // memberitahu bahwa isiannya belum tersimpan.
+        toast({
+          title: 'Hasil belum tersimpan ke server',
+          description: `${gagal} Isian aman di perangkat ini.`,
+          variant: 'destructive',
+        })
+      } else {
+        toast({ title: 'Kalkulasi selesai!', description: 'Navigasi ke halaman hasil FS.', variant: 'success' })
+      }
 
       if (currentProjectId) {
         navigate(`/result/${currentProjectId}`)
@@ -181,10 +225,20 @@ export default function InputPage() {
           { label: STEP_TITLES[currentStep - 1] },
         ]}
         actions={
-          <Button variant="ghost" size="sm" onClick={handleSaveDraft} className="gap-1.5 text-xs">
-            <Save className="h-3.5 w-3.5" />
-            Simpan Draft
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Penanda simpan. Sampai sekarang kegagalan menyimpan tidak
+                meninggalkan jejak apa pun — yang mengisi form baru
+                mengetahuinya setelah memuat ulang halaman dan menemukan
+                isiannya kosong. */}
+            <span data-status-simpan className={`text-[10px] font-semibold ${
+              simpanGagal ? 'text-amber-700' : 'text-muted-foreground'}`}>
+              {labelSimpan(isSaving ? 'menyimpan' : simpanGagal ? 'gagal' : 'tersimpan', true)}
+            </span>
+            <Button variant="ghost" size="sm" onClick={handleSaveDraft} className="gap-1.5 text-xs">
+              <Save className="h-3.5 w-3.5" />
+              Simpan Draft
+            </Button>
+          </div>
         }
       />
 
@@ -246,7 +300,7 @@ export default function InputPage() {
                 <Button variant="outline" onClick={handleSaveDraft} className="gap-2 hidden sm:flex">
                   <Save className="h-4 w-4" /> Simpan Draft
                 </Button>
-                <Button variant="gold" onClick={handleCalculate} className="gap-2 font-bold shadow-md shadow-gold/20">
+                <Button variant="gold" onClick={() => void handleCalculate()} className="gap-2 font-bold shadow-md shadow-gold/20">
                   <Calculator className="h-4 w-4" /> Simpan & Publish Hitungan
                 </Button>
               </>
@@ -255,7 +309,7 @@ export default function InputPage() {
                 {currentStep >= 6 ? (
                   <Button
                     variant="outline"
-                    onClick={handleCalculate}
+                    onClick={() => void handleCalculate()}
                     className="gap-2 text-sm"
                     title="Hitung dengan data yang ada"
                   >
