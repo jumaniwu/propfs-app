@@ -281,6 +281,13 @@ Kalau barang di nota adalah barang yang SAMA dengan salah satu di atas, pakai
 nama, jadi "Triplek 9mm Pku" dan "Triplek 9mm Pku @130lmbr/pallet" akan terbaca
 sebagai dua barang berbeda dan stoknya terbagi dua.
 
+\`namaMaterial\` WAJIB diisi untuk SETIAP baris material — salin nama barang
+persis seperti tertulis di nota. Tanpa itu, baris tersebut tampil di buku
+pengeluaran sebagai kalimat "Pembelian alat kerja" dan tidak bisa dibedakan
+dari baris lain mana pun tanpa membuka notanya kembali. Jangan pernah
+mengosongkannya dengan alasan namanya panjang atau tidak jelas; tulis apa
+adanya.
+
 Keterangan kemasan, isi per pallet, merek toko, dan harga JANGAN dimasukkan ke
 \`namaMaterial\`. Tempatnya di \`keterangan\`. Nama material hanya berisi jenis,
 ukuran, dan mutu barangnya — itu saja yang membedakan satu barang dari yang lain.

@@ -11,6 +11,9 @@ import TeksChat from './TeksChat'
 import PanelDariProcurement from './PanelDariProcurement'
 import SuntingBiaya from './SuntingBiaya'
 import { terapkanPerubahan, kalimatSunting, MEDAN_BIAYA } from '@/lib/suntingBiaya'
+import {
+  judulBaris, anakJudul, tanpaNamaBarang, cocokPo, kalimatCocok, perluDilihat,
+} from '@/lib/namaBelanja'
 import PanelDuplikat from './PanelDuplikat'
 import { statusEntri, catatanBayar } from '@/lib/sinkronRealisasi'
 import {
@@ -729,9 +732,21 @@ export default function TabRealisasiBiaya() {
                     <button type="button" data-sunting-baris onClick={() => setSunting(e)}
                       className="w-full text-left">
                     <div className="flex items-start justify-between gap-2 mb-2">
+                      {/* Judulnya NAMA BARANGNYA, bukan keterangannya.
+                          Keterangan boleh berisi kalimat apa pun — untuk
+                          pekerjaan apa, siapa yang membeli — dan kalimat itu
+                          tidak menjawab pertanyaan yang sedang ditanyakan
+                          orang yang menggulir daftar ini: barang apa. Empat
+                          baris "Pembelian alat kerja" berturut-turut tidak
+                          bisa dibedakan satu pun tanpa membuka notanya. */}
                       <div className="flex items-center gap-1.5 min-w-0">
                         {isMat ? <Package className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> : isUpah ? <Hammer className="w-3.5 h-3.5 text-amber-600 shrink-0" /> : <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                        <p className="text-xs font-semibold text-navy truncate">{e.keterangan}</p>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-navy truncate">{judulBaris(e)}</p>
+                          {anakJudul(e) && (
+                            <p className="text-[10px] text-muted-foreground truncate">{anakJudul(e)}</p>
+                          )}
+                        </div>
                       </div>
                       <span className="flex items-center gap-1 shrink-0">
                         <span className="text-xs font-bold text-navy">Rp {e.jumlah.toLocaleString('id-ID')}</span>
@@ -749,6 +764,36 @@ export default function TabRealisasiBiaya() {
                       <span>{e.status}</span>
                     </div>
                     </button>
+                    {/* Cocok dengan PO-nya, bila barisnya bisa ditelusuri
+                        ke sana. Yang ditonjolkan hanya dua keadaan: barangnya
+                        TIDAK ada di PO, dan harga satuannya beda — keduanya
+                        hal pertama yang ingin dilihat orang sebelum membayar.
+                        Baris yang cocok sempurna cukup menyebut nomor PO-nya;
+                        menandai semuanya membuat yang penting tenggelam. */}
+                    {(() => {
+                      const c = cocokPo(e, dosDo, posPo)
+                      if (!c) return null
+                      return (
+                        <p data-cocok-po className={`mt-1.5 text-[10px] font-bold rounded-lg px-2 py-1 ${
+                          perluDilihat(c)
+                            ? 'text-amber-900 bg-amber-50 border border-amber-200'
+                            : 'text-muted-foreground bg-slate-50 border border-border'}`}>
+                          {kalimatCocok(c)}
+                        </p>
+                      )
+                    })()}
+
+                    {/* Baris material yang belum menyebut nama barangnya.
+                        Bukan galat — baris lama banyak yang begini dan
+                        semuanya tetap sah — tetapi ia yang membuat daftar ini
+                        sulit dibaca, dan sekarang bisa diperbaiki satu ketukan
+                        lewat tombol sunting. */}
+                    {tanpaNamaBarang(e) && (
+                      <p data-tanpa-nama className="mt-1.5 text-[10px] text-muted-foreground italic">
+                        Nama barang belum diisi — ketuk untuk melengkapi.
+                      </p>
+                    )}
+
                     {/* Catatan hutang, dari Procurement. Hanya yang BELUM lunas
                         diberi catatan: menandai semua baris membuat catatannya
                         berhenti dibaca, dan yang hilang justru yang penting. */}
