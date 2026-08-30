@@ -254,6 +254,11 @@ export const DEFAULT_LANDING_CONTENT: LandingPageContent = {
 }
 
 // ── Store ──────────────────────────────────────────────────
+// Penjaga inisialisasi sesi, di luar store supaya bertahan melintasi
+// pemasangan ulang komponen. Lihat catatan panjang di `initialize`.
+let janjiInisialisasi: Promise<void> | null = null
+let pendengarAuthTerpasang = false
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   session: null,
@@ -279,7 +284,25 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   maxTeamUsers: 5,
   isAffiliateEnabled: false,
   // ── initialize ────────────────────────────────────────────
+  //
+  // DIJALANKAN SEKALI SAJA, dan itu bukan kerapian melainkan perbaikan cacat.
+  //
+  // `onAuthStateChange` didaftarkan DI DALAM fungsi ini. Setiap pemanggilan
+  // ulang karena itu menambah satu pendengar lagi — dan setiap peristiwa auth
+  // berikutnya (termasuk TOKEN_REFRESHED, yang berulang terus ketika
+  // penyegaran token gagal) memicu `refreshProfile` + `refreshSubscription`
+  // sebanyak jumlah pendengarnya. Diukur di peramban: 69 permintaan REST
+  // dalam setengah menit, semuanya menembak dua tabel yang sama.
+  //
+  // Yang terlihat pemakai bukan "lambat", melainkan HALAMAN YANG BERPUTAR
+  // TERUS: tiap pemanggilan ulang menyalakan `isLoading` lagi, dan setiap
+  // layar yang menunggunya kembali ke titik nol tepat sebelum selesai.
   initialize: async () => {
+    // Pemanggil kedua IKUT MENUNGGU yang pertama, bukan pulang begitu saja.
+    // Kalau ia pulang, pemanggil yang mengandalkan `await initialize()` akan
+    // melanjutkan sebelum sesinya siap.
+    if (janjiInisialisasi) return janjiInisialisasi
+    janjiInisialisasi = (async () => {
     set({ isLoading: true })
 
     // Safety net: always release loading after 5s so page never hangs blank
@@ -297,6 +320,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         ])
       }
 
+      // Didaftarkan sekali seumur halaman. Penjaga ini tetap ada meski
+      // `initialize` sudah dijaga di atas: kalau suatu hari ada jalur lain
+      // yang memanggilnya, pendengar gandanya tidak lahir lagi diam-diam.
+      if (!pendengarAuthTerpasang) {
+      pendengarAuthTerpasang = true
       supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'PASSWORD_RECOVERY') {
           set({ isPasswordRecovery: true })
@@ -313,6 +341,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           await Promise.all([get().refreshProfile(), get().refreshSubscription()])
         }
       })
+      }
     } catch {
       // Silently ignore connection errors
     } finally {
@@ -327,6 +356,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         get().loadLandingContent()
       ])
     } catch { /* ignore */ }
+    })()
+    // Janjinya SENGAJA tidak dikosongkan setelah selesai. Inisialisasi sesi
+    // memang hanya perlu terjadi sekali seumur halaman; mengosongkannya
+    // membuka kembali pintu bagi pemanggilan berulang yang justru diperbaiki
+    // di sini.
+    return janjiInisialisasi
   },
 
   // ── signIn ────────────────────────────────────────────────

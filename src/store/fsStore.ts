@@ -216,12 +216,26 @@ export const useFSStore = create<FSStore>((set, get) => ({
     if (!user) return
 
     // Step 2: Always fetch fresh data from Supabase to ensure sync
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('projects')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
       .single()
+
+    // Galatnya DILEMPAR bila tidak ada salinan cache untuk dipakai.
+    //
+    // Dulu `error` dibuang begitu saja: proyek yang tidak ada, salah akun,
+    // atau ditolak RLS sama-sama berakhir dengan `data` bernilai null dan
+    // tidak ada yang terjadi — halamannya lalu berkata "belum ada hasil"
+    // untuk tiga sebab yang berbeda, dan tidak satu pun bisa ditelusuri.
+    //
+    // Ketika salinan cache ADA, galatnya sengaja ditelan: pemakai yang sedang
+    // tanpa sinyal lebih baik melihat angka kemarin daripada layar galat.
+    if (error && !cached) {
+      throw new Error(error.message || 'Proyek tidak ditemukan untuk akun ini.')
+    }
+
     if (data) {
       const p = rowToProject(data)
       const inputs = migrateInputs(p.inputs)

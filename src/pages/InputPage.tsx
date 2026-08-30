@@ -13,6 +13,7 @@ import Step5HargaJual from '@/components/inputs/Step5HargaJual'
 import Step6SimulasiPenjualan from '@/components/inputs/Step6SimulasiPenjualan'
 import Step7PotongandanBagiHasil from '@/components/inputs/Step7PotongandanBagiHasil'
 import { useFSStore } from '@/store/fsStore'
+import { denganBatasWaktu, pesanGalatMuat } from '@/lib/muatHasil'
 import { toast } from '@/hooks/use-toast'
 
 const STEP_TITLES = [
@@ -44,26 +45,34 @@ export default function InputPage() {
   const [ready, setReady] = useState(false)
 
   // Load project from URL param
+  //
+  // Cacat yang sama pernah membuat halaman hasil berputar selamanya: badan
+  // fungsi ini tidak punya penanganan galat, dan penanda selesai ada di dalam
+  // jalur yang berhasil. `createProject()` di sini bahkan MELEMPAR dengan
+  // sengaja ketika belum login — dan ketika itu terjadi, yang terlihat pemakai
+  // hanya lingkaran berputar tanpa satu pun keterangan.
+  const [galatMuat, setGalatMuat] = useState('')
   useEffect(() => {
     let cancelled = false
     async function init() {
-      if (id) {
-        // If project list is empty, fetch first to ensure the project exists
-        if (projects.length === 0) {
-          await fetchProjects()
+      try {
+        if (id) {
+          // If project list is empty, fetch first to ensure the project exists
+          if (projects.length === 0) await denganBatasWaktu(fetchProjects())
+          await denganBatasWaktu(loadProject(id))
+        } else if (!id && !currentProjectId) {
+          const newId = await denganBatasWaktu(createProject())
+          if (!cancelled) navigate(`/input/${newId}`, { replace: true })
         }
-        await loadProject(id)
-        if (!cancelled) setReady(true)
-      } else if (!id && !currentProjectId) {
-        const newId = await createProject()
-        navigate(`/input/${newId}`, { replace: true })
-        if (!cancelled) setReady(true)
-      } else {
+        if (!cancelled) setGalatMuat('')
+      } catch (e) {
+        if (!cancelled) setGalatMuat(pesanGalatMuat(e))
+      } finally {
         if (!cancelled) setReady(true)
       }
     }
     setReady(false)
-    init()
+    void init()
     return () => { cancelled = true }
   }, [id])
 
@@ -141,6 +150,23 @@ export default function InputPage() {
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-gold mx-auto" />
           <p className="text-muted-foreground text-sm">Memuat data proyek...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Gagal memuat: dikatakan, bukan dibiarkan berputar.
+  if (galatMuat) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="font-serif text-xl font-semibold">Proyek belum bisa dibuka</h2>
+          <p data-galat-muat className="text-sm text-muted-foreground leading-relaxed">{galatMuat}</p>
+          <div className="flex gap-2 justify-center pt-2">
+            <Button data-muat-ulang onClick={() => window.location.reload()}>Coba lagi</Button>
+            <Button variant="outline" onClick={() => navigate('/dashboard')}>Ke Dashboard</Button>
+          </div>
         </div>
       </div>
     )

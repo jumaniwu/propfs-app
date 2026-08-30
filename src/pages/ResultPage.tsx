@@ -19,6 +19,12 @@ import { exportToJSON } from '@/utils/export'
 import { useSubscription } from '@/hooks/useSubscription'
 import { toast } from '@/hooks/use-toast'
 import ErrorBoundary from '@/components/shared/ErrorBoundary'
+import { useAuthStore } from '@/store/authStore'
+import {
+  denganBatasWaktu, keadaanMuat, pesanGalatMuat, perluMasukUlang, pesanTunggu,
+  TUNGGU_SESI_MS, PESAN_SESI_TAK_SIAP,
+  mulaiJam, ulangJam, lamaJam,
+} from '@/lib/muatHasil'
 
 function ResultPageContent() {
   const { id } = useParams()
@@ -34,25 +40,93 @@ function ResultPageContent() {
   const calculate        = useFSStore(s => s.calculate)
 
   const [ready, setReady] = useState(false)
+  const [galat, setGalat] = useState('')
+  const [ulang, setUlang] = useState(0)
+  // Sudah berapa detik menunggu, untuk mengganti kalimat di layar tunggu.
+  const [detik, setDetik] = useState(0)
+
+  // Yang ditunggu PENGGUNANYA, bukan penanda `isLoading`.
+  //
+  // `isLoading` menyala ulang setiap kali sesi disegarkan, dan penyegaran yang
+  // gagal mengulanginya terus. Halaman yang menunggunya karena itu kembali ke
+  // titik nol berkali-kali — dan yang terlihat pemakai adalah lingkaran
+  // berputar yang tidak pernah berhenti, karena selalu ada pemuatan baru yang
+  // menggantikan yang hampir selesai.
+  //
+  // Yang benar-benar dibutuhkan halaman ini cuma `user`. Begitu ia ada,
+  // memuat proyek bisa dimulai; sisa pekerjaan sesi tidak menghalangi apa pun.
+  const user = useAuthStore(s => s.user)
+
+  // Dan penantiannya BERBATAS — dengan jam yang selamat dari pemasangan ulang.
+  //
+  // Halaman ini ternyata dipasang ulang berkali-kali selama sesi belum
+  // stabil: tiap peristiwa auth merender ulang pohon di atasnya, dan komponen
+  // ini lahir kembali dari nol. Setiap `setTimeout` di dalamnya karena itu
+  // ikut kembali ke nol, sehingga batasnya TIDAK PERNAH tercapai betapapun
+  // lamanya orang menunggu — lingkaran berputar yang benar-benar abadi.
+  //
+  // Jamnya disimpan di luar komponen, bertanda proyek + percobaan, sehingga
+  // ia berlanjut melintasi kelahiran ulang dan hanya diatur ulang ketika yang
+  // ditunggu memang berganti.
+  const kunciJam = `result:${id ?? ''}:${ulang}`
+  mulaiJam(kunciJam)
+  const sesiMemuat = !user && lamaJam(kunciJam) < TUNGGU_SESI_MS
 
   const { canAccessCashflow, canAccessARAP, needsUpgradeForCashflow, isSubscriptionEnabled, canExportPDF } = useSubscription()
 
   // Load project if needed
+  //
+  // Dulu badan fungsi ini tidak punya SATU PUN penanganan galat, dan
+  // `setReady(true)` ada di baris terakhirnya. Akibatnya lurus: apa pun yang
+  // melempar di tengah jalan — sesi kedaluwarsa, jaringan putus, RLS menolak —
+  // membuat baris itu tidak pernah tercapai, dan yang terlihat pemakai hanya
+  // lingkaran berputar selamanya tanpa satu pun keterangan.
+  //
+  // Batas waktunya menutup bentuk kegagalan yang kedua, yang tidak bisa
+  // ditangkap `catch` mana pun: permintaan yang tidak melempar DAN tidak
+  // selesai. Di ponsel yang berpindah dari 5G ke tanpa sinyal, `fetch` bisa
+  // menggantung tanpa batas — tidak ada galat, hanya janji yang tidak pernah
+  // ditepati.
+  // Penghitung detik, hidup HANYA selama menunggu. Dibersihkan begitu
+  // selesai — pencacah yang terus berdetak di halaman yang sudah tampil
+  // membuat seluruh pohon komponen dirender ulang tiap detik tanpa guna.
+  // Berdetak selama menunggu. Selain mengganti kalimat di layar, detak inilah
+  // yang membuat komponen merender ulang sehingga `lamaJam` di atas dibaca
+  // lagi — tanpa itu, batas waktu sesi tidak pernah diperiksa ulang.
   useEffect(() => {
+    if (ready && user) return
+    const t = setInterval(() => setDetik(Math.floor(lamaJam(kunciJam) / 1000)), 500)
+    return () => clearInterval(t)
+  }, [ready, user, kunciJam])
+
+  useEffect(() => {
+    if (sesiMemuat) return
+    // Penantian sesi habis dan penggunanya tetap tidak ada. Memuat proyek
+    // tanpa pengguna akan pulang dengan tangan kosong, lalu halamannya
+    // berkata "belum ada hasil" — menuduh datanya tidak ada padahal yang
+    // tidak ada adalah sesinya.
+    if (!user) { setGalat(PESAN_SESI_TAK_SIAP); setReady(true); return }
     let cancelled = false
     async function init() {
-      if (id) {
-        if (projects.length === 0) {
-          await fetchProjects()
+      try {
+        if (id) {
+          if (projects.length === 0) await denganBatasWaktu(fetchProjects())
+          await denganBatasWaktu(loadProject(id))
         }
-        await loadProject(id)
+        if (!cancelled) setGalat('')
+      } catch (e) {
+        if (!cancelled) setGalat(pesanGalatMuat(e))
+      } finally {
+        // Di `finally`, bukan di baris terakhir `try`. Inilah seluruh
+        // perbaikannya: penanda selesai harus dipasang baik ketika berhasil
+        // maupun ketika gagal, kalau tidak kegagalan menjadi tak berujung.
+        if (!cancelled) setReady(true)
       }
-      if (!cancelled) setReady(true)
     }
     setReady(false)
-    init()
+    void init()
     return () => { cancelled = true }
-  }, [id])
+  }, [id, sesiMemuat, user, ulang]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-calculate if results missing
   useEffect(() => {
@@ -88,13 +162,50 @@ function ResultPageContent() {
     { value: 'sensitivitas', label: 'Sensitivitas',      requiredPlan: 'basic' as const },
   ] as const
 
+  const keadaan = keadaanMuat({
+    sesiMemuat, memuat: !ready, galat, adaHasil: !!currentResults,
+  })
+
   // Loading guard — prevents blank page while fetching data
-  if (!ready) {
+  //
+  // Kalimatnya BERUBAH seiring waktu. Lingkaran berputar yang diam selama
+  // belasan detik tidak bisa dibedakan dari yang macet, dan orang menutup
+  // paksa halamannya tepat sebelum datanya sampai.
+  if (keadaan === 'tunggu-sesi' || keadaan === 'memuat') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="h-10 w-10 animate-spin text-gold mx-auto" />
-          <p className="text-muted-foreground text-sm">Memuat hasil analisa...</p>
+          <p data-pesan-tunggu className="text-muted-foreground text-sm px-6">{pesanTunggu(detik)}</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Gagal memuat — DIBEDAKAN dari "belum ada hasil".
+  //
+  // Keduanya terlihat sama dari luar, tetapi yang ini masih bisa diperbaiki
+  // dengan mencoba lagi. Menyebutnya "belum ada hasil" mengirim orang
+  // menghitung ulang proyek yang datanya sebenarnya baik-baik saja.
+  if (keadaan === 'galat') {
+    const masukUlang = perluMasukUlang(galat)
+    return (
+      <div className="min-h-screen bg-background">
+        <Header breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Hasil FS' }]} />
+        <div className="max-w-md mx-auto px-4 py-20 text-center space-y-4">
+          <div className="text-4xl">⚠️</div>
+          <h2 className="font-serif text-xl font-semibold">Hasil belum bisa dibuka</h2>
+          <p data-galat-muat className="text-sm text-muted-foreground leading-relaxed">{galat}</p>
+          <div className="flex gap-2 justify-center pt-2">
+            {masukUlang ? (
+              <Button onClick={() => navigate('/auth')} className="gap-2">Masuk kembali</Button>
+            ) : (
+              <Button data-muat-ulang onClick={() => { ulangJam(`result:${id ?? ''}:${ulang + 1}`); setUlang(n => n + 1) }} className="gap-2">
+                <RefreshCw className="h-4 w-4" /> Coba lagi
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => navigate('/dashboard')}>Ke Dashboard</Button>
+          </div>
         </div>
       </div>
     )
