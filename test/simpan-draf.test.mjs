@@ -171,4 +171,38 @@ function laciPalsu(rusak = false) {
     + 'menerima setiap penyimpanan berikutnya dengan diam')
 }
 
+// ── 10. Menghapus proyek harus BENAR-BENAR menghapusnya ────────────
+//
+// Dua sebab yang sama-sama membuat "tombol hapus tidak bisa", dan keduanya
+// diam.
+//
+// Yang pertama diperkenalkan oleh salinan perangkat itu sendiri: menghapus
+// membersihkan daftar di memori tetapi tidak menyentuh salinannya. Halaman
+// yang dimuat ulang membaca daftar dari salinan ketika ia kosong di memori —
+// dan salinan itu masih memuat proyek yang baru saja dihapus, sehingga ia
+// muncul kembali seolah penghapusannya tidak pernah terjadi.
+//
+// Yang kedua sudah ada sejak awal: penghapusan yang mengenai NOL BARIS —
+// ditolak RLS, atau milik akun lain — tidak dianggap galat oleh Postgres.
+// Yang memanggilnya lalu berkata "berhasil dihapus".
+{
+  const akar = new URL('../src', import.meta.url).pathname
+  const store = readFileSync(join(akar, 'store/fsStore.ts'), 'utf8')
+  const hapus = store.slice(store.indexOf('deleteProject: async'),
+                            store.indexOf('// ── UPDATE INPUTS'))
+
+  assert(/\.select\('id'\)/.test(hapus),
+    'baris yang terhapus diminta kembali — tanpa itu, nol baris terbaca sebagai berhasil')
+  assert(/terhapus\.length === 0/.test(hapus), 'dan nol baris dianggap gagal')
+  assert(/tulisCacheProyek\(/.test(hapus),
+    'salinan perangkat ikut dibersihkan, kalau tidak proyeknya hidup lagi saat dimuat ulang')
+  assert(/hapusDraf\(/.test(hapus),
+    'drafnya juga — ia akan menghidupkan isian proyek yang sudah tidak ada')
+
+  // Membuat & menggandakan proyek juga harus menyegarkan salinannya, kalau
+  // tidak proyek baru menghilang begitu halaman dimuat ulang tanpa jaringan.
+  const buat = store.slice(store.indexOf('createProject: async'), store.indexOf('// ── LOAD PROJECT'))
+  assert(/tulisCacheProyek\(/.test(buat), 'proyek baru ikut masuk salinan perangkat')
+}
+
 console.log(`simpan-draf: ${ok} assert lulus`)

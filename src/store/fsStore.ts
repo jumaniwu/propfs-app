@@ -276,6 +276,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
       currentResults: null,
       currentStep: 1,
     }))
+    tulisCacheProyek(user.id, get().projects)
     return id
   },
 
@@ -435,20 +436,45 @@ export const useFSStore = create<FSStore>((set, get) => ({
     if (!user) throw new Error('Belum login')
     
     // SECURITY: Always enforce user_id so only the owner can delete their own project.
-    const { error } = await supabase
+    //
+    // `select()` DIMINTA supaya baris yang terhapus ikut dikembalikan. Tanpa
+    // itu, penghapusan yang mengenai NOL BARIS — ditolak RLS, id yang tidak
+    // ada, atau milik akun lain — tidak dianggap galat oleh Postgres. Yang
+    // memanggilnya lalu berkata "berhasil dihapus", daftarnya dibersihkan di
+    // layar, dan proyeknya muncul lagi begitu halaman dimuat ulang. Persis
+    // pola yang sama pernah membuat penyimpanan gagal diam-diam.
+    const { data: terhapus, error } = await supabase
       .from('projects')
       .delete()
       .eq('id', id)
       .eq('user_id', user.id)
+      .select('id')
+
     if (error) {
       console.error("Supabase delete error:", error)
       throw error
+    }
+    if (!terhapus || terhapus.length === 0) {
+      throw new Error(
+        'Proyek tidak terhapus di server — kemungkinan sudah terhapus,'
+        + ' atau dibuat oleh akun lain. Muat ulang halaman untuk melihat keadaan terbaru.',
+      )
     }
 
     set(state => ({
       projects: state.projects.filter(p => p.id !== id),
       currentProjectId: state.currentProjectId === id ? null : state.currentProjectId,
     }))
+
+    // Salinan perangkat ikut dibersihkan.
+    //
+    // Tanpa dua baris ini, penghapusan hanya berlaku sampai halaman dimuat
+    // ulang: daftar proyek dibaca dari salinan perangkat ketika ia kosong di
+    // memori, dan salinan itu masih memuat proyek yang baru saja dihapus.
+    // Drafnya pun begitu — ia akan menghidupkan kembali isian proyek yang
+    // sudah tidak ada.
+    tulisCacheProyek(user.id, get().projects)
+    hapusDraf(id)
   },
 
   // ── DUPLICATE PROJECT ───────────────────────────────────
@@ -490,6 +516,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
     try { await supabase.rpc('increment_project_counter', { uid: user.id }) } catch { /* ignore */ }
 
     set(state => ({ projects: [copy, ...state.projects] }))
+    tulisCacheProyek(user.id, get().projects)
     return newId
   },
 
