@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
+import { ketikRupiah, selesaiKetik, tampilRupiah } from '@/lib/isianRupiah'
 
 interface RupiahInputProps {
   value: number
@@ -32,50 +33,45 @@ export default function RupiahInput({
 
   // Sync display value when external value changes (but not while editing)
   useEffect(() => {
-    if (!isEditingRef.current) {
-      setDisplayValue(value > 0 ? formatForDisplay(value) : '')
-    }
+    if (!isEditingRef.current) setDisplayValue(tampilRupiah(value))
   }, [value])
 
-  function formatForDisplay(num: number): string {
-    return num.toLocaleString('id-ID')
-  }
-
-  function parseDisplay(str: string): number {
-    const cleaned = str.replace(/\./g, '').replace(',', '.')
-    const n = parseFloat(cleaned)
-    return isNaN(n) ? 0 : n
-  }
-
+  /**
+   * Setiap ketukan MENGHASILKAN sesuatu.
+   *
+   * Dulu di sini ada `if (num < min) return` — berhenti tanpa memperbarui apa
+   * pun. Setiap ketukan yang untuk sementara menghasilkan angka di bawah
+   * batas ditelan, dan mengetik "3.500.000" selalu melewati "3" lebih dulu.
+   * Kolomnya tampak macet pada nilai lamanya.
+   */
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value
-    // Allow only digits and dots
-    const digitsOnly = raw.replace(/[^\d]/g, '')
-    const num = parseInt(digitsOnly, 10) || 0
-
-    // Validate bounds
-    if (min !== undefined && num < min) return
-    if (max !== undefined && num > max) return
-
-    // Format with thousand separators
-    const formatted = num > 0 ? formatForDisplay(num) : ''
-    setDisplayValue(formatted)
-    onChange(num)
+    const h = ketikRupiah(e.target.value, { min, max })
+    setDisplayValue(h.tampil)
+    onChange(h.nilai)
   }
 
   function handleFocus() {
     isEditingRef.current = true
     // Show raw digits for editing
-    if (value > 0) {
-      setDisplayValue(value.toString())
-    }
+    if (value > 0) setDisplayValue(String(value))
   }
 
+  /**
+   * Yang tampil dan yang tersimpan DISAMAKAN, dan yang menang yang diketik.
+   *
+   * Dulu di sini ada `parseDisplay(displayValue) || value`. `|| value`
+   * menyalakan diri ketika hasil bacanya nol — yaitu tepat ketika kolomnya
+   * dikosongkan untuk diisi angka baru. Nilai LAMA dipasang kembali ke layar
+   * sementara induknya sudah menerima nol; sejak itu yang tampil dan yang
+   * tersimpan berbeda, dan pemakainya mengetik ulang berkali-kali sambil
+   * melihat angka lama muncul lagi.
+   */
   function handleBlur() {
     isEditingRef.current = false
-    // Re-format on blur
-    const num = parseDisplay(displayValue) || value
-    setDisplayValue(num > 0 ? formatForDisplay(num) : '')
+    const h = selesaiKetik(displayValue, { min, max })
+    setDisplayValue(h.tampil)
+    // Induknya ikut diberi tahu, supaya keduanya tidak pernah berselisih.
+    if (h.nilai !== value) onChange(h.nilai)
   }
 
   return (
