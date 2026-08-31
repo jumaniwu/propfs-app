@@ -2,6 +2,9 @@
 // Persist lokal (cepat/offline) + sinkron ke Supabase (tabel akuntan_data)
 // agar data sama di semua perangkat.
 import { create } from 'zustand'
+import {
+  buatPenjagaSinkron, tulisanBerbahaya, PESAN_BACA_GAGAL,
+} from '@/lib/jagaSinkron'
 import { persist } from 'zustand/middleware'
 import type { PemasukanEntry, InventoryAdjustment } from '@/lib/akuntan'
 import type { RealisasiEntry } from '@/lib/ai-realisasi'
@@ -84,9 +87,36 @@ type IsiAkuntan = Pick<
   AkuntanStore, 'pemasukanEntries' | 'inventoryAdjustments' | 'biayaUmumEntries' | 'hapusan'
 >
 
+/**
+ * Penjaga: TIDAK MENULIS sebelum cloud terbaca sekali.
+ *
+ * Baris akuntan menyimpan seluruh isinya sekaligus, dan tiap perubahan
+ * menulis ulang baris itu. Tanpa penjaga ini, aplikasi yang dibuka di tempat
+ * penyimpanan lokalnya kosong — peramban baru, APK yang dipasang ulang, cache
+ * yang dibersihkan — lalu menerima SATU pemasukan akan mengirim keadaan
+ * lokalnya yang berisi satu baris itu saja, dan MENIMPA salinan cloud berisi
+ * pekerjaan kemarin.
+ *
+ * Sejak itu tidak ada lagi yang bisa dipulihkan: yang di cloud sudah
+ * tertimpa, yang di perangkat memang tidak pernah ada. Persis itu yang
+ * dilaporkan sebagai "pemasukan kemarin hilang".
+ */
+const penjaga = buatPenjagaSinkron()
+
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 function pushCloud(state: IsiAkuntan) {
   if (pushTimer) clearTimeout(pushTimer)
+
+  // Belum pernah membaca cloud: perubahannya DITAHAN, bukan dibuang.
+  // `persist` sudah menyimpannya di perangkat, dan ia akan dikirim setelah
+  // pembacaan berhasil — yaitu setelah digabungkan dengan isi cloud, sehingga
+  // tidak ada yang tertimpa.
+  if (!penjaga.bolehTulis()) {
+    penjaga.tahan()
+    tandaiGagal(PESAN_BACA_GAGAL)
+    return
+  }
+
   tandaiMenyimpan()
   pushTimer = setTimeout(() => {
     void (async () => {
@@ -220,6 +250,16 @@ export const useAkuntanStore = create<AkuntanStore>()(
           const cloud = (data?.data ?? {}) as Partial<IsiAkuntan>
           const nisanCloud = cloud.hapusan ?? []
 
+          // Lapis kedua, di belakang penjaga: keadaan lokal yang KOSONG tidak
+          // boleh menimpa cloud yang berisi. Penjaga menutup jalur yang sudah
+          // diketahui; pemeriksaan ini menangkap jalur yang belum terpikirkan.
+          const kosongMenimpaBerisi = tulisanBerbahaya(
+            get().pemasukanEntries.length + get().biayaUmumEntries.length
+              + get().inventoryAdjustments.length,
+            (cloud.pemasukanEntries?.length ?? 0) + (cloud.biayaUmumEntries?.length ?? 0)
+              + (cloud.inventoryAdjustments?.length ?? 0),
+          )
+
           const pm = gabungDenganNisan(
             get().pemasukanEntries, cloud.pemasukanEntries ?? [], p => p.id,
             get().hapusan, nisanCloud,
@@ -240,9 +280,25 @@ export const useAkuntanStore = create<AkuntanStore>()(
             hapusan: pm.nisan,
           }
           set(merged)
-          pushCloud(merged)
+
+          // Sejak pembacaan BERHASIL, penulisan diizinkan.
+          penjaga.tandaiTerbaca()
+
+          // Perubahan yang tertahan selama penantian dikirim sekarang — dan
+          // yang dikirim adalah hasil GABUNGAN, bukan keadaan lokal tadi.
+          // Itulah sebabnya menahan tidak berarti kehilangan.
+          if (penjaga.lepasTertahan() || !kosongMenimpaBerisi) pushCloud(merged)
+          else tandaiTersimpan()
         } catch (e) {
-          console.warn('[akuntan] muat cloud gagal (tabel akuntan_data belum ada?):', e)
+          // Dilaporkan, bukan hanya dicatat ke console. Pembacaan yang gagal
+          // diam-diam adalah langkah kedua dari jalan yang menghapus data:
+          // sesudahnya, penulisan berikutnya menimpa cloud dengan keadaan
+          // lokal yang kosong. Sekarang penulisan itu memang tidak akan
+          // terjadi — penjaga menahannya — tetapi pemakainya tetap harus tahu
+          // bahwa perubahannya belum sampai ke mana pun selain perangkat ini.
+          const pesan = e instanceof Error ? e.message : String(e)
+          console.warn('[akuntan] muat cloud gagal (tabel akuntan_data belum ada?):', pesan)
+          tandaiGagal(`${PESAN_BACA_GAGAL} (${pesan})`)
         }
       },
     }),
