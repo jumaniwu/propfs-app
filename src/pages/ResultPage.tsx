@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import Header from '@/components/layout/Header'
 import KPICards from '@/components/outputs/KPICards'
+import {
+  periksaFS, totalDijadwalkan, totalUnitDibangun, selisihJadwal,
+} from '@/lib/periksaFS'
 import TabRingkasan from '@/components/outputs/TabRingkasan'
 import TabStrukturBiaya from '@/components/outputs/TabStrukturBiaya'
 import TabProyeksiPendapatan from '@/components/outputs/TabProyeksiPendapatan'
@@ -327,6 +330,43 @@ function ResultPageContent() {
             </p>
           </div>
         </div>
+
+        {/* Kenapa angkanya nol — dikatakan DI ATAS kartunya, bukan disembunyikan.
+            Diaudit dengan menjalankan kalkulatornya sendiri: dengan jadwal
+            penjualan kosong, pendapatan Rp 0 DAN biaya pembangunan ikut nol,
+            karena keduanya dihitung dari unit TERJUAL. Yang tersisa hanya
+            biaya persiapan + operasional — angka yang tampak cukup masuk akal
+            sebagai "total investasi", sehingga tidak ada yang curiga seluruh
+            anggaran bangunan tidak ikut terhitung. */}
+        {(() => {
+          const dibangun = totalUnitDibangun(currentInputs.tipeBangunan)
+          const dijadwalkan = totalDijadwalkan(currentInputs.penjualan)
+          const cek = periksaFS({
+            jumlahTipe: (currentInputs.tipeBangunan ?? []).length,
+            totalUnit: dibangun,
+            unitDijadwalkan: dijadwalkan,
+            grossRevenue: r.grossRevenue,
+            totalInvestment: r.totalInvestment,
+          })
+          if (cek.bermasalah) {
+            return (
+              <div data-periksa-fs className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+                <p className="text-sm font-bold text-amber-900">Hasil ini belum lengkap</p>
+                <p className="text-xs text-amber-900 leading-relaxed">{cek.pesan}</p>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button size="sm" onClick={() => navigate(`/input/${id}`)} className="gap-1.5">
+                    <Edit className="h-3.5 w-3.5" /> {cek.langkah}
+                  </Button>
+                </div>
+              </div>
+            )
+          }
+          const sisa = selisihJadwal(dibangun, dijadwalkan)
+          return sisa ? (
+            <p data-selisih-jadwal className="rounded-2xl border border-border bg-slate-50 p-3
+              text-xs text-muted-foreground leading-relaxed">{sisa}</p>
+          ) : null
+        })()}
 
         {/* KPI Cards — always visible */}
         <KPICards results={r} />
