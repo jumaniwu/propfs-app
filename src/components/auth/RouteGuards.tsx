@@ -1,11 +1,16 @@
 // ── Auth Route Guards ────────────────────────────────────
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { sesiTim } from '@/lib/teamApi'
 import { rutaTagihan, RUTA_LANGGANAN } from '@/lib/berandaMasuk'
 import { useRutaMasuk } from '@/hooks/useRutaMasuk'
-import { tujuanAwal, tungguSesiPertama } from '@/lib/pintuAwal'
+import {
+  tujuanAwal, tungguSesiPertama, gerbangMenahan, BATAS_GERBANG_MS, adaSesiTersimpan,
+  BATAS_SESI_TERSIMPAN_MS,
+} from '@/lib/pintuAwal'
+import { KUNCI_SESI } from '@/lib/supabase'
+import { mulaiJam, lamaJam } from '@/lib/muatHasil'
 import { diAndroid } from '@/lib/unduhBerkas'
 import type { AppFeature } from '@/lib/supabase'
 
@@ -35,12 +40,90 @@ function Spinner() {
   )
 }
 
+/**
+ * Berapa lama gerbang ini sudah menahan, dihitung sejak halaman dibuka.
+ *
+ * Dipisah menjadi hook supaya jamnya ikut memicu render — tanpa itu batas
+ * waktunya tidak pernah diperiksa ulang, dan penantiannya tetap tanpa akhir.
+ */
+function useLamaTunggu(aktif: boolean, kunci = 'gerbang'): number {
+  // Jamnya di LUAR komponen, bukan di `useRef`.
+  //
+  // Gerbang ini dipasang ulang berkali-kali selama sesi belum stabil — tiap
+  // peristiwa auth merender ulang pohon di atasnya. Jam yang hidup di dalam
+  // komponen karena itu kembali ke nol setiap kali, dan batas waktunya TIDAK
+  // PERNAH tercapai betapapun lamanya orang menunggu. Persis itu yang
+  // membuat lingkaran berputar terasa abadi.
+  mulaiJam(kunci)
+  const [, tik] = useState(0)
+  useEffect(() => {
+    if (!aktif) return
+    const t = setInterval(() => tik(n => n + 1), 300)
+    return () => clearInterval(t)
+  }, [aktif])
+  return lamaJam(kunci)
+}
+
+/**
+ * Apakah gerbang masih boleh menahan halaman.
+ *
+ * Dipakai bersama oleh ketiga gerbang: ketiganya dulu menahan tanpa syarat,
+ * dan ketiganya menderita dua akibat yang sama.
+ */
+function usePenahanGerbang(isLoading: boolean): boolean {
+  const pernahSelesai = useRef(false)
+  if (!isLoading) pernahSelesai.current = true
+  const menahan = isLoading && !pernahSelesai.current
+  const lamaMs = useLamaTunggu(menahan)
+  return gerbangMenahan({
+    memuat: isLoading, pernahSelesai: pernahSelesai.current,
+    lamaMs, batasMs: BATAS_GERBANG_MS,
+  })
+}
+
 /** Redirect to /auth if not logged in. Block if user is suspended. */
 export function PrivateRoute({ children }: Props) {
   const { user, profile, isLoading, signOut } = useAuthStore()
   const { pathname } = useLocation()
-  if (isLoading) return <Spinner />
-  if (!user) return <Navigate to="/auth" replace />
+
+  // Gerbang ini dulu berbunyi `if (isLoading) return <Spinner />` — tanpa
+  // syarat lain sama sekali. Dua akibatnya berat:
+  //
+  //   • `isLoading` menyala LAGI setiap kali sesi disegarkan, dan penyegaran
+  //     yang gagal mengulanginya terus. Setiap halaman privat karena itu
+  //     kembali ke lingkaran berputar berkali-kali, membuang seluruh yang
+  //     sudah direndernya.
+  //   • Pemeriksaan sesi menyentuh jaringan. Pada sinyal buruk ia memakan
+  //     belasan detik, dan selama itu halaman di baliknya tidak pernah sempat
+  //     menunjukkan apa pun — termasuk salinan yang sudah ada di perangkat.
+  //
+  // Sekarang penahanan hanya untuk pemuatan PERTAMA, dan ada batasnya.
+  const lamaBuka = useLamaTunggu(!user, 'gerbang-sesi')
+
+  if (usePenahanGerbang(isLoading)) return <Spinner />
+
+  // Sesi masih diperiksa, tetapi perangkat ini MEMANG menyimpan sesi login.
+  //
+  // Orangnya sudah login; yang belum selesai hanya pemeriksaannya, dan
+  // pemeriksaan itu menyentuh jaringan. Melemparnya ke halaman masuk karena
+  // jaringan sedang lambat adalah hukuman untuk keadaan yang bukan salahnya —
+  // dan halaman di baliknya sering sudah punya salinan yang bisa ditampilkan.
+  //
+  // Kalau ternyata sesinya memang sudah tidak berlaku, server yang menolak,
+  // dan gerbang ini mengarahkannya keluar pada render berikutnya.
+  if (!user) {
+    // Bukan hanya selama `isLoading`. Penjaga sesi di authStore memadamkan
+    // penanda itu setelah lima detik meski pemeriksaannya belum selesai —
+    // dan sesudahnya, syarat yang bersandar padanya melempar orang yang
+    // JELAS sudah login ke halaman masuk, hanya karena jaringannya lambat.
+    //
+    // Ada batasnya supaya sesi yang benar-benar sudah mati tidak membuat
+    // aplikasi terbuka tanpa pengguna selamanya.
+    if (lamaBuka < BATAS_SESI_TERSIMPAN_MS && adaSesiTersimpan(KUNCI_SESI)) {
+      return <>{children}</>
+    }
+    return <Navigate to="/auth" replace />
+  }
 
   // Sesi tim dikunci ke Kontraktor AI — jangan pernah mendarat di dashboard
   // akun utama atau modul Feasibility Study milik perusahaan lain.
@@ -154,7 +237,7 @@ export function RuteAwal({ children }: Props) {
 export function AdminRoute({ children }: Props) {
   const { user, profile, isLoading } = useAuthStore()
   const beranda = useRutaMasuk()
-  if (isLoading) return <Spinner />
+  if (usePenahanGerbang(isLoading)) return <Spinner />
   if (!user || profile?.role !== 'superadmin') return <Navigate to={beranda} replace />
   return <>{children}</>
 }
@@ -163,7 +246,7 @@ export function AdminRoute({ children }: Props) {
  *  Superadmin always passes through. Free users are redirected to /pricing. */
 export function FeatureRoute({ children, feature }: FeatureProps) {
   const { user, isLoading, isFeatureEnabled } = useAuthStore()
-  if (isLoading) return <Spinner />
+  if (usePenahanGerbang(isLoading)) return <Spinner />
   if (!user) return <Navigate to="/auth" replace />
 
   // Anggota tim tidak punya langganan sendiri — hak aksesnya menumpang

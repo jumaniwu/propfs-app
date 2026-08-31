@@ -70,7 +70,14 @@ function ResultPageContent() {
   // ditunggu memang berganti.
   const kunciJam = `result:${id ?? ''}:${ulang}`
   mulaiJam(kunciJam)
-  const sesiMemuat = !user && lamaJam(kunciJam) < TUNGGU_SESI_MS
+  // Datanya SUDAH ADA di tangan? Tidak ada lagi yang perlu ditunggu.
+  //
+  // Menunggu sesi selesai padahal proyeknya sudah terpasang dari salinan
+  // perangkat adalah menahan layar demi sesuatu yang tidak akan mengubah apa
+  // yang digambar. Penyegaran dari server tetap berjalan di belakang, dan
+  // hasilnya menimpa yang tampil begitu tiba.
+  const sudahAdaIsinya = !!id && currentProjectId === id
+  const sesiMemuat = !sudahAdaIsinya && !user && lamaJam(kunciJam) < TUNGGU_SESI_MS
 
   const { canAccessCashflow, canAccessARAP, needsUpgradeForCashflow, isSubscriptionEnabled, canExportPDF } = useSubscription()
 
@@ -98,6 +105,35 @@ function ResultPageContent() {
     const t = setInterval(() => setDetik(Math.floor(lamaJam(kunciJam) / 1000)), 500)
     return () => clearInterval(t)
   }, [ready, user, kunciJam])
+
+  // Begitu ADA yang bisa digambar, gambar — jangan tunggu jaringan.
+  //
+  // `loadProject` sudah memasang isi dari salinan perangkat sebelum menembak
+  // server, tetapi penanda "siap" dulu baru dipasang SETELAH perjalanan
+  // jaringannya selesai. Akibatnya halaman tetap berputar walaupun datanya
+  // sudah ada di tangan — dan ketika jaringannya tidak menjawab sama sekali,
+  // ia berputar selamanya di atas data yang sebenarnya siap ditampilkan.
+  // Cukup proyeknya SUDAH TERPASANG, tidak perlu menunggu hasilnya juga.
+  //
+  // Hasil dihitung dari isian, di perangkat ini, tanpa jaringan — dan bila ia
+  // belum ada, halaman yang berkata "belum ada hasil kalkulasi" berikut
+  // tombol hitung ulang jauh lebih berguna daripada lingkaran yang berputar.
+  // Menunggu `currentResults` membuat proyek yang isiannya belum lengkap
+  // tertahan selamanya di layar tunggu.
+  useEffect(() => {
+    if (currentProjectId === id && id) setReady(true)
+  }, [currentProjectId, currentResults, id])
+
+  // Salinan perangkat dibaca SEKARANG, tanpa menunggu sesi.
+  //
+  // Pemeriksaan sesi oleh supabase-js menyentuh jaringan dan bisa memakan
+  // belasan detik pada sinyal buruk. Menunggunya berarti menahan data yang
+  // sudah ada di perangkat selama itu juga — penantian yang justru hendak
+  // dihindari oleh salinan tersebut.
+  useEffect(() => {
+    if (!id) return
+    void loadProject(id)
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (sesiMemuat) return

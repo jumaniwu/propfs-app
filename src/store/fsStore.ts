@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { FSInputs, FSResults, SavedProject } from '../types/fs.types'
 import { DEFAULT_INPUTS, TEMPLATE_A, TEMPLATE_B } from '../types/fs.types'
 import { calculateFS } from '../engine/calculator'
-import { supabase } from '../lib/supabase'
+import { supabase, KUNCI_SESI } from '../lib/supabase'
 import { useAuthStore } from './authStore'
 
 const APP_VERSION = '1.0.0'
@@ -24,7 +24,70 @@ function loadLocalProjects(): SavedProject[] {
   try { return JSON.parse(localStorage.getItem(LS_DEV_KEY) ?? '[]') } catch { return [] }
 }
 function saveLocalProjects(projects: SavedProject[]) {
-  localStorage.setItem(LS_DEV_KEY, JSON.stringify(projects))
+  try { localStorage.setItem(LS_DEV_KEY, JSON.stringify(projects)) } catch { /* penuh */ }
+}
+
+// ── Salinan proyek di perangkat ─────────────────────────────────────────────
+//
+// Sampai sekarang daftar proyek dimulai KOSONG di produksi, dan satu-satunya
+// salinannya ada di server. Akibatnya membuka `/result/:id` selalu menuntut
+// satu perjalanan jaringan yang berhasil: tanpa itu tidak ada apa pun untuk
+// digambar, dan halaman hanya bisa berputar. Memuat ulang halaman pun
+// menghapus seluruh isian, karena memang tidak ada tempat lain yang
+// menyimpannya.
+//
+// Salinan ini menutup keduanya. Ia BUKAN sumber kebenaran — server tetap
+// yang benar, dan salinan ini ditimpa setiap kali server berhasil dibaca.
+// Gunanya satu: supaya ada yang bisa ditampilkan sekarang juga, dan supaya
+// pekerjaan tidak lenyap ketika jaringannya tidak ada.
+//
+// Bertanda pemilik, karena satu perangkat bisa dipakai lebih dari satu akun —
+// dan proyek orang lain tidak boleh muncul di layar siapa pun.
+const LS_CACHE = 'propfs-projects-cache'
+
+/**
+ * Id pemilik, dibaca LANGSUNG dari penyimpanan perangkat.
+ *
+ * `useAuthStore.getState().user` baru terisi setelah supabase-js selesai
+ * memeriksa sesinya — dan pemeriksaan itu menyentuh jaringan, sehingga bisa
+ * memakan belasan detik ketika sinyalnya buruk. Menunggu id dari sana berarti
+ * salinan perangkat baru bisa dipakai setelah penantian yang justru hendak
+ * dihindari olehnya.
+ *
+ * Sesinya sendiri sudah tersimpan di perangkat sejak login, dan membacanya
+ * tidak menyentuh jaringan sama sekali. Yang dibaca hanya id-nya, untuk
+ * memilih laci mana yang dibuka — bukan untuk memberi izin apa pun. Izin
+ * tetap ditentukan server lewat RLS.
+ */
+function idPemilikLokal(): string | null {
+  const dariStore = useAuthStore.getState().user?.id
+  if (dariStore) return dariStore
+  try {
+    const mentah = localStorage.getItem(KUNCI_SESI)
+    if (!mentah) return null
+    const p = JSON.parse(mentah)
+    return p?.user?.id ?? p?.currentSession?.user?.id ?? p?.session?.user?.id ?? null
+  } catch { return null }
+}
+
+function kunciCache(userId: string | null | undefined): string {
+  const u = String(userId ?? '').trim()
+  return u ? `${LS_CACHE}:${u}` : ''
+}
+
+function bacaCacheProyek(userId: string | null | undefined): SavedProject[] {
+  const k = kunciCache(userId)
+  if (!k) return []
+  try {
+    const p = JSON.parse(localStorage.getItem(k) ?? '[]')
+    return Array.isArray(p) ? p as SavedProject[] : []
+  } catch { return [] }
+}
+
+function tulisCacheProyek(userId: string | null | undefined, projects: SavedProject[]): void {
+  const k = kunciCache(userId)
+  if (!k) return
+  try { localStorage.setItem(k, JSON.stringify(projects)) } catch { /* penuh; bukan galat */ }
 }
 
 // ── STORE TYPES ─────────────────────────────────────────────
@@ -143,6 +206,13 @@ export const useFSStore = create<FSStore>((set, get) => ({
     // Even superadmin only sees their own projects here.
     // Superadmin access to ALL users' projects is exclusively
     // handled in the Admin Panel (AdminDashboard) via a separate query.
+    // Salinan perangkat dipakai LEBIH DULU, supaya ada yang bisa digambar
+    // sebelum jaringan menjawab — dan tetap ada bila ia tidak menjawab.
+    if (get().projects.length === 0) {
+      const cache = bacaCacheProyek(user.id)
+      if (cache.length) set({ projects: cache })
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .select('*')
@@ -151,11 +221,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
 
     if (error) {
       console.error("[fsStore] fetchProjects error:", error)
+      // Salinan perangkat sengaja TIDAK dibuang. Justru inilah saat ia berguna.
       return
     }
-    
+
     if (data) {
-      set({ projects: data.map(rowToProject) })
+      const rows = data.map(rowToProject)
+      set({ projects: rows })
+      tulisCacheProyek(user.id, rows)
     }
   },
 
@@ -209,6 +282,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
   // ── LOAD PROJECT ────────────────────────────────────────
   loadProject: async (id) => {
     // Step 1: Show cached data immediately so UI doesn't go blank
+    //
+    // Daftar di memori bisa kosong ketika halaman baru dibuka langsung lewat
+    // tautannya — dan dulu itu berarti tidak ada apa pun untuk digambar
+    // sampai jaringan menjawab. Salinan perangkat mengisinya dulu.
+    if (get().projects.length === 0) {
+      const cache = bacaCacheProyek(idPemilikLokal())
+      if (cache.length) set({ projects: cache })
+    }
     const cached = get().projects.find(p => p.id === id)
     if (cached) {
       const migratedInputs = migrateInputs(cached.inputs)
@@ -279,6 +360,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
           ? state.projects.map(pr => pr.id === id ? { ...p, inputs, results: freshResults || p.results } : pr)
           : [{ ...p, inputs, results: freshResults || p.results }, ...state.projects],
       }))
+      tulisCacheProyek(user.id, get().projects)
     }
   },
 
@@ -330,6 +412,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
             : p
         ),
       }))
+      tulisCacheProyek(user.id, get().projects)
       // Sudah aman di server; draf lokalnya tidak diperlukan lagi.
       hapusDraf(currentProjectId)
     } catch (e) {

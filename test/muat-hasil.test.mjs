@@ -197,4 +197,50 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(typeof pesanTunggu(NaN) === 'string', 'NaN aman')
 }
 
+// ── 12. Gerbang rute tidak boleh menahan tanpa akhir ──────────────
+//
+// `PrivateRoute` dulu berbunyi `if (isLoading) return <Spinner />`, tanpa
+// syarat lain sama sekali. Dua akibatnya berat: `isLoading` menyala LAGI tiap
+// kali sesi disegarkan, sehingga setiap halaman privat kembali ke lingkaran
+// berputar berkali-kali; dan pemeriksaan sesi menyentuh jaringan, sehingga
+// pada sinyal buruk halaman di baliknya tidak pernah sempat menunjukkan apa
+// pun — termasuk salinan yang sudah ada di perangkat.
+{
+  const { gerbangMenahan, BATAS_GERBANG_MS } = await import('../src/lib/pintuAwal.ts')
+  const G = (o) => gerbangMenahan({ memuat: true, pernahSelesai: false, lamaMs: 0, ...o })
+
+  assert(G({}) === true, 'pemuatan pertama: ditahan')
+  assert(G({ memuat: false }) === false, 'sudah selesai: lewat')
+  assert(G({ pernahSelesai: true }) === false,
+    'penyegaran token BUKAN pemuatan pertama — inilah yang dulu mengembalikan '
+    + 'setiap halaman ke lingkaran berputar berkali-kali')
+  assert(G({ lamaMs: BATAS_GERBANG_MS + 1 }) === false,
+    'lewat batas: halaman dilepas apa adanya, tidak ditahan selamanya')
+  assert(G({ lamaMs: BATAS_GERBANG_MS - 1 }) === true, 'belum lewat batas: masih ditahan')
+
+  assert(BATAS_GERBANG_MS <= 6000,
+    'batasnya harus pendek — di baliknya ada salinan perangkat yang sudah siap '
+    + 'ditampilkan, dan menahannya hanya menunda tanpa guna')
+
+  assert(G({ lamaMs: NaN }) === true, 'angka aneh aman')
+
+  const akar = new URL('../src', import.meta.url).pathname
+  const guard = readFileSync(join(akar, 'components/auth/RouteGuards.tsx'), 'utf8')
+  // Baris kode saja; komentar yang MENGUTIP bentuk lamanya justru berguna.
+  const kode = guard.split('\n').filter(b => !b.trim().startsWith('//')).join('\n')
+  assert(!/if \(isLoading\) return <Spinner \/>/.test(kode),
+    'tidak ada lagi gerbang yang menahan tanpa syarat')
+  assert((kode.match(/usePenahanGerbang\(isLoading\)/g) ?? []).length >= 3,
+    'ketiga gerbang memakai aturan yang sama — PrivateRoute, AdminRoute, FeatureRoute')
+  assert(/gerbangMenahan\(/.test(guard), 'melainkan lewat aturan yang bisa diuji')
+
+  // Dan halaman hasil harus punya salinan perangkat untuk ditampilkan.
+  const store = readFileSync(join(akar, 'store/fsStore.ts'), 'utf8')
+  assert(/bacaCacheProyek\(/.test(store), 'daftar proyek punya salinan di perangkat')
+  assert(/tulisCacheProyek\(/.test(store), 'dan salinan itu diperbarui tiap server berhasil dibaca')
+  assert(/KUNCI_SESI/.test(store),
+    'id pemilik dibaca dari laci sesi yang SAMA dengan klien supabase — '
+    + 'menghitungnya sendiri sudah pernah meleset dan membuat cache tak pernah terbaca')
+}
+
 console.log(`muat-hasil: ${ok} assert lulus`)
