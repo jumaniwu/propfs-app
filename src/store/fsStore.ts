@@ -3,11 +3,14 @@
 // ============================================================
 
 import { create } from 'zustand'
+import {
+  buatPenunda, simpanDraf, bacaDraf, hapusDraf, drafLebihBaru, type Penunda,
+} from '@/lib/simpanDraf'
 import { v4 as uuidv4 } from 'uuid'
 import type { FSInputs, FSResults, SavedProject } from '../types/fs.types'
 import { DEFAULT_INPUTS, TEMPLATE_A, TEMPLATE_B } from '../types/fs.types'
 import { calculateFS } from '../engine/calculator'
-import { supabase } from '../lib/supabase'
+import { supabase, KUNCI_SESI } from '../lib/supabase'
 import { useAuthStore } from './authStore'
 
 const APP_VERSION = '1.0.0'
@@ -21,7 +24,70 @@ function loadLocalProjects(): SavedProject[] {
   try { return JSON.parse(localStorage.getItem(LS_DEV_KEY) ?? '[]') } catch { return [] }
 }
 function saveLocalProjects(projects: SavedProject[]) {
-  localStorage.setItem(LS_DEV_KEY, JSON.stringify(projects))
+  try { localStorage.setItem(LS_DEV_KEY, JSON.stringify(projects)) } catch { /* penuh */ }
+}
+
+// ── Salinan proyek di perangkat ─────────────────────────────────────────────
+//
+// Sampai sekarang daftar proyek dimulai KOSONG di produksi, dan satu-satunya
+// salinannya ada di server. Akibatnya membuka `/result/:id` selalu menuntut
+// satu perjalanan jaringan yang berhasil: tanpa itu tidak ada apa pun untuk
+// digambar, dan halaman hanya bisa berputar. Memuat ulang halaman pun
+// menghapus seluruh isian, karena memang tidak ada tempat lain yang
+// menyimpannya.
+//
+// Salinan ini menutup keduanya. Ia BUKAN sumber kebenaran — server tetap
+// yang benar, dan salinan ini ditimpa setiap kali server berhasil dibaca.
+// Gunanya satu: supaya ada yang bisa ditampilkan sekarang juga, dan supaya
+// pekerjaan tidak lenyap ketika jaringannya tidak ada.
+//
+// Bertanda pemilik, karena satu perangkat bisa dipakai lebih dari satu akun —
+// dan proyek orang lain tidak boleh muncul di layar siapa pun.
+const LS_CACHE = 'propfs-projects-cache'
+
+/**
+ * Id pemilik, dibaca LANGSUNG dari penyimpanan perangkat.
+ *
+ * `useAuthStore.getState().user` baru terisi setelah supabase-js selesai
+ * memeriksa sesinya — dan pemeriksaan itu menyentuh jaringan, sehingga bisa
+ * memakan belasan detik ketika sinyalnya buruk. Menunggu id dari sana berarti
+ * salinan perangkat baru bisa dipakai setelah penantian yang justru hendak
+ * dihindari olehnya.
+ *
+ * Sesinya sendiri sudah tersimpan di perangkat sejak login, dan membacanya
+ * tidak menyentuh jaringan sama sekali. Yang dibaca hanya id-nya, untuk
+ * memilih laci mana yang dibuka — bukan untuk memberi izin apa pun. Izin
+ * tetap ditentukan server lewat RLS.
+ */
+function idPemilikLokal(): string | null {
+  const dariStore = useAuthStore.getState().user?.id
+  if (dariStore) return dariStore
+  try {
+    const mentah = localStorage.getItem(KUNCI_SESI)
+    if (!mentah) return null
+    const p = JSON.parse(mentah)
+    return p?.user?.id ?? p?.currentSession?.user?.id ?? p?.session?.user?.id ?? null
+  } catch { return null }
+}
+
+function kunciCache(userId: string | null | undefined): string {
+  const u = String(userId ?? '').trim()
+  return u ? `${LS_CACHE}:${u}` : ''
+}
+
+function bacaCacheProyek(userId: string | null | undefined): SavedProject[] {
+  const k = kunciCache(userId)
+  if (!k) return []
+  try {
+    const p = JSON.parse(localStorage.getItem(k) ?? '[]')
+    return Array.isArray(p) ? p as SavedProject[] : []
+  } catch { return [] }
+}
+
+function tulisCacheProyek(userId: string | null | undefined, projects: SavedProject[]): void {
+  const k = kunciCache(userId)
+  if (!k) return
+  try { localStorage.setItem(k, JSON.stringify(projects)) } catch { /* penuh; bukan galat */ }
 }
 
 // ── STORE TYPES ─────────────────────────────────────────────
@@ -34,6 +100,10 @@ interface FSStore {
   currentStep:      number
   isDarkMode:       boolean
   isSaving:         boolean
+  /** Pesan kegagalan penyimpanan terakhir; kosong bila aman. */
+  simpanGagal:      string
+  /** Kirim perubahan yang masih tertunda sekarang juga. */
+  simpanSegera:     () => void
 
   createProject:      (template?: 'A' | 'B' | null) => Promise<string>
   loadProject:        (id: string) => Promise<void>
@@ -109,6 +179,10 @@ function rowToProject(row: any): SavedProject {
 
 // ── STORE ────────────────────────────────────────────────────
 
+// Penunda penyimpanan, di luar store supaya satu-satunya. Lihat catatan di
+// `updateInputs`.
+let penundaSimpan: Penunda | null = null
+
 export const useFSStore = create<FSStore>((set, get) => ({
   projects:         IS_DEV_MODE ? loadLocalProjects() : [],
   currentProjectId: null,
@@ -117,6 +191,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
   currentStep:      1,
   isDarkMode:       localStorage.getItem(LS_DARK_KEY) === 'true',
   isSaving:         false,
+  simpanGagal:      '',
 
   // ── FETCH ALL PROJECTS ──────────────────────────────────
   fetchProjects: async () => {
@@ -131,6 +206,13 @@ export const useFSStore = create<FSStore>((set, get) => ({
     // Even superadmin only sees their own projects here.
     // Superadmin access to ALL users' projects is exclusively
     // handled in the Admin Panel (AdminDashboard) via a separate query.
+    // Salinan perangkat dipakai LEBIH DULU, supaya ada yang bisa digambar
+    // sebelum jaringan menjawab — dan tetap ada bila ia tidak menjawab.
+    if (get().projects.length === 0) {
+      const cache = bacaCacheProyek(user.id)
+      if (cache.length) set({ projects: cache })
+    }
+
     const { data, error } = await supabase
       .from('projects')
       .select('*')
@@ -139,11 +221,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
 
     if (error) {
       console.error("[fsStore] fetchProjects error:", error)
+      // Salinan perangkat sengaja TIDAK dibuang. Justru inilah saat ia berguna.
       return
     }
-    
+
     if (data) {
-      set({ projects: data.map(rowToProject) })
+      const rows = data.map(rowToProject)
+      set({ projects: rows })
+      tulisCacheProyek(user.id, rows)
     }
   },
 
@@ -197,6 +282,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
   // ── LOAD PROJECT ────────────────────────────────────────
   loadProject: async (id) => {
     // Step 1: Show cached data immediately so UI doesn't go blank
+    //
+    // Daftar di memori bisa kosong ketika halaman baru dibuka langsung lewat
+    // tautannya — dan dulu itu berarti tidak ada apa pun untuk digambar
+    // sampai jaringan menjawab. Salinan perangkat mengisinya dulu.
+    if (get().projects.length === 0) {
+      const cache = bacaCacheProyek(idPemilikLokal())
+      if (cache.length) set({ projects: cache })
+    }
     const cached = get().projects.find(p => p.id === id)
     if (cached) {
       const migratedInputs = migrateInputs(cached.inputs)
@@ -216,15 +309,44 @@ export const useFSStore = create<FSStore>((set, get) => ({
     if (!user) return
 
     // Step 2: Always fetch fresh data from Supabase to ensure sync
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('projects')
       .select('*')
       .eq('id', id)
       .eq('user_id', user.id)
       .single()
+
+    // Galatnya DILEMPAR bila tidak ada salinan cache untuk dipakai.
+    //
+    // Dulu `error` dibuang begitu saja: proyek yang tidak ada, salah akun,
+    // atau ditolak RLS sama-sama berakhir dengan `data` bernilai null dan
+    // tidak ada yang terjadi — halamannya lalu berkata "belum ada hasil"
+    // untuk tiga sebab yang berbeda, dan tidak satu pun bisa ditelusuri.
+    //
+    // Ketika salinan cache ADA, galatnya sengaja ditelan: pemakai yang sedang
+    // tanpa sinyal lebih baik melihat angka kemarin daripada layar galat.
+    if (error && !cached) {
+      throw new Error(error.message || 'Proyek tidak ditemukan untuk akun ini.')
+    }
+
     if (data) {
       const p = rowToProject(data)
-      const inputs = migrateInputs(p.inputs)
+      let inputs = migrateInputs(p.inputs)
+
+      // Draf lokal MENANG bila ia lebih baru daripada salinan server.
+      //
+      // Inilah yang membuat "muat ulang halaman" berhenti menghapus
+      // pekerjaan. Penyimpanan ke server bisa gagal diam-diam — ditolak RLS,
+      // sesi habis, sinyal hilang — dan sampai sebelum ini satu-satunya
+      // salinan isian ada di memori halaman.
+      //
+      // Hanya bila BENAR-BENAR lebih baru: draf basi dari sesi kemarin tidak
+      // boleh menimpa pekerjaan yang sudah dilakukan di perangkat lain.
+      const draf = bacaDraf<typeof inputs>(id)
+      if (draf && drafLebihBaru(draf, data.updated_at)) {
+        inputs = migrateInputs(draf.isi)
+      }
+
       let freshResults = null
       try { freshResults = calculateFS(inputs) } catch { /* ignore */ }
 
@@ -238,6 +360,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
           ? state.projects.map(pr => pr.id === id ? { ...p, inputs, results: freshResults || p.results } : pr)
           : [{ ...p, inputs, results: freshResults || p.results }, ...state.projects],
       }))
+      tulisCacheProyek(user.id, get().projects)
     }
   },
 
@@ -260,18 +383,41 @@ export const useFSStore = create<FSStore>((set, get) => ({
         return
       }
 
-      await supabase.from('projects').update({
+      const user = useAuthStore.getState().user
+      if (!user) throw new Error('Belum login — isian disimpan di perangkat ini dulu.')
+
+      // `upsert`, bukan `update`.
+      //
+      // `update` pada baris yang TIDAK ADA mengenai nol baris dan tidak
+      // dianggap galat oleh Postgres. Proyek yang gagal dibuat karena itu
+      // menerima setiap penyimpanan berikutnya dengan diam — isian mengalir
+      // ke sana selama berjam-jam tanpa satu pun tersimpan.
+      const { error } = await supabase.from('projects').upsert({
+        id: currentProjectId, user_id: user.id,
         name: currentInputs.namaProyek || 'Proyek Baru',
         inputs: currentInputs, results: currentResults, updated_at: now,
-      }).eq('id', currentProjectId)
+      }, { onConflict: 'id' })
+
+      // Hasilnya DIPERIKSA. Dulu baris ini tidak memeriksa apa pun: ditolak
+      // RLS, barisnya tidak ada, jaringan putus — ketiganya berakhir sama,
+      // tanpa satu pun tanda, dan penanda "sedang menyimpan" tetap padam
+      // seolah semuanya beres.
+      if (error) throw new Error(error.message || 'Gagal menyimpan ke server.')
 
       set(state => ({
+        simpanGagal: '',
         projects: state.projects.map(p =>
           p.id === currentProjectId
             ? { ...p, name: currentInputs.namaProyek || p.name, inputs: currentInputs, results: currentResults, updatedAt: now }
             : p
         ),
       }))
+      tulisCacheProyek(user.id, get().projects)
+      // Sudah aman di server; draf lokalnya tidak diperlukan lagi.
+      hapusDraf(currentProjectId)
+    } catch (e) {
+      // Draf lokalnya SENGAJA dibiarkan. Justru inilah saatnya ia berguna.
+      set({ simpanGagal: e instanceof Error ? e.message : String(e) })
     } finally {
       set({ isSaving: false })
     }
@@ -350,8 +496,30 @@ export const useFSStore = create<FSStore>((set, get) => ({
   // ── UPDATE INPUTS ───────────────────────────────────────
   updateInputs: (partial) => {
     set(state => ({ currentInputs: { ...state.currentInputs, ...partial }, currentResults: null }))
-    setTimeout(() => get().saveCurrentProject(), 800)
+
+    const { currentProjectId, currentInputs } = get()
+
+    // Draf lokal ditulis SEKARANG, tanpa penundaan.
+    //
+    // Menundanya berarti menyisakan jendela beberapa ratus milidetik ketika
+    // memuat ulang halaman tetap menghapus pekerjaan — dan itu persis jendela
+    // yang paling sering terkena, karena orang menutup halaman tepat setelah
+    // mengetik sesuatu.
+    if (currentProjectId) simpanDraf(currentProjectId, currentInputs)
+
+    // Penyimpanan ke server DITUNDA, dan penundaan sebelumnya DIBATALKAN.
+    //
+    // Dulu di sini ada `setTimeout(save, 800)` tanpa pembatalan. Mengetik dua
+    // puluh huruf menjadwalkan dua puluh penyimpanan, dan semuanya berangkat;
+    // yang menang bukan yang terakhir dikirim melainkan yang terakhir SAMPAI,
+    // sehingga muatan lama bisa mendarat sesudah yang baru dan menimpanya.
+    // Itu bukan sekadar boros — itu kehilangan data.
+    if (!penundaSimpan) penundaSimpan = buatPenunda(() => { void get().saveCurrentProject() })
+    penundaSimpan.jadwalkan()
   },
+
+  /** Kirim perubahan yang masih tertunda sekarang juga. */
+  simpanSegera: () => { penundaSimpan?.segera() },
 
   setCurrentStep: (step) => set({ currentStep: step }),
 

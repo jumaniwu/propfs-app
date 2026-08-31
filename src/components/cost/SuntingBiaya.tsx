@@ -29,6 +29,7 @@ export default function SuntingBiaya({ entri, onSimpan, onHapus, onTutup }: {
   // Mengubahnya menjadi number pada setiap ketukan membuat "135." mustahil
   // diketik: titiknya hilang seketika, dan yang mengetik menyangka tombolnya
   // rusak.
+  const [namaMaterial, setNamaMaterial] = useState(entri.namaMaterial ?? '')
   const [jumlah, setJumlah] = useState(String(entri.jumlah ?? ''))
   const [keterangan, setKeterangan] = useState(entri.keterangan ?? '')
   const [tanggal, setTanggal] = useState(entri.tanggal ?? '')
@@ -36,6 +37,7 @@ export default function SuntingBiaya({ entri, onSimpan, onHapus, onTutup }: {
 
   const nilai = angkaRupiah(jumlah)
   const berubah = nilai !== entri.jumlah
+    || namaMaterial.trim() !== (entri.namaMaterial ?? '')
     || keterangan.trim() !== (entri.keterangan ?? '')
     || tanggal !== (entri.tanggal ?? '')
 
@@ -43,7 +45,13 @@ export default function SuntingBiaya({ entri, onSimpan, onHapus, onTutup }: {
     if (!berubah || sibuk) return
     setSibuk(true)
     try {
-      onSimpan({ jumlah: nilai, keterangan: keterangan.trim(), tanggal })
+      onSimpan({
+        jumlah: nilai, keterangan: keterangan.trim(), tanggal,
+        // String kosong, bukan undefined: undefined pada sebuah tambalan
+        // berarti "jangan ubah", sehingga nama yang SENGAJA dikosongkan tidak
+        // akan pernah benar-benar terhapus.
+        ...(entri.tipe === 'material' ? { namaMaterial: namaMaterial.trim() } : {}),
+      })
       onTutup()
     } finally { setSibuk(false) }
   }
@@ -60,6 +68,25 @@ export default function SuntingBiaya({ entri, onSimpan, onHapus, onTutup }: {
         </div>
 
         <div className="px-4 space-y-3">
+          {/* Nama barang lebih dulu, karena inilah yang tampil sebagai judul
+              di daftar. Baris yang namanya kosong berbunyi "Pembelian alat
+              kerja" seperti semua baris lain, dan tidak bisa dibedakan tanpa
+              membuka notanya. */}
+          {entri.tipe === 'material' && (
+            <label className="block space-y-1">
+              <span className="text-[10px] font-medium text-muted-foreground">
+                Nama barang (sesuai nota)
+              </span>
+              <input data-sunting-nama value={namaMaterial} className={inputCls}
+                onChange={e => setNamaMaterial(e.target.value)}
+                placeholder="mis. Besi Ulir 16mm" />
+              <span className="block text-[10px] text-muted-foreground">
+                Ini yang tampil sebagai judul di daftar. Tulis jenis, ukuran, dan mutunya saja —
+                kemasan dan merek toko taruh di keterangan.
+              </span>
+            </label>
+          )}
+
           <label className="block space-y-1">
             <span className="text-[10px] font-medium text-muted-foreground">Keterangan</span>
             <input data-sunting-ket value={keterangan} className={inputCls}

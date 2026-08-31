@@ -5,6 +5,17 @@
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl  = ((import.meta as any).env.VITE_SUPABASE_URL as string) || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
+
+/**
+ * Nama laci penyimpanan sesi milik supabase-js.
+ *
+ * Diekspor supaya modul lain membaca sesi dari laci yang SAMA. Menghitungnya
+ * sendiri dari `import.meta.env` sudah pernah meleset: ketika variabelnya
+ * tidak disetel, perhitungan itu menghasilkan nama kosong sementara klien di
+ * sini memakai URL cadangan — dan yang membaca menemukan laci kosong lalu
+ * menyimpulkan pemakainya belum login.
+ */
+export const KUNCI_SESI = `sb-${supabaseUrl.replace(/^https?:\/\//, '').split('.')[0]}-auth-token`
 const supabaseKey  = ((import.meta as any).env.VITE_SUPABASE_ANON_KEY as string) || 'sb_publishable_1BxZhA48DtR8KG94xUm0zg_6w-dg1xD'
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {

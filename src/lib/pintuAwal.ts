@@ -131,3 +131,74 @@ export function tungguSesiPertama(k: {
 }): boolean {
   return k.diApk && k.memuat && !k.pernahSelesai
 }
+
+
+/**
+ * Berapa lama gerbang rute boleh menahan halaman pada pembukaan PERTAMA.
+ *
+ * Pemeriksaan sesi oleh supabase-js menyentuh jaringan: pada sinyal buruk ia
+ * bisa memakan belasan detik, dan selama itu SELURUH halaman privat tidak
+ * dirender sama sekali. Yang terlihat pemakai lingkaran berputar yang tidak
+ * pernah berubah — dan halaman di baliknya tidak pernah sempat menunjukkan
+ * apa pun, termasuk salinan yang sudah ada di perangkatnya.
+ */
+export const BATAS_GERBANG_MS = 4_000
+
+/**
+ * Masih boleh menahan halaman?
+ *
+ * Tiga syarat, dan ketiganya harus benar. Sesi memang sedang dimuat; ini
+ * pemuatan PERTAMA — bukan penyegaran token yang berulang, yang dulu
+ * mengembalikan setiap halaman ke lingkaran berputar berkali-kali; dan
+ * penantiannya belum melewati batas.
+ *
+ * Sesudah batas itu halaman dilepas apa adanya. Bila ternyata memang belum
+ * login, gerbang berikutnya yang mengarahkannya ke halaman masuk — dan itu
+ * jawaban yang jelas, jauh lebih berguna daripada menunggu tanpa akhir.
+ */
+export function gerbangMenahan(k: {
+  memuat: boolean
+  pernahSelesai: boolean
+  lamaMs: number
+  batasMs?: number
+}): boolean {
+  if (!k.memuat || k.pernahSelesai) return false
+  return (Number(k.lamaMs) || 0) < (k.batasMs ?? BATAS_GERBANG_MS)
+}
+
+
+/**
+ * Apakah perangkat ini menyimpan sesi login.
+ *
+ * Dibaca dari laci yang sama dengan klien Supabase, dan TIDAK menyentuh
+ * jaringan. Gunanya satu: membedakan "sedang memeriksa sesi milik orang yang
+ * memang sudah login" dari "memang belum login".
+ *
+ * Pembedaan itu penting karena jalan keluarnya berlawanan. Yang pertama harus
+ * dibiarkan masuk — halamannya punya salinan di perangkat dan bisa langsung
+ * berguna. Yang kedua harus diarahkan ke halaman masuk. Menahan keduanya
+ * dengan lingkaran berputar, seperti sebelumnya, melayani yang kedua dan
+ * menghukum yang pertama.
+ *
+ * Ini BUKAN pemberian izin. Isi sesinya tidak diperiksa, tidak dipercaya, dan
+ * tidak dipakai untuk apa pun selain memutuskan apa yang digambar sambil
+ * menunggu. Izin sebenarnya tetap ditentukan server lewat RLS.
+ */
+/**
+ * Berapa lama sesi tersimpan boleh dipakai sebagai izin sementara.
+ *
+ * Cukup panjang untuk melewati pemeriksaan sesi yang lambat, cukup pendek
+ * sehingga sesi yang benar-benar sudah mati tidak membuat aplikasi terbuka
+ * tanpa pengguna selamanya.
+ */
+export const BATAS_SESI_TERSIMPAN_MS = 30_000
+
+export function adaSesiTersimpan(kunci: string): boolean {
+  try {
+    if (typeof localStorage === 'undefined' || !kunci) return false
+    const mentah = localStorage.getItem(kunci)
+    if (!mentah) return false
+    const p = JSON.parse(mentah)
+    return !!(p?.access_token || p?.currentSession?.access_token || p?.session?.access_token)
+  } catch { return false }
+}

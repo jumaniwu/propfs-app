@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { formatRupiah, CHART_COLORS, FASE_COLORS } from '@/engine/formatter'
 import {
@@ -8,6 +8,9 @@ import {
   getSellingEntities
 } from '@/engine/calculator'
 import type { FSInputs, PenjualanPerFase } from '@/types/fs.types'
+import {
+  batasUnit, pasangUnit, unitDiFaseLain, alasanPendapatanNol,
+} from '@/lib/simulasiJual'
 
 interface Props {
   inputs: FSInputs
@@ -39,18 +42,25 @@ export default function Step6SimulasiPenjualan({ inputs, onChange }: Props) {
     return inputs.penjualan.find(p => p.tipeId === tipeId && p.fase === fase)?.unitTerjual ?? 0
   }
 
+  // Sebab angka yang diketik tidak masuk seluruhnya — kosong bila tidak ada.
+  const [catatanBatas, setCatatanBatas] = useState('')
+
   function setUnit(tipeId: string, fase: number, val: number) {
     const tipe = entities.find(t => t.id === tipeId)
     if (!tipe) return
-    const maxUnit = tipe.jumlahUnit
-    const totalSudah = Array.from({ length: inputs.jumlahFase }, (_, i) => i + 1)
-      .filter(f => f !== fase)
-      .reduce((s, f) => s + getUnit(tipeId, f), 0)
-    const clamped = Math.min(val, maxUnit - totalSudah, maxUnit)
 
-    const newPenjualan = inputs.penjualan.filter(p => !(p.tipeId === tipeId && p.fase === fase))
-    if (clamped > 0) newPenjualan.push({ tipeId, fase, unitTerjual: clamped })
-    onChange({ penjualan: newPenjualan })
+    // Dulu di sini ada:
+    //   const clamped = Math.min(val, maxUnit - totalSudah, maxUnit)
+    //   if (clamped > 0) newPenjualan.push(...)
+    //
+    // Ketika `maxUnit` masih 0 — jumlah unit tipe itu belum diisi — `clamped`
+    // selalu nol dan barisnya tidak pernah ditambahkan. Yang mengetik melihat
+    // angkanya kembali ke nol, mengetik lagi, kembali nol lagi, tanpa satu pun
+    // keterangan. `penjualan` tetap kosong, dan SELURUH pendapatan terhitung
+    // Rp 0 selamanya.
+    const b = batasUnit(val, tipe.jumlahUnit, unitDiFaseLain(inputs.penjualan, tipeId, fase))
+    setCatatanBatas(b.alasan)
+    onChange({ penjualan: pasangUnit(inputs.penjualan, tipeId, fase, b.nilai) })
   }
 
   // Chart data: unit terjual per fase per tipe
@@ -95,8 +105,38 @@ export default function Step6SimulasiPenjualan({ inputs, onChange }: Props) {
     )
   }
 
+  // Kenapa pendapatan masih nol. Nol yang tidak dijelaskan adalah keluhan
+  // yang paling sering datang dari layar ini: seluruh biaya terisi, dan
+  // satu-satunya baris yang penting berbunyi Rp 0 tanpa sebab yang bisa
+  // ditebak.
+  const alasanNol = alasanPendapatanNol({
+    adaTipe: entities.length > 0,
+    adaJadwal: (inputs.penjualan ?? []).some(p => (p.unitTerjual ?? 0) > 0),
+    adaHarga: entities.some(t => {
+      for (let f = 1; f <= inputs.jumlahFase; f++) if ((hargaMap[t.id]?.[f] ?? 0) > 0) return true
+      return false
+    }),
+  })
+
   return (
     <div className="space-y-6">
+      {alasanNol && (
+        <p data-alasan-nol className="text-xs text-amber-900 bg-amber-50 border border-amber-200
+          rounded-xl p-3 leading-relaxed">
+          <b>Pendapatan masih Rp 0.</b> {alasanNol}
+        </p>
+      )}
+
+      {/* Sebab angka yang diketik tidak masuk seluruhnya. Dulu pemotongannya
+          diam — dan yang mengetik 50 lalu melihat 30 menyangka aplikasinya
+          salah hitung. */}
+      {catatanBatas && (
+        <p data-catatan-batas className="text-xs text-amber-900 bg-amber-50 border border-amber-200
+          rounded-xl p-3 leading-relaxed">
+          {catatanBatas}
+        </p>
+      )}
+
       {/* Input table */}
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm">
