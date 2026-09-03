@@ -46,7 +46,12 @@ const angkaRingkas = (n: number) =>
 const hariIni = () => new Date().toISOString().slice(0, 10)
 const inputCls = 'w-full h-10 rounded-lg border border-input bg-background px-3 text-sm'
 
-type Header = FieldHeader
+export type Header = FieldHeader
+
+// Formulir di bawah DIEKSPOR supaya halaman dalam aplikasi (IsiLapanganPage)
+// memakai yang persis sama, bukan salinannya. Salinan kedua akan tertinggal
+// begitu salah satunya diperbaiki — pola yang sudah beberapa kali melahirkan
+// cacat di repo ini.
 
 export default function LaporHarianPage() {
   const { token = '' } = useParams()
@@ -239,11 +244,20 @@ function kirimDrive(header: Header, photos: string[], prefix: string) {
 //
 // Bukan soal kenyamanan: absensi yang merepotkan diisi belakangan, dikira-kira
 // dari ingatan, atau tidak diisi sama sekali — dan upah dihitung dari situ.
-function FormAbsensi({ token, header, pekerja, onDone }: {
+export function FormAbsensi({ token, header, pekerja, onDone, namaAwal = '' }: {
   token: string; header: Header; pekerja: PekerjaLapangan[]; onDone: (msg: string) => void
+  /**
+   * Nama pengisi yang sudah diketahui — dipakai halaman DALAM aplikasi.
+   *
+   * Halaman bertoken tetap bertanya, karena mandor di sana tidak punya akun.
+   * Di dalam aplikasi namanya sudah diketahui, dan menanyakannya lagi tiap
+   * hari hanya mengundang ejaan yang berbeda-beda: rekap absensi memecah
+   * "Yono", "yono", dan "Pak Yono" menjadi tiga orang.
+   */
+  namaAwal?: string
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
-  const [pelapor, setPelapor] = useState('')
+  const [pelapor, setPelapor] = useState(namaAwal)
   const [daftar, setDaftar] = useState<BarisCentang[]>(() => susunCentang(pekerja, []))
   const [error, setError] = useState('')
   const [kirim, setKirim] = useState(false)
@@ -460,11 +474,13 @@ function FotoAbsen({ foto, onFoto, nama }: {
 }
 
 // ── 1. Laporan harian ───────────────────────────────────────────────────────
-function FormLaporan({ token, header, pekerja, onDone }: {
+export function FormLaporan({ token, header, pekerja, onDone, namaAwal = '' }: {
   token: string; header: Header; pekerja: PekerjaLapangan[]; onDone: (msg: string) => void
+  /** Lihat catatan di FormAbsensi. */
+  namaAwal?: string
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
-  const [pelapor, setPelapor] = useState('')
+  const [pelapor, setPelapor] = useState(namaAwal)
   const [kegiatan, setKegiatan] = useState<string[]>([''])
   const [catatan, setCatatan] = useState('')
   const [photos, setPhotos] = useState<string[]>([])
@@ -547,7 +563,7 @@ function FormLaporan({ token, header, pekerja, onDone }: {
 }
 
 // ── 2. Pakai material ───────────────────────────────────────────────────────
-function FormPakaiMaterial({ token, header, onDone }: {
+export function FormPakaiMaterial({ token, header, onDone }: {
   token: string; header: Header; onDone: (msg: string) => void
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
@@ -743,7 +759,7 @@ const URGENSI_PILIHAN: Array<[Urgensi, string, string]> = [
   ['darurat', 'Darurat', 'bg-red-600 text-white border-red-600'],
 ]
 
-function FormRequestMaterial({ token, header, onDone }: {
+export function FormRequestMaterial({ token, header, onDone }: {
   token: string; header: Header; onDone: (msg: string) => void
 }) {
   const [tanggal, setTanggal] = useState(hariIni)
@@ -934,7 +950,7 @@ function FormRequestMaterial({ token, header, onDone }: {
 // Didaftarkan SEKALI di awal, lewat link yang sudah dipegang pengawas — tidak
 // ada link kedua yang harus disebarkan. Setelah ini, absensi harian berhenti
 // menjadi pekerjaan mengetik.
-function FormPekerja({ token, pekerja, onUbah }: {
+export function FormPekerja({ token, pekerja, onUbah }: {
   token: string
   pekerja: PekerjaLapangan[]
   onUbah: () => void

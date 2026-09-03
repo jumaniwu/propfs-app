@@ -7,7 +7,8 @@
 import {
   LayoutDashboard, FileSpreadsheet, PackageOpen, ReceiptIcon, TrendingUp,
   FileDown, Scale, FileSignature, HardHat, ShoppingCart, Users,
-  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus, Megaphone, FileText,} from 'lucide-react'
+  BarChart3, Settings, Store, type LucideIcon, Compass, Calculator, UserPlus, Megaphone, FileText,
+  ClipboardCheck,} from 'lucide-react'
 import type { AppFeature } from '@/lib/supabase'
 import type { WorkspaceTab } from '@/components/cost/WorkspaceSidebar'
 
@@ -95,6 +96,16 @@ export const MENU_ITEMS: MenuItem[] = [
   // kalender progres — dulu tiga ikon yang tujuannya sama.
   { key: 'lapangan', label: 'Laporan Lapangan', icon: HardHat, kategori: 'lapangan', tab: 'lapangan', tone: TONE.amber,
     alias: 'laporan harian pekerja mandor kalender progres link bagikan owner' },
+  // Mengisi laporan TANPA meninggalkan aplikasi.
+  //
+  // Link Pekerja tetap ada dan tetap tepat untuk mandor yang tidak punya akun.
+  // Tetapi pengawas dan project manager sudah berada di dalam aplikasi, dan
+  // memaksa mereka keluar ke peramban berarti tombol kembali membawa mereka ke
+  // halaman yang tidak menyegarkan dirinya — yang baru diisi tidak terlihat,
+  // lalu diisi lagi.
+  { key: 'isi_lapangan', label: 'Isi Absensi & Laporan', icon: ClipboardCheck, kategori: 'lapangan',
+    path: '/kontraktor/isi-lapangan', tone: TONE.emerald,
+    alias: 'absen tukang isi laporan harian langsung tanpa link pengawas mandor' },
   // Satu halaman memuat Pakai Material, Request Material, dan Kekurangan.
   { key: 'material_lapangan', label: 'Material Lapangan', icon: ShoppingCart, kategori: 'lapangan', path: '/kontraktor/material', tone: TONE.rose,
     alias: 'pakai penggunaan request permintaan bahan kekurangan stok menipis' },
