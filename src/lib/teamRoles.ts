@@ -116,6 +116,11 @@ export const MENU_KE_MODUL: Record<string, Modul> = {
   // sedang berdiri di depan pekerjaannya. Siapa yang boleh MENGUNGGAH revisi
   // dijaga terpisah di halamannya — membaca dan menerbitkan bukan hak yang sama.
   gambar_kerja: 'lapangan',
+  // Mengisi absensi & laporan dari dalam aplikasi: modul yang sama dengan
+  // Laporan Lapangan. Yang boleh melihat laporannya juga yang boleh
+  // mengisinya — memisahkannya akan membuat pengawas bisa membuka layar isian
+  // yang datanya tidak boleh ia lihat.
+  isi_lapangan: 'lapangan',
   material_lapangan: 'material',
   procurement: 'procurement',
   feasibility: 'studi',
