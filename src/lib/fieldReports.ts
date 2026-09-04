@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useAuthStore } from '@/store/authStore'
+import { bacaGalatServer, badanRespons } from './galatServer'
 import { tautanPublik } from './tautanPendek'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
 import type { BarisAbsensi } from './absensiPekerja'
@@ -139,7 +140,18 @@ async function restFetch(
 }
 async function rpc<T>(fn: string, body: unknown, publik = false): Promise<T> {
   const res = await restFetch(`rpc/${fn}`, { method: 'POST', body: JSON.stringify(body) }, 15000, publik)
-  if (!res.ok) throw new Error(`Gagal (HTTP ${res.status}).`)
+  if (!res.ok) {
+    // Pesan server DIBACA, tidak dibuang.
+    //
+    // Dulu baris ini hanya menyusun "Gagal (HTTP 500)." dari nomor statusnya.
+    // Padahal PostgREST selalu mengirim badan JSON berisi `message`, `code`,
+    // dan `hint` — dan nomor 500 menutupi sebab yang sangat berbeda-beda:
+    // fungsinya belum ada karena migrasinya belum dijalankan, tabelnya belum
+    // ada, kolomnya berubah, atau ada kekeliruan di dalam fungsinya. Pemilik
+    // rumah yang membuka tautan kalender progres melihat nomor itu dan tidak
+    // bisa berbuat apa-apa; yang memperbaikinya pun tidak bisa menebak.
+    throw new Error(bacaGalatServer(res.status, await badanRespons(res), 'Data').pesan)
+  }
   return await res.json() as T
 }
 function uid(): string {
@@ -151,7 +163,9 @@ function uid(): string {
 const realApi: FieldApi = {
   async listLogs() {
     const res = await restFetch('field_logs?select=*&order=created_at.desc')
-    if (!res.ok) throw new Error(`Gagal memuat (HTTP ${res.status}).`)
+    if (!res.ok) {
+      throw new Error(bacaGalatServer(res.status, await badanRespons(res), 'Buku laporan').pesan)
+    }
     return await res.json() as FieldLog[]
   },
   async createLog(projectName, driveWebhook) {
