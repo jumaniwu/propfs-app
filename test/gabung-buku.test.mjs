@@ -198,7 +198,14 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(/id <> p_target/.test(kode), 'buku tujuan tidak bisa jadi sumbernya sendiri')
   assert(/jsonb_set\(e\.a, '\{pekerja_id\}'/.test(kode),
     'pekerja_id di dalam absensi dialihkan ke pekerja yang dipertahankan')
-  assert(/peta_pekerja/.test(kode), 'ada peta id lama ke id yang dipertahankan')
+  assert(/unnest\(v_lama, v_baru\)/.test(kode),
+    'ada peta id lama ke id yang dipertahankan, dibaca lewat unnest')
+  // Versi pertama menyimpannya di tabel sementara dan membersihkannya dengan
+  // `delete from peta_pekerja;` — DELETE tanpa WHERE. Supabase memuat
+  // `safeupdate` untuk peran authenticator dan menolaknya, jadi seluruh
+  // penggabungan gagal di baris pembersihan yang bukan bagian dari
+  // pekerjaannya. PostgreSQL lokal tidak memuat ekstensi itu sama sekali.
+  assert(!/create\s+temp\s+table/i.test(kode), 'tidak ada tabel sementara yang perlu dibersihkan')
   assert(!/delete from field_reports/.test(kode), 'tidak ada laporan yang dihapus')
 }
 

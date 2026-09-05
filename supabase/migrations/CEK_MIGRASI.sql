@@ -213,6 +213,20 @@ with penanda(urut, migrasi, keterangan, ada) as (values
      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'field_worker_upah')),
 
+  -- Migrasi ini tidak membuat objek baru; ia MEMPERBAIKI DATA. Penandanya
+  -- karena itu keadaan datanya sendiri: tidak ada lagi buku laporan yang
+  -- tersimpan atas nama anggota tim, bukan atas nama perusahaannya.
+  (32, '(data) Buku laporan milik perusahaan', 'tidak ada buku yang tersimpan atas nama anggota tim',
+     coalesce((
+       select (xpath('/row/c/text()', query_to_xml(
+         $q$ select count(*) as c from public.field_logs l
+              where exists (select 1 from public.team_members t
+                             where t.member_user_id = l.user_id and t.status = 'aktif') $q$,
+         false, true, '')))[1]::text::int
+       where to_regclass('public.field_logs') is not null
+         and to_regclass('public.team_members') is not null
+     ), 0) = 0),
+
   (31, '(data) Buku laporan kembar', 'tiap proyek hanya punya satu buku laporan',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
@@ -255,6 +269,12 @@ order by ada, urut;
 --   terpecah dan rekap absensinya hanya membaca satu buku. Perbaikannya bukan
 --   menghapus salah satunya (itu menghanguskan isinya), melainkan panel
 --   "Gabungkan jadi 1 buku" di tab Laporan Lapangan.
+--
+-- • "(data) Buku laporan milik perusahaan" juga keadaan data. ❌ berarti ada
+--   buku laporan yang tersimpan atas nama pengawas/PM, bukan atas nama
+--   perusahaannya — dan buku seperti itu TIDAK terlihat oleh pemilik akun,
+--   karena is_team_member hanya berlaku satu arah. Perbaikannya:
+--   migration_buku_milik_perusahaan.sql.
 --
 -- • migration_stok_lapangan.sql hanya memastikan fungsinya ADA. Bila baris
 --   stok_gudang sudah ✅, versi yang berlaku adalah yang terbaru dan baris

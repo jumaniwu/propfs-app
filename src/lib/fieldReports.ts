@@ -13,6 +13,7 @@ import { tautanPublik } from './tautanPendek'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
 import type { BarisAbsensi } from './absensiPekerja'
 import { bacaDaftarPekerja, type PekerjaLapangan } from './pekerjaLapangan'
+import { dataOwnerId } from './teamApi'
 
 export interface FieldLog {
   id: string
@@ -187,10 +188,25 @@ async function rpc<T>(fn: string, body: unknown, publik = false): Promise<T> {
   }
   return await res.json() as T
 }
-function uid(): string {
-  const u = useAuthStore.getState().user
-  if (!u?.id) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
-  return u.id
+/**
+ * Pemilik data yang dipakai saat menyimpan — pemilik WORKSPACE, bukan akun
+ * yang sedang menekan tombol.
+ *
+ * Ini bukan detail. RLS pada field_logs berbunyi
+ * `auth.uid() = user_id or is_team_member(user_id)`, dan `is_team_member`
+ * hanya berlaku SATU ARAH: ia menjawab "apakah saya anggota tim si pemilik".
+ *
+ * Jadi ketika pengawas membuat buku laporan atas namanya sendiri, bukunya
+ * menjadi miliknya. Ia melihatnya; pemilik perusahaan TIDAK — karena pemilik
+ * bukan anggota tim pengawasnya. Laporan yang masuk lewat buku itu hilang dari
+ * pandangan orang yang paling membutuhkannya, tanpa satu pun pesan galat.
+ * Pola yang sama sudah dipakai di procurement.ts (milikWorkspace) justru
+ * karena alasan ini; berkas ini yang tertinggal.
+ */
+function pemilikData(): string {
+  const id = dataOwnerId() ?? useAuthStore.getState().user?.id
+  if (!id) throw new Error('Sesi login tidak ditemukan — muat ulang halaman lalu coba lagi.')
+  return id
 }
 
 const realApi: FieldApi = {
@@ -204,7 +220,7 @@ const realApi: FieldApi = {
   async createLog(projectName, driveWebhook) {
     const res = await restFetch('field_logs', {
       method: 'POST', headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ user_id: uid(), project_name: projectName, drive_webhook: driveWebhook }),
+      body: JSON.stringify({ user_id: pemilikData(), project_name: projectName, drive_webhook: driveWebhook }),
     })
     if (!res.ok) throw new Error(`Gagal membuat (HTTP ${res.status}).`)
     return (await res.json() as FieldLog[])[0]
@@ -244,8 +260,22 @@ const realApi: FieldApi = {
     return await res.json() as FieldReport[]
   },
   async deleteReport(id) {
-    const res = await restFetch(`field_reports?id=eq.${id}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error(`Gagal menghapus laporan (HTTP ${res.status}).`)
+    // Sama seperti deleteLog: DELETE yang tidak mengenai satu baris pun BUKAN
+    // galat bagi Postgres. Tanpa memeriksa barisnya, laporan yang ditolak RLS
+    // dilaporkan "terhapus", daftarnya dimuat ulang, dan barisnya masih di
+    // sana — yang terbaca sebagai "tombol hapusnya tidak berfungsi".
+    const res = await restFetch(`field_reports?id=eq.${id}&select=id`, {
+      method: 'DELETE', headers: { Prefer: 'return=representation' },
+    })
+    if (!res.ok) {
+      throw new Error(bacaGalatServer(res.status, await badanRespons(res), 'Laporan').pesan)
+    }
+    const baris = await res.json().catch(() => []) as unknown[]
+    if (!Array.isArray(baris) || baris.length === 0) {
+      throw new Error(
+        'Laporan tidak terhapus — mungkin sudah dihapus dari perangkat lain,'
+        + ' atau akun ini tidak berhak menghapusnya.')
+    }
   },
   async hitungLaporan() {
     const peta = new Map<string, number>()

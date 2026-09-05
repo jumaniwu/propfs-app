@@ -39,6 +39,8 @@ declare
   v_pkj int := 0;
   v_buku int := 0;
   v_sumber uuid[];
+  v_lama uuid[] := '{}';
+  v_baru uuid[] := '{}';
 begin
   -- Pemilik buku target. Seluruh pemeriksaan hak bersandar padanya.
   select user_id, project_name into v_owner, v_nama
@@ -81,24 +83,36 @@ begin
   --
   -- Jadi id-nya yang disatukan, bukan hanya bukunya.
   if to_regclass('public.field_workers') is not null then
-    create temp table if not exists peta_pekerja (old_id uuid, new_id uuid)
-      on commit drop;
-    delete from peta_pekerja;
-
-    -- Untuk tiap nama, satu id yang dipertahankan: yang sudah ada di buku
-    -- tujuan, kalau tidak ada baru yang paling tua di antara buku sumber.
-    insert into peta_pekerja (old_id, new_id)
+    -- Petanya disimpan sebagai DUA LARIK SEJAJAR, bukan tabel sementara.
+    --
+    -- Versi pertama memakai `create temp table` lalu `delete from peta;` untuk
+    -- membersihkannya. DELETE itu tidak punya WHERE, dan Supabase memuat
+    -- ekstensi `safeupdate` untuk peran `authenticator`: setiap DELETE atau
+    -- UPDATE tanpa WHERE ditolak dengan "DELETE requires a WHERE clause".
+    -- Seluruh penggabungan gagal di baris pembersihan yang bahkan bukan
+    -- bagian dari pekerjaannya.
+    --
+    -- PostgreSQL biasa tidak memuat ekstensi itu, jadi cacatnya tidak muncul
+    -- sama sekali saat diuji di luar Supabase. Larik menghapus persoalannya
+    -- di akarnya: tidak ada DDL, tidak ada tabel yang perlu dibersihkan.
     with semua as (
       select w.id, lower(btrim(w.nama)) as k, w.created_at,
              (w.log_id = p_target) as di_target
         from field_workers w
        where w.log_id = p_target or w.log_id = any(v_sumber)
     ), utama as (
+      -- Untuk tiap nama, satu id yang dipertahankan: yang sudah ada di buku
+      -- tujuan, kalau tidak ada baru yang paling tua di antara buku sumber.
       select distinct on (k) k, id
         from semua
        order by k, di_target desc, created_at asc, id asc
+    ), peta as (
+      select s.id as old_id, u.id as new_id
+        from semua s join utama u on u.k = s.k
+       where s.id <> u.id
     )
-    select s.id, u.id from semua s join utama u on u.k = s.k where s.id <> u.id;
+    select coalesce(array_agg(old_id), '{}'), coalesce(array_agg(new_id), '{}')
+      into v_lama, v_baru from peta;
 
     -- Pekerja yang id-nya dipertahankan dan masih berada di buku sumber
     -- dipindahkan. Yang tidak dipindahkan bukan dibuang begitu saja —
@@ -110,7 +124,7 @@ begin
     -- membatalkan SELURUH penggabungan di tengah jalan.
     update field_workers set log_id = p_target
      where log_id = any(v_sumber)
-       and id not in (select old_id from peta_pekerja);
+       and not (id = any(v_lama));
     get diagnostics v_pkj = row_count;
   end if;
 
@@ -133,8 +147,7 @@ begin
   -- Nama di dalam absensi sengaja TIDAK diubah. Ia salinan apa adanya dari
   -- hari itu, dan rekap yang berubah karena data induknya disunting adalah
   -- rekap yang tidak bisa dipertanggungjawabkan.
-  if to_regclass('public.field_workers') is not null
-     and exists (select 1 from peta_pekerja) then
+  if array_length(v_lama, 1) is not null then
     update field_reports r set absensi = (
       select jsonb_agg(
                case when m.new_id is not null
@@ -142,13 +155,17 @@ begin
                  else e.a end
                order by e.ord)
         from jsonb_array_elements(r.absensi) with ordinality e(a, ord)
-        left join peta_pekerja m on m.old_id::text = (e.a->>'pekerja_id')
+        left join unnest(v_lama, v_baru) as m(old_id, new_id)
+               on m.old_id::text = (e.a->>'pekerja_id')
     )
     where r.log_id = p_target
       and jsonb_typeof(r.absensi) = 'array'
       and exists (
-        select 1 from jsonb_array_elements(r.absensi) x
-         where (x->>'pekerja_id') in (select old_id::text from peta_pekerja)
+        -- Dibandingkan sebagai TEKS, bukan di-cast ke uuid. Absensi lama
+        -- bisa membawa pekerja_id kosong atau bukan uuid sama sekali, dan
+        -- cast yang gagal membatalkan seluruh penggabungan.
+        select 1 from jsonb_array_elements(r.absensi) x, unnest(v_lama) l
+         where l::text = (x->>'pekerja_id')
       );
   end if;
 

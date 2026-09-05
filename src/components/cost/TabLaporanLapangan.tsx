@@ -181,6 +181,21 @@ export default function TabLaporanLapangan() {
     } finally { setSedangGabung('') }
   }
 
+  async function hapusLaporan(id: string) {
+    if (!openLog) return
+    if (!window.confirm('Hapus laporan harian ini? Absensi di dalamnya ikut terhapus.')) return
+    try {
+      await fieldApi().deleteReport(id)
+      openReports(openLog)
+    } catch (e) {
+      toast({
+        title: 'Gagal menghapus laporan',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }
+
   async function hapusBuku(log: FieldLog) {
     const n = jumlah.get(log.id)
     const isi = n === undefined
@@ -445,7 +460,13 @@ export default function TabLaporanLapangan() {
                 <div key={r.id} className="rounded-xl border border-border p-3 space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-bold text-navy">📅 {r.tanggal} · 👷 {r.pelapor}</p>
-                    <button onClick={async () => { await fieldApi().deleteReport(r.id); openReports(openLog) }}
+                    {/* Kegagalannya DISEBUTKAN.
+                        Dulu tidak ada try/catch di sini: penolakan menjadi
+                        unhandled rejection yang hanya muncul di konsol, daftar
+                        dimuat ulang, dan barisnya masih di sana. Yang dilihat
+                        pemakainya adalah tombol hapus yang tidak berbuat
+                        apa-apa dan tidak mengatakan apa pun. */}
+                    <button onClick={() => hapusLaporan(r.id)}
                       className="text-muted-foreground hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                   <ChipAbsensi absensi={r.absensi} />
