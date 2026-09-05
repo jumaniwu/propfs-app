@@ -170,8 +170,14 @@ with penanda(urut, migrasi, keterangan, ada) as (values
               where table_schema = 'public' and table_name = 'field_reports'
                 and column_name = 'absensi')),
 
-  (33, 'migration_pekerja_lapangan.sql', 'tabel pekerja_lapangan (daftar tukang & upah)',
-     to_regclass('public.pekerja_lapangan') is not null),
+  -- Nama tabelnya field_workers, BUKAN pekerja_lapangan.
+  -- Baris ini dulu memeriksa 'public.pekerja_lapangan' — tabel yang tidak
+  -- pernah dibuat oleh migrasi mana pun. Hasilnya selalu ❌ BELUM, walau
+  -- migrasinya sudah dijalankan berkali-kali, dan yang membacanya dikirim
+  -- mengerjakan sesuatu yang sudah selesai. Alat pemeriksa yang berbohong
+  -- lebih buruk daripada tidak ada alat pemeriksa.
+  (33, 'migration_pekerja_lapangan.sql', 'tabel field_workers (daftar tukang & upah)',
+     to_regclass('public.field_workers') is not null),
 
   (34, 'migration_po_revisi_pengiriman.sql', 'kolom purchase_orders.kirim_alamat',
      exists (select 1 from information_schema.columns
@@ -183,8 +189,9 @@ with penanda(urut, migrasi, keterangan, ada) as (values
               where n.nspname = 'public' and p.proname = 'po_tandai_terkirim'
                 and p.prosrc like '%penuhi%')),
 
-  (36, 'migration_gambar_kerja.sql', 'tabel gambar_kerja (Gambar Kerja & Denah)',
-     to_regclass('public.gambar_kerja') is not null),
+  -- Sama: nama tabelnya project_drawings, bukan gambar_kerja.
+  (36, 'migration_gambar_kerja.sql', 'tabel project_drawings (Gambar Kerja & Denah)',
+     to_regclass('public.project_drawings') is not null),
 
   (37, 'migration_aset_pinjam.sql', 'tabel aset_pinjam (serah-terima alat)',
      to_regclass('public.aset_pinjam') is not null),
@@ -202,9 +209,25 @@ with penanda(urut, migrasi, keterangan, ada) as (values
               where n.nspname = 'public' and p.proname = 'po_get_by_token'
                 and pg_get_function_result(p.oid) like '%kirim_alamat%')),
 
-  (40, 'migration_gabung_buku.sql', 'field_log_gabung menyatukan buku laporan kembar',
+  -- ADA saja tidak cukup di sini, dan itu pelajaran yang mahal.
+  --
+  -- Versi pertama fungsi ini memakai tabel sementara dan membersihkannya
+  -- dengan `delete from peta_pekerja;` — DELETE tanpa WHERE. Supabase memuat
+  -- ekstensi `safeupdate` yang menolaknya, jadi setiap penggabungan gagal
+  -- dengan "DELETE requires a WHERE clause". Fungsinya ADA, dan baris ini
+  -- dulu akan berkata ✅ SUDAH untuk versi yang tidak pernah bisa berhasil.
+  --
+  -- Jadi yang diperiksa adalah ISI-nya: versi yang benar tidak menyebut
+  -- peta_pekerja sama sekali.
+  (40, 'migration_gabung_buku.sql', 'field_log_gabung versi yang bisa berjalan di Supabase',
      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname = 'public' and p.proname = 'field_log_gabung')),
+              where n.nspname = 'public' and p.proname = 'field_log_gabung'
+                and p.prosrc not like '%peta_pekerja%'
+                and p.prosrc like '%unnest(v_lama%')),
+
+  (42, 'migration_buku_milik_perusahaan.sql', 'buku baru otomatis jadi milik perusahaan',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'baris_milik_perusahaan')),
 
   -- Buku laporan kembar itu keadaan DATA, bukan migrasi. Ia bisa muncul lagi
   -- kapan saja, dan itu bukan tanda migrasinya hilang — itu tanda ada proyek
@@ -248,7 +271,13 @@ with penanda(urut, migrasi, keterangan, ada) as (values
 )
 
 select
-  case when ada then '✅ SUDAH' else '❌ BELUM' end as status,
+  -- Baris "(data)" BUKAN migrasi yang belum dijalankan — ia keadaan data yang
+  -- perlu dibereskan lewat aplikasi. Menampilkannya sebagai "❌ BELUM" di
+  -- antara daftar migrasi membuat orang menjalankan ulang SQL berkali-kali
+  -- untuk sesuatu yang tidak akan pernah berubah karenanya.
+  case when ada then '✅ SUDAH'
+       when migrasi like '(data)%' then '⚠️ BERESKAN DI APLIKASI'
+       else '❌ BELUM' end as status,
   migrasi,
   keterangan as penanda_yang_diperiksa
 from penanda
