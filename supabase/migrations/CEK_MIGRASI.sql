@@ -202,6 +202,24 @@ with penanda(urut, migrasi, keterangan, ada) as (values
               where n.nspname = 'public' and p.proname = 'po_get_by_token'
                 and pg_get_function_result(p.oid) like '%kirim_alamat%')),
 
+  (40, 'migration_gabung_buku.sql', 'field_log_gabung menyatukan buku laporan kembar',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'field_log_gabung')),
+
+  -- Buku laporan kembar itu keadaan DATA, bukan migrasi. Ia bisa muncul lagi
+  -- kapan saja, dan itu bukan tanda migrasinya hilang — itu tanda ada proyek
+  -- yang perlu digabungkan lewat panel di tab Laporan Lapangan.
+  (31, '(data) Buku laporan kembar', 'tiap proyek hanya punya satu buku laporan',
+     coalesce((
+       select (xpath('/row/c/text()', query_to_xml(
+         $q$ select count(*) as c from (
+               select user_id, lower(btrim(project_name)) as nama
+                 from public.field_logs
+                where coalesce(btrim(project_name), '') <> ''
+                group by 1, 2 having count(*) > 1) x $q$, false, true, '')))[1]::text::int
+       where to_regclass('public.field_logs') is not null
+     ), 0) = 0),
+
   (30, '(data) PO tanpa nama proyek', 'tidak ada PO yang kehilangan nama proyek',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
@@ -227,6 +245,12 @@ order by ada, urut;
 --   "(data) PO tanpa nama proyek". Baris data itu bisa kembali BELUM kapan
 --   saja bila ada PO baru dibuat tanpa proyek aktif — dan itu memang benar,
 --   bukan tanda migrasinya hilang.
+--
+-- • "(data) Buku laporan kembar" juga keadaan data, bukan migrasi. ❌ di
+--   sana berarti ada proyek yang punya lebih dari satu buku laporan — isinya
+--   terpecah dan rekap absensinya hanya membaca satu buku. Perbaikannya bukan
+--   menghapus salah satunya (itu menghanguskan isinya), melainkan panel
+--   "Gabungkan jadi 1 buku" di tab Laporan Lapangan.
 --
 -- • migration_stok_lapangan.sql hanya memastikan fungsinya ADA. Bila baris
 --   stok_gudang sudah ✅, versi yang berlaku adalah yang terbaru dan baris

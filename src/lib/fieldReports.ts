@@ -57,6 +57,13 @@ export interface DaftarPekerjaInput {
   foto?: string
 }
 
+/** Yang benar-benar berpindah — dilaporkan apa adanya, bukan "berhasil". */
+export interface GabungHasil {
+  laporan_pindah: number
+  pekerja_pindah: number
+  buku_dihapus: number
+}
+
 export interface FieldApi {
   listLogs(): Promise<FieldLog[]>
   createLog(projectName: string, driveWebhook: string): Promise<FieldLog>
@@ -70,6 +77,23 @@ export interface FieldApi {
    */
   listReportsTerbaru(batas?: number): Promise<FieldReport[]>
   deleteReport(id: string): Promise<void>
+  /**
+   * Gabungkan buku laporan yang kembar ke satu buku.
+   *
+   * Dikerjakan di server dalam satu transaksi — penggabungan yang gagal
+   * separuh jalan meninggalkan data terpecah dengan cara baru, lebih buruk
+   * daripada sebelum dimulai.
+   */
+  gabungLog(targetId: string, sumberId: string[]): Promise<GabungHasil>
+  /**
+   * Berapa laporan di tiap buku. Dipakai untuk memilih buku mana yang
+   * dipertahankan saat menggabungkan yang kembar, dan untuk memberi tahu
+   * berapa banyak yang ikut hangus sebelum sebuah buku dihapus.
+   *
+   * Kegagalannya SENGAJA ditelan menjadi peta kosong: ini keterangan
+   * tambahan, dan daftar buku harus tetap tampil tanpanya.
+   */
+  hitungLaporan(): Promise<Map<string, number>>
   // publik (token)
   getLogByReportToken(token: string): Promise<FieldHeader | null>
   submitReport(token: string, r: Omit<FieldReport, 'id' | 'log_id' | 'created_at'>): Promise<boolean>
@@ -181,8 +205,23 @@ const realApi: FieldApi = {
     if (!res.ok) throw new Error(`Gagal memperbarui (HTTP ${res.status}).`)
   },
   async deleteLog(id) {
-    const res = await restFetch(`field_logs?id=eq.${id}`, { method: 'DELETE' })
-    if (!res.ok) throw new Error(`Gagal menghapus (HTTP ${res.status}).`)
+    // `select=id` + `return=representation` bukan hiasan: DELETE yang tidak
+    // mengenai satu baris pun BUKAN galat bagi Postgres. Tanpa memeriksa
+    // barisnya, buku yang gagal dihapus karena RLS tetap dilaporkan
+    // "berhasil", lalu muncul lagi setelah muat ulang — persis keluhan
+    // "tombol hapus tidak bisa" yang tidak pernah menampilkan pesan apa pun.
+    const res = await restFetch(`field_logs?id=eq.${id}&select=id`, {
+      method: 'DELETE', headers: { Prefer: 'return=representation' },
+    })
+    if (!res.ok) {
+      throw new Error(bacaGalatServer(res.status, await badanRespons(res), 'Buku laporan').pesan)
+    }
+    const baris = await res.json().catch(() => []) as unknown[]
+    if (!Array.isArray(baris) || baris.length === 0) {
+      throw new Error(
+        'Buku laporan tidak terhapus — mungkin sudah dihapus dari perangkat lain,'
+        + ' atau akun ini tidak berhak menghapusnya. Muat ulang halaman untuk melihat daftar terbaru.')
+    }
   },
   async listReportsTerbaru(batas = 30) {
     const res = await restFetch(
@@ -198,6 +237,38 @@ const realApi: FieldApi = {
   async deleteReport(id) {
     const res = await restFetch(`field_reports?id=eq.${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Gagal menghapus laporan (HTTP ${res.status}).`)
+  },
+  async hitungLaporan() {
+    const peta = new Map<string, number>()
+    try {
+      const res = await restFetch('field_logs?select=id,field_reports(count)')
+      if (!res.ok) return peta
+      const baris = await res.json() as { id?: string; field_reports?: { count?: number }[] }[]
+      for (const b of baris ?? []) {
+        if (!b?.id) continue
+        peta.set(b.id, Number(b.field_reports?.[0]?.count) || 0)
+      }
+    } catch { /* keterangan tambahan; daftarnya tetap tampil tanpa ini */ }
+    return peta
+  },
+  async gabungLog(targetId, sumberId) {
+    const baris = await rpc<GabungHasil[] | GabungHasil>('field_log_gabung', {
+      p_target: targetId, p_sumber: sumberId,
+    })
+    const h = (Array.isArray(baris) ? baris[0] : baris) ?? null
+    // Nol buku terhapus berarti TIDAK ADA yang digabungkan — bukan sukses
+    // diam-diam. Itu terjadi kalau bukunya sudah tergabung lebih dulu di
+    // perangkat lain, atau id-nya sudah tidak ada.
+    if (!h || Number(h.buku_dihapus) < 1) {
+      throw new Error(
+        'Tidak ada buku yang digabungkan — mungkin sudah digabungkan dari perangkat lain.'
+        + ' Muat ulang halaman untuk melihat daftar yang terbaru.')
+    }
+    return {
+      laporan_pindah: Number(h.laporan_pindah) || 0,
+      pekerja_pindah: Number(h.pekerja_pindah) || 0,
+      buku_dihapus: Number(h.buku_dihapus) || 0,
+    }
   },
   async getLogByReportToken(token) {
     const data = await rpc<FieldHeader[]>('field_log_by_report_token', { p_token: token }, true)
