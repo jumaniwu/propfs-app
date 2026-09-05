@@ -27,6 +27,8 @@ import {
   peringatanCetakUpah, type PekerjaLapangan, type UpahPekerja,
 } from '@/lib/pekerjaLapangan'
 import { unduhUpahPdf } from '@/lib/upahPdf'
+import { fieldApi } from '@/lib/fieldReports'
+import { ketikRupiah, selesaiKetik, tampilRupiah } from '@/lib/isianRupiah'
 import { identitasLaporan, getBrandingCache } from '@/lib/branding'
 import { useToast } from '@/hooks/use-toast'
 import {
@@ -35,11 +37,20 @@ import {
 
 export type Lingkup = 'bulanan' | 'mingguan' | 'upahBulan'
 
-export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
+export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek, token, onUbahUpah }: {
   laporan: SumberAbsensi[]
   /** Daftar pekerja terdaftar — tarif hariannya ada di sini, bukan di absensi. */
   pekerja?: PekerjaLapangan[]
   namaProyek: string
+  /**
+   * Token buku laporan. Ada = upah bisa diperbaiki langsung di sini.
+   *
+   * Tanpanya panel ini tetap utuh, hanya tidak bisa disunting — dipakai juga
+   * di layar yang tidak berhak mengubah angka upah.
+   */
+  token?: string
+  /** Dipanggil setelah upah berubah, supaya rekapnya dihitung ulang. */
+  onUbahUpah?: () => void
 }) {
   // Dua pertanyaan yang berbeda, jadi dua tampilan:
   //   BULANAN  — siapa masuk berapa hari (HOK). Untuk mengawasi.
@@ -124,7 +135,8 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek }: {
       <div className="space-y-3">
         <PilihLingkup lingkup={lingkup} setLingkup={setLingkup} />
         <RekapUpah periode={lingkup === 'mingguan' ? 'minggu' : 'bulan'}
-          laporan={berabsensi} pekerja={pekerja ?? []} namaProyek={namaProyek} />
+          laporan={berabsensi} pekerja={pekerja ?? []} namaProyek={namaProyek}
+          token={token} onUbahUpah={onUbahUpah} />
       </div>
     )
   }
@@ -262,12 +274,14 @@ function PilihLingkup({ lingkup, setLingkup }: {
  * dan tidak dibayar sepeser pun"; kosong berkata "orang ini tidak dibayar
  * dengan cara ini". Yang pertama akan ditanyakan orang di akhir minggu.
  */
-function RekapUpah({ periode, laporan, pekerja, namaProyek }: {
+function RekapUpah({ periode, laporan, pekerja, namaProyek, token, onUbahUpah }: {
   /** 'minggu' dipakai MEMBAYAR; 'bulan' dipakai MEMPERTANGGUNGJAWABKAN. */
   periode: 'minggu' | 'bulan'
   laporan: SumberAbsensi[]
   pekerja: PekerjaLapangan[]
   namaProyek: string
+  token?: string
+  onUbahUpah?: () => void
 }) {
   const { toast } = useToast()
   const [cetak, setCetak] = useState(false)
@@ -417,8 +431,11 @@ function RekapUpah({ periode, laporan, pekerja, namaProyek }: {
       {belumAdaTarif.length > 0 && (
         <p data-upah-kosong className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5 leading-relaxed">
           <b>{belumAdaTarif.map(r => r.nama).join(', ')}</b> bekerja {periode === 'minggu' ? 'minggu' : 'bulan'} ini tetapi upah
-          hariannya belum diisi, jadi terhitung nol. Isi di <b>Link Pekerja → tab Pekerja</b>
-          supaya tidak ada yang kurang dibayar.
+          hariannya belum diisi, jadi terhitung nol.{' '}
+          {token
+            ? <>Ketuk tulisan <b>"upah belum diisi"</b> di baris orangnya untuk mengisi angkanya
+              di sini, supaya tidak ada yang kurang dibayar.</>
+            : <>Isi di <b>Link Pekerja → tab Pekerja</b> supaya tidak ada yang kurang dibayar.</>}
         </p>
       )}
 
@@ -435,14 +452,10 @@ function RekapUpah({ periode, laporan, pekerja, namaProyek }: {
             <tr key={r.kunci} data-upah={r.kunci} className="border-t border-border">
               <td className="py-2 pr-1">
                 <p className="font-semibold text-navy truncate">{r.nama}</p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {r.jenis === 'borongan'
-                    ? 'Borongan'
-                    : r.upahHarian > 0
-                      ? `Rp ${r.upahHarian.toLocaleString('id-ID')}/hari`
-                      : 'upah belum diisi'}
-                  {r.jamLembur > 0 && ` · ${bulat(r.jamLembur)} j lembur`}
-                </p>
+                <div className="text-[10px] text-muted-foreground">
+                  <SelUpah baris={r} token={token} onSelesai={onUbahUpah} />
+                  {r.jamLembur > 0 && <span> · {bulat(r.jamLembur)} j lembur</span>}
+                </div>
               </td>
               <td className="text-right py-2 px-1 font-black text-navy tabular-nums">{bulat(r.hok)}</td>
               <td className="text-right py-2 pl-1.5 tabular-nums">
@@ -461,5 +474,109 @@ function RekapUpah({ periode, laporan, pekerja, namaProyek }: {
         Jam lembur tidak ikut dijumlahkan ke upah; tarifnya berbeda di tiap perusahaan.
       </p>
     </div>
+  )
+}
+
+/**
+ * Upah harian yang bisa diperbaiki di tempat.
+ *
+ * Pekerja didaftarkan lebih dulu — sering oleh mandor di lapangan — dan upah
+ * hariannya belum tentu diketahui saat itu; angkanya disepakati di kantor,
+ * kadang beberapa hari kemudian. Panel ini sudah menunjukkan siapa yang
+ * upahnya kosong, tetapi satu-satunya cara memperbaikinya dulu adalah membuka
+ * link pekerja di tab lain lalu MENDAFTARKAN ULANG orangnya.
+ *
+ * Pendaftaran ulang itu berkunci pada NAMA. Salah ketik satu huruf melahirkan
+ * orang kedua, sementara absensi yang sudah tercatat tetap menempel pada yang
+ * lama — satu orang terpecah menjadi dua di rekap upah. Kolom ini mengubahnya
+ * berdasarkan ID: namanya tidak disentuh sama sekali.
+ */
+function SelUpah({ baris, token, onSelesai }: {
+  baris: UpahPekerja
+  token?: string
+  onSelesai?: () => void
+}) {
+  const { toast } = useToast()
+  const [sunting, setSunting] = useState(false)
+  const [tampil, setTampil] = useState('')
+  const [jenis, setJenis] = useState<'harian' | 'borongan'>('harian')
+  const [simpan, setSimpan] = useState(false)
+
+  const keterangan = baris.jenis === 'borongan'
+    ? 'Borongan'
+    : baris.upahHarian > 0
+      ? `Rp ${baris.upahHarian.toLocaleString('id-ID')}/hari`
+      : 'upah belum diisi'
+
+  // Nama yang hanya ada di absensi lama tidak punya baris pekerja untuk
+  // diubah. Disebutkan apa adanya — tombol yang menolak diam-diam lebih buruk
+  // daripada tidak ada tombol.
+  const bisa = !!token && !!baris.pekerja_id
+
+  function mulai() {
+    setJenis(baris.jenis === 'borongan' ? 'borongan' : 'harian')
+    setTampil(tampilRupiah(baris.upahHarian))
+    setSunting(true)
+  }
+
+  async function kirim() {
+    if (!token) return
+    const n = selesaiKetik(tampil).nilai
+    setSimpan(true)
+    try {
+      await fieldApi().ubahUpah(token, baris.pekerja_id, jenis, n)
+      toast({
+        title: 'Upah diperbarui',
+        description: jenis === 'borongan'
+          ? `${baris.nama} ditandai borongan — upahnya tidak dihitung per hari.`
+          : `${baris.nama}: Rp ${n.toLocaleString('id-ID')}/hari.`,
+      })
+      setSunting(false)
+      onSelesai?.()
+    } catch (e) {
+      toast({
+        title: 'Gagal menyimpan upah',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setSimpan(false) }
+  }
+
+  if (!sunting) {
+    return (
+      <span className="text-[10px] text-muted-foreground truncate">
+        {bisa ? (
+          <button type="button" data-sunting-upah={baris.pekerja_id} onClick={mulai}
+            className="underline decoration-dotted underline-offset-2 hover:text-navy">
+            {keterangan}
+          </button>
+        ) : keterangan}
+        {!bisa && !!token && baris.upahHarian <= 0 && baris.jenis !== 'borongan' && (
+          <span className="text-amber-700"> · belum terdaftar</span>
+        )}
+      </span>
+    )
+  }
+
+  return (
+    <span className="flex items-center gap-1 flex-wrap mt-1">
+      <select value={jenis} onChange={e => setJenis(e.target.value === 'borongan' ? 'borongan' : 'harian')}
+        className="h-7 rounded-lg border border-border text-[10px] px-1 bg-white">
+        <option value="harian">Harian</option>
+        <option value="borongan">Borongan</option>
+      </select>
+      {jenis === 'harian' && (
+        <input inputMode="numeric" value={tampil} autoFocus
+          placeholder="150.000"
+          onChange={e => setTampil(ketikRupiah(e.target.value, { max: 100_000_000 }).tampil)}
+          onBlur={() => setTampil(selesaiKetik(tampil).tampil)}
+          className="h-7 w-24 rounded-lg border border-border text-[11px] px-2 tabular-nums" />
+      )}
+      <Button size="sm" className="h-7 text-[10px] px-2 bg-navy" disabled={simpan} onClick={kirim}>
+        {simpan ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Simpan'}
+      </Button>
+      <button type="button" onClick={() => setSunting(false)}
+        className="text-[10px] text-muted-foreground hover:text-navy px-1">Batal</button>
+    </span>
   )
 }

@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import {
   HardHat, Plus, RefreshCw, Loader2, Link2, Send, CalendarDays, Trash2,
-  Image as ImageIcon, ExternalLink, Users, ListChecks,
+  Image as ImageIcon, ExternalLink, Users, ListChecks, Merge, AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -24,6 +24,7 @@ import {
 } from '@/lib/fieldReports'
 import type { PekerjaLapangan } from '@/lib/pekerjaLapangan'
 import { kelompokkanBuku, bolehBuatBuku, pesanBelumPunyaBuku } from '@/lib/bukuLaporan'
+import { cariKembar, usulanTarget, rencanaGabung, kalimatGabung } from '@/lib/gabungBuku'
 import ChipAbsensi from './ChipAbsensi'
 import PanelRekapAbsensi from './PanelRekapAbsensi'
 import PhotoLightbox from '@/components/PhotoLightbox'
@@ -43,6 +44,13 @@ export default function TabLaporanLapangan() {
   // di absensinya. Kegagalannya ditelan — rekap HOK tetap berguna tanpa upah.
   const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
+  // Jumlah laporan per buku. Dipakai memilih buku mana yang dipertahankan
+  // saat menggabungkan yang kembar, dan untuk mengatakan berapa yang ikut
+  // hangus sebelum sebuah buku dihapus. Kosong bila servernya belum bisa
+  // menghitungnya — daftarnya tetap tampil.
+  const [jumlah, setJumlah] = useState<Map<string, number>>(new Map())
+  const [pilihTarget, setPilihTarget] = useState<Record<string, string>>({})
+  const [sedangGabung, setSedangGabung] = useState('')
 
   const load = () => {
     setLoading(true); setError('')
@@ -50,6 +58,9 @@ export default function TabLaporanLapangan() {
       .then(setLogs)
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
+    // Terpisah dan kegagalannya ditelan: hitungan ini keterangan tambahan,
+    // dan daftar buku tidak boleh ikut gagal tampil karenanya.
+    fieldApi().hitungLaporan().then(setJumlah).catch(() => setJumlah(new Map()))
   }
   useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -121,6 +132,80 @@ export default function TabLaporanLapangan() {
   }
 
 
+  /**
+   * Buku kembar: lebih dari satu buku untuk nama proyek yang sama.
+   *
+   * Proyek Pak Soni berakhir dengan tiga. Tombol "Buat Buku Laporan" dulu
+   * tidak memeriksa apa pun, dan penjagaannya baru ditambahkan belakangan di
+   * layar ini saja — dua orang di dua perangkat tetap bisa melahirkan dua
+   * buku, dan yang sudah terlanjur kembar tidak ikut terbereskan.
+   *
+   * Akibatnya tidak pernah tampak sebagai galat. Tiap buku punya link
+   * pekerjanya sendiri; mandor yang menerima link berbeda mengisi ke buku
+   * berbeda. Laporannya utuh, hanya terpecah — dan rekap absensi ikut
+   * terbelah, sehingga upah dihitung dari separuh datanya.
+   */
+  const kembar = cariKembar(logs.map(l => ({ ...l, jumlahLaporan: jumlah.get(l.id) })))
+
+  async function handleGabung(nama: string) {
+    const kel = kembar.find(k => k.nama === nama)
+    if (!kel) return
+    const target = pilihTarget[nama] || usulanTarget(kel)
+    const r = rencanaGabung(kel, target)
+    if (!r.boleh) {
+      toast({ title: 'Belum bisa digabungkan', description: r.alasan, variant: 'destructive' })
+      return
+    }
+    // Konfirmasinya menyebut yang HILANG, bukan hanya yang didapat: link
+    // pekerja buku yang digabungkan berhenti berlaku, dan mandor yang masih
+    // memegangnya tidak akan diberi tahu oleh siapa pun kecuali orang yang
+    // menekan tombol ini. Sesudahnya tidak ada tombol urung.
+    if (!window.confirm(`${kalimatGabung(r, nama)}\n\nLanjutkan?`)) return
+
+    setSedangGabung(nama)
+    try {
+      const h = await fieldApi().gabungLog(r.targetId, r.sumberId)
+      toast({
+        title: '✅ Buku laporan digabungkan',
+        description: `${h.laporan_pindah} laporan dipindahkan, ${h.buku_dihapus} buku kembar ditutup.`
+          + ' Bagikan ulang link pekerja buku yang tersisa kepada mandor.',
+      })
+      load()
+      setOpenLog(null)
+    } catch (e) {
+      toast({
+        title: 'Gagal menggabungkan',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setSedangGabung('') }
+  }
+
+  async function hapusBuku(log: FieldLog) {
+    const n = jumlah.get(log.id)
+    const isi = n === undefined
+      ? 'Seluruh laporan harian, absensi, dan catatan material di dalamnya ikut terhapus'
+      : n > 0
+        ? `${n} laporan harian beserta absensi dan catatan material di dalamnya ikut terhapus`
+        : 'Buku ini belum berisi laporan'
+    if (!window.confirm(
+      `Hapus buku laporan "${log.project_name || 'Proyek'}"?\n\n${isi}, dan tidak bisa dikembalikan.`
+      + '\n\nKalau buku ini kembar dengan buku lain, GABUNGKAN saja — jangan dihapus.')) return
+    try {
+      await fieldApi().deleteLog(log.id)
+      toast({ title: 'Buku laporan dihapus' })
+      load()
+    } catch (e) {
+      // Kegagalannya disebutkan. Sebelumnya kegagalan hapus tidak menampilkan
+      // apa pun, dan bukunya muncul lagi setelah muat ulang tanpa penjelasan.
+      toast({
+        title: 'Gagal menghapus',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    }
+  }
+
   /** Satu kartu buku laporan. `lain` = milik proyek selain yang dibuka. */
   function kartuBuku(log: FieldLog, lain: boolean) {
     return (
@@ -128,6 +213,16 @@ export default function TabLaporanLapangan() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-bold text-navy text-sm truncate">🏗️ {log.project_name || 'Proyek'}</p>
+                  {/* Tanggal & jumlah laporan.
+                      Tiga buku dengan nama proyek yang sama terlihat persis
+                      sama di daftar ini, jadi tidak ada cara memastikan buku
+                      mana yang sedang dipilih di panel penggabungan — atau
+                      mana yang hendak dihapus. Dua keterangan ini yang
+                      membedakannya. */}
+                  <p className="text-[10px] text-muted-foreground">
+                    Dibuat {log.created_at ? String(log.created_at).slice(0, 10) : '—'}
+                    {jumlah.has(log.id) ? ` · ${jumlah.get(log.id)} laporan` : ''}
+                  </p>
                   {/* Buku milik proyek lain tetap ditampilkan dan tetap bisa
                       dipakai; yang ditambahkan hanya penandanya, supaya link
                       pekerjanya tidak salah dibagikan. Laporan yang dikirim
@@ -136,7 +231,14 @@ export default function TabLaporanLapangan() {
                     <p className="text-[10px] font-bold text-amber-700">Proyek lain</p>
                   )}
                 </div>
-                <button onClick={async () => { if (window.confirm('Hapus buku laporan ini?')) { await fieldApi().deleteLog(log.id); load() } }}
+                {/* Peringatan yang dulu tidak ada.
+                    "Hapus buku laporan ini?" terdengar seperti membuang
+                    wadah kosong. Sebenarnya keempat tabel yang menempel
+                    padanya `on delete cascade`: laporan harian, absensi,
+                    pemakaian dan permintaan material ikut hangus, tanpa
+                    tembusan dan tanpa bisa dikembalikan. Buku yang kembar
+                    sebaiknya DIGABUNGKAN, bukan dihapus — panel di atas. */}
+                <button onClick={() => hapusBuku(log)}
                   className="text-muted-foreground hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
@@ -235,6 +337,67 @@ export default function TabLaporanLapangan() {
           </p>
         )}
 
+        {/* Buku kembar — ditawarkan digabungkan, bukan dihapus.
+            Menghapus salah satunya tidak merapikan apa pun: keempat tabel
+            yang menempel pada sebuah buku `on delete cascade`, jadi
+            menghapusnya menghanguskan laporan, absensi, dan catatan material
+            di dalamnya. Itu pula sebab paling mungkin buku lama yang
+            "hilang". */}
+        {kembar.map(k => {
+          const target = pilihTarget[k.nama] || usulanTarget(k)
+          const r = rencanaGabung(k, target)
+          return (
+            <div key={k.nama} className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-amber-900">
+                    Proyek "{k.nama}" punya {k.buku.length} buku laporan
+                  </p>
+                  <p className="text-[11px] text-amber-900/80 leading-relaxed mt-0.5">
+                    Isinya terpisah: tiap buku punya link pekerja sendiri, jadi mandor yang
+                    memegang link berbeda mengisi ke buku berbeda — dan rekap absensi hanya
+                    membaca satu buku. Gabungkan supaya laporan dan upahnya terbaca utuh.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-amber-900">Buku mana yang dipertahankan?</p>
+                {k.buku.map(b => (
+                  <label key={b.id} className="flex items-center gap-2 text-[11px] text-amber-900 cursor-pointer">
+                    <input type="radio" name={`gabung-${k.nama}`} checked={target === b.id}
+                      onChange={() => setPilihTarget(prev => ({ ...prev, [k.nama]: b.id }))} />
+                    <span className="truncate">
+                      Dibuat {b.created_at ? String(b.created_at).slice(0, 10) : '—'}
+                      {' · '}
+                      {/* Jumlahnya disebutkan supaya pilihannya punya dasar.
+                          Bila server belum bisa menghitungnya, yang tampil
+                          adalah tanda tanya — bukan angka nol yang keliru
+                          terbaca sebagai "buku ini kosong". */}
+                      {jumlah.has(b.id) ? `${jumlah.get(b.id)} laporan` : 'jumlah laporan belum terbaca'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <Button size="sm" className="h-8 text-[11px] gap-1.5 bg-amber-700 hover:bg-amber-800 font-bold"
+                disabled={!r.boleh || sedangGabung === k.nama}
+                onClick={() => handleGabung(k.nama)}>
+                {sedangGabung === k.nama
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Merge className="w-3.5 h-3.5" />}
+                Gabungkan jadi 1 buku
+              </Button>
+              <p className="text-[10px] text-amber-900/70 leading-relaxed">
+                Tidak ada laporan yang dihapus — semuanya dipindahkan ke buku yang dipertahankan.
+                Yang berhenti berlaku adalah link pekerja buku lainnya, jadi bagikan ulang link
+                buku yang tersisa kepada mandor.
+              </p>
+            </div>
+          )
+        })}
+
         {/* SATU daftar untuk seluruh proyek.
             Sempat dipisah menjadi "buku proyek ini" dan "buku proyek lain"
             supaya link tidak salah dibagikan. Itu terlalu jauh: buku laporan
@@ -272,7 +435,8 @@ export default function TabLaporanLapangan() {
           {reportsLoading ? (
             <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
           ) : tampilan === 'absensi' ? (
-            <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name} />
+            <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name}
+              token={openLog.report_token} onUbahUpah={() => openReports(openLog)} />
           ) : reports.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
           ) : (
