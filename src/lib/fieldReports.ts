@@ -106,6 +106,15 @@ export interface FieldApi {
   daftarPekerja(token: string, p: DaftarPekerjaInput): Promise<string>
   /** Berhenti menawarkan pekerja di absen harian; absensinya yang lalu tetap. */
   nonaktifkanPekerja(token: string, id: string): Promise<boolean>
+  /**
+   * Perbaiki upah pekerja yang SUDAH terdaftar, berdasarkan id.
+   *
+   * Berdasarkan ID, bukan nama, dan itu yang penting. Mendaftarkan ulang
+   * orang yang sama untuk mengubah upahnya berkunci pada namanya: salah
+   * ketik satu huruf melahirkan orang KEDUA, sementara absensi yang sudah
+   * tercatat tetap menempel pada yang lama.
+   */
+  ubahUpah(token: string, id: string, jenis: 'harian' | 'borongan', upah: number): Promise<void>
 }
 
 // ── REST langsung ────────────────────────────────────────────────────────────
@@ -323,6 +332,18 @@ const realApi: FieldApi = {
     return await rpc<boolean>('field_worker_nonaktif', { p_token: token, p_id: id }, true) === true
   },
 
+  async ubahUpah(token, id, jenis, upah) {
+    const ok = await rpc<boolean>('field_worker_upah', {
+      p_token: token, p_id: id, p_jenis: jenis, p_upah: Math.max(0, Math.round(upah) || 0),
+    }, true)
+    // `false` berarti tidak ada baris yang berubah — pekerjanya sudah
+    // dihapus, atau id-nya milik buku lain. Itu bukan "tersimpan".
+    if (ok !== true) {
+      throw new Error(
+        'Upah tidak tersimpan — pekerja ini sudah tidak ada di buku laporan tersebut.'
+        + ' Muat ulang halaman lalu coba lagi.')
+    }
+  },
   async getOwnerView(token) {
     const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token }, true)
     const row = Array.isArray(data) ? data[0] : data

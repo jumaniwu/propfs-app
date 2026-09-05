@@ -209,6 +209,10 @@ with penanda(urut, migrasi, keterangan, ada) as (values
   -- Buku laporan kembar itu keadaan DATA, bukan migrasi. Ia bisa muncul lagi
   -- kapan saja, dan itu bukan tanda migrasinya hilang — itu tanda ada proyek
   -- yang perlu digabungkan lewat panel di tab Laporan Lapangan.
+  (41, 'migration_upah_pekerja.sql', 'field_worker_upah memperbaiki upah tanpa mendaftar ulang',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'field_worker_upah')),
+
   (31, '(data) Buku laporan kembar', 'tiap proyek hanya punya satu buku laporan',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(

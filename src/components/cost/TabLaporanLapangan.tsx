@@ -435,7 +435,8 @@ export default function TabLaporanLapangan() {
           {reportsLoading ? (
             <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
           ) : tampilan === 'absensi' ? (
-            <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name} />
+            <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name}
+              token={openLog.report_token} onUbahUpah={() => openReports(openLog)} />
           ) : reports.length === 0 ? (
             <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
           ) : (
