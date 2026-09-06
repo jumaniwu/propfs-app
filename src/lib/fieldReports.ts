@@ -33,6 +33,16 @@ export interface FieldReport {
   catatan: string
   photos: string[]          // data URL
   /**
+   * Berapa foto yang ada, TANPA membawa fotonya.
+   *
+   * Halaman kalender pemilik rumah menerima daftar laporan tanpa `photos`:
+   * satu buku dengan 31 laporan berfoto menghasilkan payload 26 MB, yang
+   * melewati statement_timeout sebelum sempat terkirim. Fotonya diambil per
+   * hari begitu harinya diketuk. Angka ini yang membuat layar tetap tahu ada
+   * foto yang bisa dibuka sebelum diambil.
+   */
+  foto_jumlah?: number
+  /**
    * Siapa saja yang bekerja hari itu. Opsional: baris laporan yang dibuat
    * sebelum kolomnya ada tidak punya ini sama sekali.
    */
@@ -99,6 +109,15 @@ export interface FieldApi {
   getLogByReportToken(token: string): Promise<FieldHeader | null>
   submitReport(token: string, r: Omit<FieldReport, 'id' | 'log_id' | 'created_at'>): Promise<boolean>
   getOwnerView(token: string): Promise<{ project_name: string; reports: FieldReport[] } | null>
+  /**
+   * Foto laporan untuk SATU tanggal, diambil saat harinya dibuka.
+   *
+   * Dipisahkan dari getOwnerView karena foto disimpan sebagai data URL base64
+   * di dalam barisnya. Mengangkut semuanya sekaligus membuat halaman pemilik
+   * rumah gagal terbuka sama sekali — bukan lambat, melainkan
+   * "canceling statement due to statement timeout".
+   */
+  getOwnerFoto(token: string, tanggal: string): Promise<Map<string, string[]>>
 
   // ── Daftar pekerja (pengawas, lewat link yang sama) ──
   /** Pekerja terdaftar di buku laporan ini. */
@@ -377,7 +396,21 @@ const realApi: FieldApi = {
   async getOwnerView(token) {
     const data = await rpc<Array<{ project_name: string; reports: FieldReport[] }>>('field_log_by_view_token', { p_token: token }, true)
     const row = Array.isArray(data) ? data[0] : data
-    return row ? { project_name: row.project_name, reports: row.reports ?? [] } : null
+    if (!row) return null
+    // `photos` sudah tidak ikut dikirim server. Diisi larik kosong supaya
+    // seluruh pembaca `r.photos.length` tetap bekerja tanpa penjagaan
+    // tambahan di tiap tempat.
+    const reports = (row.reports ?? []).map(r => ({ ...r, photos: r.photos ?? [] }))
+    return { project_name: row.project_name, reports }
+  },
+  async getOwnerFoto(token, tanggal) {
+    const baris = await rpc<Array<{ id: string; photos: string[] }>>(
+      'field_log_foto_by_view_token', { p_token: token, p_tanggal: tanggal }, true)
+    const peta = new Map<string, string[]>()
+    for (const b of baris ?? []) {
+      if (b?.id) peta.set(b.id, Array.isArray(b.photos) ? b.photos : [])
+    }
+    return peta
   },
 }
 

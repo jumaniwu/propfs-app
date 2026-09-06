@@ -19,6 +19,17 @@ export default function ProgressKalenderPage() {
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
   const [selected, setSelected] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
+  // Foto DIAMBIL SAAT HARINYA DIBUKA, bukan ikut di daftar.
+  //
+  // Foto disimpan sebagai data URL base64 di dalam baris laporannya. Satu buku
+  // dengan 31 laporan berfoto menghasilkan payload 26 MB — melewati
+  // statement_timeout sebelum sempat terkirim, jadi halaman ini dulu gagal
+  // total dengan "canceling statement due to statement timeout". Padahal
+  // fotonya hanya dipakai untuk satu hari yang diketuk; kalendernya sendiri
+  // cuma butuh tanggal dan kegiatan.
+  const [foto, setFoto] = useState<Map<string, string[]>>(new Map())
+  const [fotoLoading, setFotoLoading] = useState(false)
+  const [fotoGagal, setFotoGagal] = useState('')
 
   useEffect(() => {
     fieldApi().getOwnerView(token)
@@ -53,6 +64,19 @@ export default function ProgressKalenderPage() {
   ]
   const dateKey = (day: number) => `${cursor.y}-${String(cursor.m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   const selectedReports = selected ? (byDate.get(selected) ?? []) : []
+
+  useEffect(() => {
+    if (!selected) return
+    let batal = false
+    setFotoLoading(true); setFotoGagal('')
+    fieldApi().getOwnerFoto(token, selected)
+      .then(p => { if (!batal) setFoto(p) })
+      // Kegagalan mengambil foto TIDAK menghapus kegiatannya dari layar:
+      // catatan hari itu tetap terbaca, dan yang disebutkan hanya fotonya.
+      .catch(e => { if (!batal) setFotoGagal(e instanceof Error ? e.message : String(e)) })
+      .finally(() => { if (!batal) setFotoLoading(false) })
+    return () => { batal = true }
+  }, [selected, token])
 
   const shift = (delta: number) => setCursor(c => {
     const d = new Date(c.y, c.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }
@@ -144,16 +168,36 @@ export default function ProgressKalenderPage() {
                       {r.kegiatan.map((k, j) => <li key={j}>{k}</li>)}
                     </ul>
                     {r.catatan && <p className="text-[11px] text-muted-foreground italic">Catatan: {r.catatan}</p>}
-                    {r.photos.length > 0 && (
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {r.photos.map((p, j) => (
-                          <button key={j} type="button" onClick={() => setLightbox({ photos: r.photos, index: j })}
-                            className="block">
-                            <img src={p} alt="" className="w-full h-16 object-cover rounded-lg border border-border" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    {(() => {
+                      const fotoHari = foto.get(r.id) ?? r.photos
+                      const jumlah = r.foto_jumlah ?? r.photos.length
+                      if (fotoHari.length > 0) {
+                        return (
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {fotoHari.map((p, j) => (
+                              <button key={j} type="button" onClick={() => setLightbox({ photos: fotoHari, index: j })}
+                                className="block">
+                                <img src={p} alt="" loading="lazy"
+                                  className="w-full h-16 object-cover rounded-lg border border-border" />
+                              </button>
+                            ))}
+                          </div>
+                        )
+                      }
+                      if (jumlah < 1) return null
+                      // Ada fotonya, hanya belum sampai. Disebutkan apa
+                      // adanya — ruang kosong tanpa keterangan terbaca
+                      // sebagai "tidak ada foto hari itu".
+                      return (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          {fotoLoading
+                            ? <><Loader2 className="w-3 h-3 animate-spin" /> Memuat {jumlah} foto…</>
+                            : fotoGagal
+                              ? <span className="text-red-600">{jumlah} foto gagal dimuat: {fotoGagal}</span>
+                              : <><ImageIcon className="w-3 h-3" /> {jumlah} foto</>}
+                        </p>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>

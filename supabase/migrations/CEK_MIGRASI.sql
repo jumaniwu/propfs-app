@@ -239,6 +239,20 @@ with penanda(urut, migrasi, keterangan, ada) as (values
   -- Migrasi ini tidak membuat objek baru; ia MEMPERBAIKI DATA. Penandanya
   -- karena itu keadaan datanya sendiri: tidak ada lagi buku laporan yang
   -- tersimpan atas nama anggota tim, bukan atas nama perusahaannya.
+  -- ADA saja tidak cukup, sama seperti field_log_gabung.
+  --
+  -- Versi sebelumnya mengirim seluruh foto sekaligus: 26 MB untuk satu buku
+  -- berisi 31 laporan, yang melewati statement_timeout peran `anon` sebelum
+  -- sempat terkirim. Halaman pemilik rumah gagal total dengan "canceling
+  -- statement due to statement timeout". Fungsinya ADA, jadi yang diperiksa
+  -- harus ISI-nya: versi yang benar membuang 'photos' dari daftar.
+  (43, 'migration_owner_foto_perhari.sql', 'halaman owner tidak mengirim semua foto sekaligus',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'field_log_by_view_token'
+                and p.prosrc like '%foto_jumlah%')
+     and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'field_log_foto_by_view_token')),
+
   (32, '(data) Buku laporan milik perusahaan', 'tidak ada buku yang tersimpan atas nama anggota tim',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
