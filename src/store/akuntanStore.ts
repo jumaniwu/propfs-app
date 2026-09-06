@@ -37,6 +37,19 @@ interface AkuntanStore {
    */
   hapusan: Nisan[]
   addPemasukan: (p: Omit<PemasukanEntry, 'id'>) => void
+  /**
+   * Kembalikan pemasukan yang hilang, DENGAN id aslinya.
+   *
+   * Berbeda dari addPemasukan yang selalu membuat id baru. Id asli itu yang
+   * membuat pemulihan aman: bila salinan lama suatu saat kembali dari
+   * perangkat lain, ia menimpa entri yang sama alih-alih menambah entri
+   * kedua dengan nominal yang sama.
+   *
+   * Entri yang id-nya sudah ada TIDAK diubah, dan yang bernisan TIDAK
+   * dihidupkan lagi — keduanya sudah disaring di rencanaPulih, dan diperiksa
+   * ulang di sini karena pemanggilnya bisa berubah.
+   */
+  pulihkanPemasukan: (entri: PemasukanEntry[]) => number
   deletePemasukan: (id: string) => void
   /** Pindahkan entri ke proyek lain (atau ke Umum bila projectId kosong). */
   setPemasukanProject: (id: string, projectId?: string) => void
@@ -175,6 +188,17 @@ export const useAkuntanStore = create<AkuntanStore>()(
           hapusan: [...s.hapusan, nisanBaru(id)],
         }))
         pushCloud(get())
+      },
+      pulihkanPemasukan: (entri) => {
+        const s = get()
+        const ada = new Set(s.pemasukanEntries.map(p => p.id))
+        const nisan = new Set(s.hapusan.map(h => h.id))
+        const baru = (entri ?? []).filter(
+          e => e?.id && !ada.has(e.id) && !nisan.has(e.id))
+        if (baru.length === 0) return 0
+        set({ pemasukanEntries: [...s.pemasukanEntries, ...baru] })
+        pushCloud(get())
+        return baru.length
       },
       setPemasukanProject: (id, projectId) => {
         set(s => ({
