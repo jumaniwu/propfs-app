@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   Scale, TrendingUp, PackageOpen, ClipboardList, Download,
-  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, Send, Wallet, Wrench,
+  Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, RotateCcw, Send, Wallet, Wrench,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
@@ -17,6 +17,8 @@ import DaftarBulanan from './DaftarBulanan'
 import { asetApi } from '@/lib/asetApi'
 import { totalAsetTetap, type AsetAlat } from '@/lib/asetAlat'
 import { perluMaterai, namaProyekEntri } from '@/lib/kwitansi'
+import { kwitansiApi } from '@/lib/kwitansiApi'
+import { rencanaPulih, kalimatPulih } from '@/lib/pulihPemasukan'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -73,9 +75,9 @@ export default function TabAkuntan(
   const { toast } = useToast()
   const { realisasiEntries, projectInfo } = useCostStore()
   const {
-    pemasukanEntries, inventoryAdjustments, biayaUmumEntries,
+    pemasukanEntries, inventoryAdjustments, biayaUmumEntries, hapusan,
     addPemasukan, deletePemasukan, addAdjustment, deleteAdjustment,
-    setPemasukanProject,
+    setPemasukanProject, pulihkanPemasukan,
   } = useAkuntanStore()
 
   const [sub, setSub] = useState<SubTab>(
@@ -408,9 +410,12 @@ export default function TabAkuntan(
           projectIdBaru={konsolidasi ? projectInfo?.id : lingkupId}
           daftarProyek={daftarProyek.map(p => ({ id: p.info.id, nama: p.info.projectName }))}
           namaSaya={useAuthStore.getState().profile?.full_name ?? ''}
+          semuaEntri={pemasukanEntries}
+          nisan={hapusan}
           onAdd={addPemasukan}
           onDelete={deletePemasukan}
           onPindah={setPemasukanProject}
+          onPulih={pulihkanPemasukan}
         />
       )}
       {sub === 'inventori' && (
@@ -577,9 +582,20 @@ function BarisNeraca({ label, nilai, kelas = '' }: {
   )
 }
 
-function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
-  onAdd, onDelete, onPindah }: {
+function SubPemasukan({ entries, semuaEntri, nisan, projectIdBaru, daftarProyek, namaSaya,
+  onAdd, onDelete, onPindah, onPulih }: {
   entries: PemasukanEntry[]
+  /**
+   * SELURUH pemasukan, bukan hanya yang tampil di lingkup ini.
+   *
+   * Pemulihan harus tahu entri mana yang benar-benar sudah tidak ada di mana
+   * pun. Memakai `entries` yang sudah disaring per proyek akan mengira entri
+   * proyek lain hilang, lalu membuatnya lagi — uang yang sama tercatat dua
+   * kali, dan itu lebih buruk daripada kehilangan.
+   */
+  semuaEntri: PemasukanEntry[]
+  /** Id yang memang sengaja dihapus; tidak boleh dihidupkan lagi. */
+  nisan: Array<{ id: string }>
   /** Proyek yang akan ditempeli entri baru; undefined = Umum (Non Proyek). */
   projectIdBaru?: string
   daftarProyek: Array<{ id: string; nama: string }>
@@ -587,6 +603,7 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
   onAdd: (p: Omit<PemasukanEntry, 'id'>) => void
   onDelete: (id: string) => void
   onPindah: (id: string, projectId?: string) => void
+  onPulih: (entri: PemasukanEntry[]) => number
 }) {
   const [tanggal, setTanggal] = useState(() => new Date().toISOString().slice(0, 10))
   const [sumber, setSumber] = useState('')
@@ -597,6 +614,30 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
   const [kwitansiBerubah, setKwitansiBerubah] = useState(0)
 
   const total = entries.reduce((s, p) => s + p.jumlah, 0)
+
+  // ── Pemasukan yang hilang, ditarik kembali dari kwitansinya ──────────
+  //
+  // Pemasukan hidup di `akuntan_data` sebagai SATU dokumen JSON per pemakai:
+  // seluruh daftarnya dalam satu baris, ditulis ulang utuh tiap ada
+  // perubahan. Satu penulisan yang keliru menghapus semuanya sekaligus.
+  //
+  // Kwitansi tidak begitu — tiap kwitansi baris tersendiri, dan menyimpan
+  // `pemasukan_id`. Jadi kwitansi yang sudah terbit adalah bukti tahan lama
+  // bahwa entrinya pernah ada, dan dari situlah ia dikembalikan.
+  const [pulih, setPulih] = useState<ReturnType<typeof rencanaPulih> | null>(null)
+  const [pulihJalan, setPulihJalan] = useState(false)
+  const [rincianPulih, setRincianPulih] = useState(false)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    let batal = false
+    kwitansiApi().list()
+      .then(k => { if (!batal) setPulih(rencanaPulih(k, semuaEntri, nisan)) })
+      // Kegagalan memuat kwitansi tidak boleh mengganggu daftar pemasukan
+      // itu sendiri: panel ini tambahan, bukan syarat.
+      .catch(() => { if (!batal) setPulih(null) })
+    return () => { batal = true }
+  }, [semuaEntri, nisan, kwitansiBerubah])
 
   return (
     <div className="space-y-4">
@@ -646,6 +687,59 @@ function SubPemasukan({ entries, projectIdBaru, daftarProyek, namaSaya,
       </div>
 
       <div className="bg-white rounded-3xl border border-border p-5 space-y-2">
+        {/* Pemasukan yang hilang bisa ditarik kembali dari kwitansinya.
+            Panel ini hanya muncul kalau memang ada yang bisa dipulihkan —
+            bukan tombol permanen yang menggoda ditekan tanpa sebab. */}
+        {pulih && pulih.entri.length > 0 && (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-2.5">
+            <p className="text-xs font-bold text-amber-900">
+              {pulih.entri.length} pemasukan hilang, tapi kwitansinya masih ada
+            </p>
+            <p className="text-[11px] text-amber-900/80 leading-relaxed">{kalimatPulih(pulih)}</p>
+            <div className="rounded-xl bg-white/70 border border-amber-200 divide-y divide-amber-100">
+              {pulih.entri.map(e => (
+                <div key={e.id} className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+                  <span className="text-[11px] text-amber-900 truncate">{e.tanggal} · {e.sumber}</span>
+                  <span className="text-[11px] font-bold text-amber-900 tabular-nums shrink-0">
+                    Rp {e.jumlah.toLocaleString('id-ID')}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <Button size="sm" className="h-8 text-[11px] gap-1.5 bg-amber-700 hover:bg-amber-800 font-bold"
+              disabled={pulihJalan}
+              onClick={() => {
+                if (!window.confirm(`${kalimatPulih(pulih)}\n\nPulihkan sekarang?`)) return
+                setPulihJalan(true)
+                const n = onPulih(pulih.entri)
+                setPulihJalan(false)
+                toast({
+                  title: n > 0 ? `✅ ${n} pemasukan dipulihkan` : 'Tidak ada yang perlu dipulihkan',
+                  description: n > 0
+                    ? 'Diambil dari kwitansi yang sudah terbit, dengan id aslinya — jadi tidak akan tercatat dua kali.'
+                    : 'Entrinya sudah ada atau memang sengaja dihapus.',
+                })
+                setPulih(null)
+              }}>
+              {pulihJalan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              Pulihkan dari kwitansi
+            </Button>
+            {pulih.dilewati.length > 0 && (
+              <div className="text-[10px] text-amber-900/70">
+                <button type="button" className="underline decoration-dotted"
+                  onClick={() => setRincianPulih(v => !v)}>
+                  {pulih.dilewati.length} kwitansi dilewati — {rincianPulih ? 'sembunyikan' : 'lihat sebabnya'}
+                </button>
+                {rincianPulih && (
+                  <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                    {pulih.dilewati.map((d, i) => <li key={i}>{d.nomor}: {d.sebab}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-navy text-sm">Daftar Pemasukan ({entries.length})</h3>
           <span className="text-sm font-black text-emerald-700">{fmt(total)}</span>
