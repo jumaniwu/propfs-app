@@ -8,6 +8,7 @@ import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   Scale, TrendingUp, PackageOpen, ClipboardList, Download,
   Plus, Trash2, Link2, Loader2, CheckCircle2, RefreshCw, RotateCcw, Send, Wallet, Wrench,
+  Upload, ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DialogKwitansi from './DialogKwitansi'
@@ -19,6 +20,10 @@ import { totalAsetTetap, type AsetAlat } from '@/lib/asetAlat'
 import { perluMaterai, namaProyekEntri } from '@/lib/kwitansi'
 import { kwitansiApi } from '@/lib/kwitansiApi'
 import { rencanaPulih, kalimatPulih } from '@/lib/pulihPemasukan'
+import {
+  buatCadangan, namaBerkasCadangan, ringkasCadangan, bacaCadangan,
+  rencanaMasuk, kalimatMasuk,
+} from '@/lib/cadanganAkuntan'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
@@ -687,6 +692,75 @@ function SubPemasukan({ entries, semuaEntri, nisan, projectIdBaru, daftarProyek,
       </div>
 
       <div className="bg-white rounded-3xl border border-border p-5 space-y-2">
+        {/* Cadangan yang dipegang sendiri.
+            Pemasukan Rp 250 juta hilang tanpa meninggalkan satu baris pun di
+            database — yang selamat hanya yang kebetulan sudah berkwitansi,
+            karena kwitansi adalah baris tersendiri. Berkas cadangan adalah
+            jaring terakhir yang tidak bergantung pada apakah aplikasi ini
+            berperilaku benar: bisa disimpan di HP, dikirim lewat WhatsApp,
+            atau ditaruh di Drive. */}
+        <div className="rounded-2xl border border-border bg-slate-50 p-3 space-y-2">
+          <p className="text-[11px] font-bold text-navy flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5" /> Cadangan data akuntan
+          </p>
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            Simpan salinannya sendiri. Berkas ini berisi seluruh pemasukan, biaya umum, dan
+            penyesuaian stok — dan bisa dimasukkan kembali kapan saja tanpa menimpa yang ada.
+          </p>
+          <div className="flex gap-1.5 flex-wrap">
+            <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+              onClick={() => {
+                const c = buatCadangan(useAkuntanStore.getState())
+                const r = ringkasCadangan(c)
+                const a = document.createElement('a')
+                a.href = URL.createObjectURL(
+                  new Blob([JSON.stringify(c, null, 2)], { type: 'application/json' }))
+                a.download = namaBerkasCadangan()
+                a.click()
+                URL.revokeObjectURL(a.href)
+                toast({
+                  title: 'Cadangan diunduh',
+                  description: `${r.pemasukan} pemasukan (Rp ${Math.round(r.totalRupiah).toLocaleString('id-ID')}),`
+                    + ` ${r.biayaUmum} biaya umum, ${r.inventori} penyesuaian stok.`,
+                })
+              }}>
+              <Download className="w-3 h-3" /> Unduh cadangan
+            </Button>
+            <label className="inline-flex">
+              <input type="file" accept="application/json,.json" className="hidden"
+                onChange={async e => {
+                  const berkas = e.target.files?.[0]
+                  e.target.value = ''            // supaya berkas yang sama bisa dipilih lagi
+                  if (!berkas) return
+                  const { isi: cad, galat } = bacaCadangan(await berkas.text())
+                  if (!cad) {
+                    // Ditolak DENGAN SEBAB. "Tidak terjadi apa-apa" setelah
+                    // memilih berkas terbaca sebagai aplikasi yang rusak,
+                    // bukan sebagai berkas yang keliru.
+                    toast({ title: 'Berkas tidak bisa dipakai', description: galat, variant: 'destructive' })
+                    return
+                  }
+                  const st = useAkuntanStore.getState()
+                  const rn = rencanaMasuk(cad, st.pemasukanEntries, st.hapusan)
+                  if (rn.pemasukan.length === 0) {
+                    toast({ title: 'Tidak ada yang perlu dimasukkan', description: kalimatMasuk(rn) })
+                    return
+                  }
+                  if (!window.confirm(`${kalimatMasuk(rn)}\n\nMasukkan sekarang?`)) return
+                  const n = onPulih(rn.pemasukan)
+                  toast({
+                    title: `✅ ${n} pemasukan dimasukkan dari cadangan`,
+                    description: 'Yang sudah ada tidak diubah, dan yang pernah dihapus tidak dihidupkan lagi.',
+                  })
+                }} />
+              <span className="h-7 px-2.5 text-[11px] gap-1 inline-flex items-center rounded-md border
+                border-input bg-background hover:bg-accent cursor-pointer font-medium">
+                <Upload className="w-3 h-3" /> Masukkan cadangan
+              </span>
+            </label>
+          </div>
+        </div>
+
         {/* Pemasukan yang hilang bisa ditarik kembali dari kwitansinya.
             Panel ini hanya muncul kalau memang ada yang bisa dipulihkan —
             bukan tombol permanen yang menggoda ditekan tanpa sebab. */}
