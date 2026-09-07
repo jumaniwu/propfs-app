@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase'
 import { batasWaktu } from '@/lib/batasWaktu'
 import { Button } from '@/components/ui/button'
 import WelcomeModal from '@/components/onboarding/WelcomeModal'
+import { bolehLihatSambutan } from '@/lib/sambutanAwal'
+import { sesiTim, getWorkspaceOwner } from '@/lib/teamApi'
 
 interface Invoice { id: string; invoice_number?: string; plan_id?: string; status?: string; created_at?: string }
 
@@ -53,11 +55,20 @@ export default function PanelAkun() {
   const { user, profile } = useAuthStore()
   const [tagihan, setTagihan] = useState<Invoice | null>(null)
 
-  const [sambutan, setSambutan] = useState(() => {
-    if (!user) return false
-    return !localStorage.getItem(`propfs_welcome_shown_${user.id}`)
-      && (profile?.total_projects_created ?? 0) === 0
-  })
+  // Karyawan TIDAK PERNAH melihat sambutan ini.
+  //
+  // Isinya menyuruh menekan "+ Proyek Baru" untuk membuat proyek Feasibility
+  // Study — tombol yang memang tidak ada untuknya, di modul yang dikunci untuk
+  // sesi tim oleh RouteGuards. Dua syarat lamanya (belum ditutup, dan
+  // total_projects_created masih nol) SELALU benar untuk karyawan: ia memang
+  // tidak pernah membuat proyek FS, dan tidak akan pernah.
+  const [sambutan, setSambutan] = useState(() => bolehLihatSambutan({
+    sesiTim: sesiTim(),
+    workspaceOwner: getWorkspaceOwner(),
+    userId: user?.id ?? null,
+    sudahDitutup: !!user && !!localStorage.getItem(`propfs_welcome_shown_${user.id}`),
+    proyekDibuat: profile?.total_projects_created ?? 0,
+  }))
 
   useEffect(() => {
     if (!profile?.id) return
