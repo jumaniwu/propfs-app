@@ -253,6 +253,24 @@ with penanda(urut, migrasi, keterangan, ada) as (values
      and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                   where n.nspname = 'public' and p.proname = 'field_log_foto_by_view_token')),
 
+  (44, 'migration_klaim_keanggotaan.sql', 'team_klaim_keanggotaan mengikat anggota ke akunnya',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'team_klaim_keanggotaan')),
+
+  -- Penanda paling penting di seluruh berkas ini.
+  --
+  -- is_team_member() menjaga puluhan kebijakan RLS, dan ia membandingkan
+  -- member_user_id dengan auth.uid(). Selama kolom itu NULL, perbandingannya
+  -- tidak pernah bernilai benar — seluruh kebijakan merosot menjadi "hanya
+  -- baris milik sendiri", dan tidak ada satu pun galat yang muncul.
+  (34, '(data) Anggota tim terikat ke akunnya', 'tidak ada anggota aktif yang member_user_id-nya kosong',
+     coalesce((
+       select (xpath('/row/c/text()', query_to_xml(
+         $q$ select count(*) as c from public.team_members
+              where member_user_id is null and status = 'aktif' $q$, false, true, '')))[1]::text::int
+       where to_regclass('public.team_members') is not null
+     ), 0) = 0),
+
   (32, '(data) Buku laporan milik perusahaan', 'tidak ada buku yang tersimpan atas nama anggota tim',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
@@ -318,6 +336,12 @@ order by ada, urut;
 --   perusahaannya — dan buku seperti itu TIDAK terlihat oleh pemilik akun,
 --   karena is_team_member hanya berlaku satu arah. Perbaikannya:
 --   migration_buku_milik_perusahaan.sql.
+--
+-- • "(data) Anggota tim terikat ke akunnya" ❌ berarti ada anggota aktif yang
+--   belum pernah masuk dengan email yang didaftarkan, atau emailnya salah
+--   ketik. Selama itu, ia tidak bisa melihat APA PUN milik perusahaan — dan
+--   tidak ada pesan galat yang muncul, hanya daftar yang kosong. Perbaikannya:
+--   pastikan emailnya benar di menu Pengguna, lalu minta ia masuk sekali.
 --
 -- • migration_stok_lapangan.sql hanya memastikan fungsinya ADA. Bila baris
 --   stok_gudang sudah ✅, versi yang berlaku adalah yang terbaru dan baris
