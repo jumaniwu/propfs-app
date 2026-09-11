@@ -69,6 +69,11 @@ export interface TeamApi {
   resetPassword(memberId: string, password: string): Promise<void>
   updateMember(id: string, patch: Partial<Pick<TeamMember, 'role' | 'jabatan' | 'nama' | 'no_wa' | 'status'>>): Promise<void>
   deleteMember(id: string): Promise<void>
+  /**
+   * Ikat akun yang sedang login ke keanggotaan tim yang emailnya sama.
+   * Mengembalikan berapa baris yang baru terikat. Aman dipanggil berkali-kali.
+   */
+  klaimKeanggotaan(): Promise<number>
   myWorkspaces(): Promise<Workspace[]>
   /** Kode Perusahaan milik pengguna yang sedang login; dibuatkan bila belum ada. */
   kodePerusahaan(): Promise<string>
@@ -232,7 +237,28 @@ const realApi: TeamApi = {
     if (!res.ok) throw new Error(`Gagal menghapus anggota (HTTP ${res.status}).`)
   },
 
+  async klaimKeanggotaan() {
+    // Mengikat akun yang sedang login ke baris team_members yang emailnya
+    // sama. Tanpa ini `member_user_id` tidak pernah terisi, dan
+    // `is_team_member()` — yang menjaga puluhan kebijakan RLS — selalu
+    // bernilai false: seluruhnya merosot menjadi "hanya baris milik sendiri".
+    //
+    // Kegagalannya ditelan dengan sengaja. Ini pengikatan yang berjalan di
+    // latar setiap kali daftar workspace dibaca; kalau migrasinya belum
+    // dijalankan, daftar itu tetap harus tampil apa adanya.
+    try {
+      const res = await restFetch('rpc/team_klaim_keanggotaan', { method: 'POST', body: '{}' })
+      if (!res.ok) return 0
+      return Number(await res.json()) || 0
+    } catch { return 0 }
+  },
+
   async myWorkspaces() {
+    // Diklaim LEBIH DULU, bukan sesudah. Anggota yang baru pertama kali masuk
+    // belum punya keanggotaan yang terbaca, jadi daftarnya akan kosong — dan
+    // layar berikutnya menampilkan "belum ada" untuk sesuatu yang sebenarnya
+    // sudah ada sejak awal.
+    await realApi.klaimKeanggotaan()
     const res = await restFetch('rpc/my_workspaces', { method: 'POST', body: '{}' })
     if (!res.ok) return []
     return await res.json() as Workspace[]
