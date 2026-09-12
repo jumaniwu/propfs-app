@@ -511,7 +511,13 @@ function SelUpah({ baris, token, onSelesai }: {
   // Nama yang hanya ada di absensi lama tidak punya baris pekerja untuk
   // diubah. Disebutkan apa adanya — tombol yang menolak diam-diam lebih buruk
   // daripada tidak ada tombol.
-  const bisa = !!token && !!baris.pekerja_id
+  // Yang disunting adalah baris yang BENAR-BENAR memasok tarifnya, bukan
+  // `pekerja_id` mentah dari absensi. Absensi lama bisa menunjuk id yang sudah
+  // tidak ada, dan tarifnya ditemukan lewat kecocokan nama — menyunting lewat
+  // id itu akan memperbarui baris yang bukan sumber angkanya: server menjawab
+  // berhasil, dan rekapnya tidak berubah sedikit pun.
+  const idSunting = baris.sumberId || ''
+  const bisa = !!token && !!idSunting
 
   function mulai() {
     setJenis(baris.jenis === 'borongan' ? 'borongan' : 'harian')
@@ -524,7 +530,7 @@ function SelUpah({ baris, token, onSelesai }: {
     const n = selesaiKetik(tampil).nilai
     setSimpan(true)
     try {
-      await fieldApi().ubahUpah(token, baris.pekerja_id, jenis, n)
+      await fieldApi().ubahUpah(token, idSunting, jenis, n)
       toast({
         title: 'Upah diperbarui',
         description: jenis === 'borongan'
@@ -546,7 +552,7 @@ function SelUpah({ baris, token, onSelesai }: {
     return (
       <span className="text-[10px] text-muted-foreground truncate">
         {bisa ? (
-          <button type="button" data-sunting-upah={baris.pekerja_id} onClick={mulai}
+          <button type="button" data-sunting-upah={idSunting} onClick={mulai}
             className="underline decoration-dotted underline-offset-2 hover:text-navy">
             {keterangan}
           </button>

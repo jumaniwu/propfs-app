@@ -263,6 +263,12 @@ with penanda(urut, migrasi, keterangan, ada) as (values
   -- member_user_id dengan auth.uid(). Selama kolom itu NULL, perbandingannya
   -- tidak pernah bernilai benar — seluruh kebijakan merosot menjadi "hanya
   -- baris milik sendiri", dan tidak ada satu pun galat yang muncul.
+  (45, 'migration_pekerja_pindah.sql', 'daftar pekerja lengkap & pemindahan antarproyek',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'field_workers_semua_by_token')
+     and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'field_worker_pindah')),
+
   (34, '(data) Anggota tim terikat ke akunnya', 'tidak ada anggota aktif yang member_user_id-nya kosong',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(

@@ -65,9 +65,15 @@ const tanpaKomentarTs = t => t.split('\n').filter(b => !b.trim().startsWith('//'
   const panel = readFileSync(join(akarSrc, 'components/cost/PanelRekapAbsensi.tsx'), 'utf8')
   const kode = tanpaKomentarTs(panel)
   assert(/function SelUpah/.test(kode), 'ada kolom upah yang bisa disunting')
-  assert(/ubahUpah\(token, baris\.pekerja_id/.test(kode), 'yang dikirim id-nya, bukan namanya')
-  assert(/!!token && !!baris\.pekerja_id/.test(kode),
-    'nama yang hanya ada di absensi lama tidak menawarkan tombol yang akan gagal')
+  // Yang dikirim id, bukan nama — dan sejak ditemukan bahwa absensi lama bisa
+  // menunjuk id yang tidak memasok tarifnya, yang dikirim adalah `sumberId`:
+  // baris field_workers yang BENAR-BENAR menjadi sumber angkanya. Memakai
+  // pekerja_id mentah membuat server menjawab berhasil sementara rekapnya
+  // tidak berubah sedikit pun.
+  assert(/ubahUpah\(token, idSunting/.test(kode), 'yang dikirim id-nya, bukan namanya')
+  assert(/const idSunting = baris\.sumberId/.test(kode), 'dan id itu sumber tarifnya, bukan id mentah dari absensi')
+  assert(/!!token && !!idSunting/.test(kode),
+    'nama yang tidak punya baris pekerja tidak menawarkan tombol yang akan gagal')
   assert(/belum terdaftar/.test(kode), 'dan sebabnya disebutkan, bukan tombol yang diam')
   assert(/ketikRupiah/.test(kode) && /selesaiKetik/.test(kode),
     'angkanya dibaca gaya Indonesia — titik adalah pemisah ribuan')

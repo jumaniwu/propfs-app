@@ -220,6 +220,19 @@ export function labelMinggu(awal: string): string {
 export interface UpahPekerja {
   kunci: string
   pekerja_id: string
+  /**
+   * Id baris field_workers yang BENAR-BENAR memasok tarif baris ini.
+   *
+   * Tidak selalu sama dengan `pekerja_id`. Absensi lama bisa menunjuk id yang
+   * sudah tidak ada, atau tidak menyimpan id sama sekali — dan tarifnya
+   * ditemukan lewat kecocokan nama. Menyunting upah lewat `pekerja_id` dalam
+   * keadaan itu akan memperbarui baris yang BUKAN sumber angkanya: server
+   * menjawab berhasil, dan rekapnya tidak berubah sedikit pun.
+   *
+   * Kosong berarti tarifnya memang tidak punya sumber — orangnya belum
+   * terdaftar, dan upahnya tidak bisa disunting dari sini.
+   */
+  sumberId: string
   nama: string
   peran: string
   jenis: JenisUpah
@@ -308,6 +321,7 @@ export function rekapUpahMingguan(
         r = {
           kunci,
           pekerja_id: b?.pekerja_id ?? '',
+          sumberId: asal?.id ?? '',
           nama: asal?.nama || nama,
           peran: asal?.peran || b?.peran || '',
           jenis: asal ? asal.jenis : 'harian',
@@ -453,6 +467,7 @@ export function rekapUpahBulanan(
       if (!r) {
         r = {
           kunci: k, pekerja_id: b?.pekerja_id ?? '',
+          sumberId: asal?.id ?? '',
           nama: asal?.nama || nama,
           peran: asal?.peran || b?.peran || '',
           jenis: asal ? asal.jenis : 'harian',

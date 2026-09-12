@@ -120,8 +120,25 @@ export interface FieldApi {
   getOwnerFoto(token: string, tanggal: string): Promise<Map<string, string[]>>
 
   // ── Daftar pekerja (pengawas, lewat link yang sama) ──
-  /** Pekerja terdaftar di buku laporan ini. */
+  /** Pekerja terdaftar di buku laporan ini. Hanya yang masih aktif. */
   listPekerja(token: string): Promise<PekerjaLapangan[]>
+  /**
+   * Pekerja buku ini TERMASUK yang sudah dinonaktifkan.
+   *
+   * Dipakai rekap upah di kantor. Daftar yang hanya berisi yang aktif membuat
+   * tarif orang yang sudah dinonaktifkan tidak ditemukan — dan upahnya jatuh
+   * ke nol berapa kali pun diperbarui, tanpa satu pun galat. Absensi yang
+   * sudah lewat tetap harus bisa dibayar.
+   */
+  listPekerjaSemua(token: string): Promise<PekerjaLapangan[]>
+  /**
+   * Pindahkan pekerja ke buku proyek lain.
+   *
+   * MENYALIN, bukan memindahkan. Absensi lama menunjuk id yang lama; kalau
+   * barisnya ikut berpindah buku, rekap upah proyek sebelumnya tidak
+   * menemukannya lagi dan gajinya hangus.
+   */
+  pindahPekerja(tokenAsal: string, id: string, tokenTujuan: string): Promise<string>
   /** Daftarkan pekerja. Mendaftarkan orang yang sama dua kali memperbaruinya. */
   daftarPekerja(token: string, p: DaftarPekerjaInput): Promise<string>
   /** Berhenti menawarkan pekerja di absen harian; absensinya yang lalu tetap. */
@@ -376,6 +393,25 @@ const realApi: FieldApi = {
       p_upah: p.upah_harian ?? 0,
       p_foto: p.foto ?? '',
     }, true)
+  },
+  async listPekerjaSemua(token) {
+    try {
+      const data = await rpc<unknown[]>('field_workers_semua_by_token', { p_token: token }, true)
+      return bacaDaftarPekerja(data)
+    } catch {
+      // Migrasinya mungkin belum dijalankan. Jatuh ke daftar yang aktif saja —
+      // rekapnya tetap tampil, hanya tarif orang yang sudah dinonaktifkan yang
+      // belum terbaca.
+      return await realApi.listPekerja(token)
+    }
+  },
+  async pindahPekerja(tokenAsal, id, tokenTujuan) {
+    const baru = await rpc<string>('field_worker_pindah', {
+      p_token_asal: tokenAsal, p_id: id, p_token_tujuan: tokenTujuan,
+    })
+    const t = String(baru ?? '').trim()
+    if (!t) throw new Error('Pekerja tidak jadi dipindahkan — coba muat ulang halaman.')
+    return t
   },
   async nonaktifkanPekerja(token, id) {
     return await rpc<boolean>('field_worker_nonaktif', { p_token: token, p_id: id }, true) === true
