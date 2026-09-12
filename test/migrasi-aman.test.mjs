@@ -121,4 +121,48 @@ assert(pelanggaran.length === 0,
   assert(!/user_id: uid\(\)/.test(kode), 'tidak lagi disimpan atas nama akun yang menekan tombol')
 }
 
+
+// ── Pagar DATA ikut berdiri di build, bukan hanya di uji ────────────
+//
+// "Jangan sampai data lama hilang kalau ada update" adalah permintaan yang
+// paling sering berulang dari pemakainya, dan beralasan: pemasukan ratusan
+// juta pernah lenyap, dan buku laporan beserta seluruh absensinya pernah
+// hangus karena satu tombol hapus.
+//
+// Uji ini hanya berjalan kalau ada yang menjalankannya. Pagar di vite.config
+// berjalan SETIAP KALI build — termasuk di Vercel, termasuk saat yang
+// menekan tombolnya sedang terburu-buru. Yang dijaga di sini adalah pagar
+// itu sendiri, supaya tidak bisa dicabut diam-diam.
+{
+  const akar = new URL('..', import.meta.url).pathname
+  const vite = readFileSync(join(akar, 'vite.config.ts'), 'utf8')
+
+  assert(/function pagarDataPlugin\(\)/.test(vite), 'pagar data ada di vite.config')
+  assert(/pagarDataPlugin\(\)/.test(vite.slice(vite.indexOf('plugins:'))),
+    'dan benar-benar dipasang di daftar plugins — bukan hanya didefinisikan')
+
+  for (const bentuk of ['DROP TABLE', 'TRUNCATE', 'DROP COLUMN', 'DELETE']) {
+    assert(vite.includes(bentuk), `${bentuk} termasuk yang dijaga`)
+  }
+  assert(/BOLEH-HAPUS/.test(vite), 'ada jalan keluar yang disengaja & tertulis alasannya')
+  assert(/throw new Error/.test(vite.slice(vite.indexOf('pagarDataPlugin'))),
+    'pelanggaran MENGHENTIKAN build, bukan sekadar peringatan di konsol')
+}
+
+// ── Tiap penanda BOLEH-HAPUS harus menyebut alasan ──────────────────
+//
+// Penanda tanpa alasan hanya memindahkan persoalannya: yang berikutnya akan
+// menyalinnya tanpa berpikir, dan pagarnya berhenti menjaga apa pun.
+{
+  const dirM = new URL('../supabase/migrations', import.meta.url).pathname
+  const kosong = []
+  for (const f of readdirSync(dirM).filter(n => n.endsWith('.sql'))) {
+    for (const b of readFileSync(join(dirM, f), 'utf8').split('\n')) {
+      const m = b.match(/--\s*BOLEH-HAPUS\s*:(.*)$/i)
+      if (m && m[1].trim().length < 10) kosong.push(`${f}: "${m[1].trim()}"`)
+    }
+  }
+  assert(kosong.length === 0, 'tiap penanda menyebut alasan: ' + kosong.join(', '))
+}
+
 console.log(`migrasi-aman: ${ok} assert lulus (${berkas.length} berkas migrasi dipindai)`)

@@ -174,6 +174,10 @@ begin
   -- Pada titik ini isinya sudah pindah, jadi `on delete cascade` tidak lagi
   -- menghanguskan apa pun yang berharga. Yang tersisa hanya baris pekerja
   -- kembar yang absensinya sudah dialihkan.
+  -- BOLEH-HAPUS: buku sumber sudah kosong — seluruh isinya dipindahkan di
+  -- langkah 1–3 di atas, dan fungsi ini hanya berjalan saat tombol
+  -- "Gabungkan jadi 1 buku" ditekan. Yang tersisa di dalamnya cuma baris
+  -- pekerja kembar yang absensinya sudah dialihkan ke id yang dipertahankan.
   delete from field_logs where id = any(v_sumber);
   get diagnostics v_buku = row_count;
 
