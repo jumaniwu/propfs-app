@@ -39,7 +39,9 @@ export default function TabLaporanLapangan() {
   const [openLog, setOpenLog] = useState<FieldLog | null>(null)
   const [reports, setReports] = useState<FieldReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
-  const [tampilan, setTampilan] = useState<'harian' | 'absensi'>('harian')
+  const [tampilan, setTampilan] = useState<'harian' | 'absensi' | 'pekerja'>('harian')
+  /** Pekerja yang sedang dipindahkan, supaya tombolnya bisa dimatikan. */
+  const [pindahJalan, setPindahJalan] = useState('')
   // Daftar pekerja dibutuhkan rekap upah: tarif hariannya ada di sana, bukan
   // di absensinya. Kegagalannya ditelan — rekap HOK tetap berguna tanpa upah.
   const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
@@ -113,7 +115,13 @@ export default function TabLaporanLapangan() {
       .then(setReports)
       .catch(() => setReports([]))
       .finally(() => setReportsLoading(false))
-    fieldApi().listPekerja(log.report_token)
+    // Daftar LENGKAP, termasuk yang sudah dinonaktifkan.
+    //
+    // Rekap upah menghitung uang untuk hari-hari yang SUDAH LEWAT. Daftar yang
+    // hanya berisi yang aktif membuat tarif orang yang sudah dinonaktifkan
+    // tidak ditemukan, dan upahnya jatuh ke nol berapa kali pun diperbarui —
+    // tanpa satu pun galat di layar.
+    fieldApi().listPekerjaSemua(log.report_token)
       .then(setPekerja)
       .catch(() => setPekerja([]))
   }
@@ -179,6 +187,36 @@ export default function TabLaporanLapangan() {
         variant: 'destructive',
       })
     } finally { setSedangGabung('') }
+  }
+
+  async function pindahkanPekerja(w: PekerjaLapangan, tujuanId: string) {
+    if (!openLog || !tujuanId) return
+    const tujuan = logs.find(l => l.id === tujuanId)
+    if (!tujuan) return
+    // Konfirmasinya menyebut apa yang TIDAK hilang. Ketakutan yang wajar di
+    // sini adalah gaji proyek lama ikut terbawa; kalimat ini menjawabnya
+    // sebelum tombolnya ditekan, bukan sesudahnya.
+    if (!window.confirm(
+      `Pindahkan ${w.nama} ke proyek "${tujuan.project_name || 'Tanpa nama'}"?\n\n`
+      + `Absensi & upahnya di proyek ini TIDAK hilang — riwayatnya tetap terbaca di Rekap Absensi.`
+      + ` Ia hanya berhenti ditawarkan di absen harian proyek ini.`)) return
+
+    setPindahJalan(w.id)
+    try {
+      await fieldApi().pindahPekerja(openLog.report_token, w.id, tujuan.report_token)
+      toast({
+        title: `✅ ${w.nama} dipindahkan`,
+        description: `Sekarang ada di "${tujuan.project_name || 'Tanpa nama'}" dengan tarif yang sama.`
+          + ' Riwayat upahnya di proyek ini tetap utuh.',
+      })
+      openReports(openLog)
+    } catch (e) {
+      toast({
+        title: 'Gagal memindahkan',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setPindahJalan('') }
   }
 
   async function hapusLaporan(id: string) {
@@ -438,6 +476,7 @@ export default function TabLaporanLapangan() {
             {([
               ['harian', 'Laporan Harian', ListChecks],
               ['absensi', 'Rekap Absensi', Users],
+              ['pekerja', 'Data Pekerja', HardHat],
             ] as const).map(([key, label, Icon]) => (
               <button key={key} onClick={() => setTampilan(key)}
                 className={`flex-1 h-9 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
@@ -449,6 +488,64 @@ export default function TabLaporanLapangan() {
 
           {reportsLoading ? (
             <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : tampilan === 'pekerja' ? (
+            /* Data pekerja buku ini, dan pemindahannya ke proyek lain.
+               Pemindahan MENYALIN, bukan memindahkan: absensi proyek lama
+               menunjuk id yang lama, dan kalau barisnya ikut berpindah buku,
+               rekap upah proyek sebelumnya tidak menemukannya lagi — gajinya
+               hangus. Baris lama tinggal di tempatnya, hanya dinonaktifkan. */
+            pekerja.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-6 text-center">
+                Belum ada pekerja terdaftar di buku ini. Pengawas mendaftarkannya
+                lewat Link Pekerja → tab Pekerja.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {pekerja.map(w => (
+                  <div key={w.id} className="rounded-xl border border-border p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-navy truncate">
+                          {w.nama}{w.peran ? ` · ${w.peran}` : ''}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {w.jenis === 'borongan'
+                            ? 'Borongan'
+                            : w.upah_harian > 0
+                              ? `Rp ${w.upah_harian.toLocaleString('id-ID')}/hari`
+                              : 'upah belum diisi'}
+                          {!w.aktif && ' · sudah tidak di proyek ini'}
+                        </p>
+                      </div>
+                      {!w.aktif && (
+                        <span className="text-[9px] font-bold text-amber-700 bg-amber-50 border
+                          border-amber-200 rounded-full px-1.5 py-0.5 shrink-0">Nonaktif</span>
+                      )}
+                    </div>
+                    {/* Hanya buku proyek LAIN yang ditawarkan sebagai tujuan. */}
+                    {logs.filter(l => l.id !== openLog.id).length > 0 && (
+                      <select
+                        className="w-full h-8 rounded-lg border border-border text-[11px] px-2 bg-white"
+                        value=""
+                        disabled={pindahJalan === w.id}
+                        onChange={e => { void pindahkanPekerja(w, e.target.value); e.target.value = '' }}>
+                        <option value="">
+                          {pindahJalan === w.id ? 'Memindahkan…' : 'Pindahkan ke proyek lain…'}
+                        </option>
+                        {logs.filter(l => l.id !== openLog.id).map(l => (
+                          <option key={l.id} value={l.id}>{l.project_name || 'Tanpa nama proyek'}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ))}
+                <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
+                  Memindahkan pekerja <b>tidak menghapus</b> absensi & upahnya di proyek ini —
+                  riwayatnya tetap terbaca di Rekap Absensi. Ia hanya berhenti ditawarkan
+                  di absen harian proyek ini, dan mulai muncul di proyek tujuan dengan tarif yang sama.
+                </p>
+              </div>
+            )
           ) : tampilan === 'absensi' ? (
             <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name}
               token={openLog.report_token} onUbahUpah={() => openReports(openLog)} />
