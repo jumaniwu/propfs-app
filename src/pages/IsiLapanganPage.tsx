@@ -20,6 +20,8 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, HardHat, Loader2, RefreshCw, CheckCircle2, Users, ClipboardList } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { fieldApi, type FieldLog, type FieldHeader } from '@/lib/fieldReports'
+import { teamApi, sesiTim, getWorkspaceOwner } from '@/lib/teamApi'
+import { diagnosaBuku, type KeadaanAkses } from '@/lib/diagnosaAkses'
 import type { PekerjaLapangan } from '@/lib/pekerjaLapangan'
 import { useAuthStore } from '@/store/authStore'
 import { useCostStore } from '@/store/costStore'
@@ -46,6 +48,13 @@ export default function IsiLapanganPage() {
   const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
   const [memuatBuku, setMemuatBuku] = useState(false)
   const [selesai, setSelesai] = useState('')
+  // Kenapa daftarnya kosong — dijawab, bukan dibiarkan ditebak.
+  //
+  // "Belum ada buku laporan. Buat dulu di Laporan Lapangan" KELIRU untuk
+  // pengawas: bukunya sudah ada, dan ia memang tidak berhak membuatnya
+  // sendiri. Tiga keadaan yang sangat berbeda selama ini terlihat sama.
+  const [akses, setAkses] = useState<KeadaanAkses | null>(null)
+  const [hubungJalan, setHubungJalan] = useState(false)
 
   const daftar = useMemo(() => pilihanBuku(logs), [logs])
 
@@ -54,6 +63,23 @@ export default function IsiLapanganPage() {
     try {
       const l = await fieldApi().listLogs()
       setLogs(l); setGalat('')
+
+      // Hanya ketika kosong. Selama ada bukunya, tidak ada yang perlu
+      // dijelaskan dan tidak perlu ada permintaan tambahan ke server.
+      if (l.length === 0) {
+        const [klaim, ws] = await Promise.all([
+          teamApi().klaimKeanggotaan(),
+          teamApi().myWorkspaces(),
+        ])
+        setAkses({
+          jumlahBuku: 0,
+          jumlahWorkspace: ws.length,
+          adaFungsiKlaim: klaim.adaFungsi,
+          baruTerikat: klaim.terikat,
+          sesiTim: sesiTim(),
+          workspaceOwner: getWorkspaceOwner(),
+        })
+      } else setAkses(null)
     } catch (e) {
       setGalat(e instanceof Error ? e.message : String(e))
     } finally { setMemuat(false) }
@@ -125,10 +151,37 @@ export default function IsiLapanganPage() {
             <option value="">— Pilih proyek —</option>
             {daftar.map(b => <option key={b.id} value={b.id}>{b.nama}</option>)}
           </select>
-          {!izin.boleh && (
-            <p data-alasan-isi className="text-[11px] text-amber-900 bg-amber-50 border
-              border-amber-200 rounded-lg p-2.5 leading-relaxed">{izin.alasan}</p>
-          )}
+          {!izin.boleh && (() => {
+            const d = diagnosaBuku(akses)
+            // Diagnosa menggantikan kalimat umum HANYA bila ia punya sesuatu
+            // yang lebih tepat untuk dikatakan.
+            if (!d.sebab) {
+              return (
+                <p data-alasan-isi className="text-[11px] text-amber-900 bg-amber-50 border
+                  border-amber-200 rounded-lg p-2.5 leading-relaxed">{izin.alasan}</p>
+              )
+            }
+            return (
+              <div data-alasan-isi className="text-[11px] text-amber-900 bg-amber-50 border
+                border-amber-200 rounded-lg p-2.5 leading-relaxed space-y-2">
+                <p><b>{d.sebab}</b></p>
+                <p>{d.saran}</p>
+                {d.bolehCobaHubungkan && (
+                  <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1.5"
+                    disabled={hubungJalan}
+                    onClick={async () => {
+                      setHubungJalan(true)
+                      try { await muat() } finally { setHubungJalan(false) }
+                    }}>
+                    {hubungJalan
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <RefreshCw className="w-3 h-3" />}
+                    Hubungkan akun
+                  </Button>
+                )}
+              </div>
+            )
+          })()}
           {galat && (
             <p className="text-[11px] text-rose-800 bg-rose-50 border border-rose-200
               rounded-lg p-2.5 break-words">{galat}</p>

@@ -9,6 +9,7 @@
 import { useAuthStore } from '@/store/authStore'
 import type { TeamRole } from '@/lib/teamRoles'
 import { segarkanToken, perluSegarkan } from './sesiSupabase.ts'
+import { bacaGalatServer, badanRespons } from './galatServer'
 
 export interface TeamMember {
   id: string
@@ -71,9 +72,14 @@ export interface TeamApi {
   deleteMember(id: string): Promise<void>
   /**
    * Ikat akun yang sedang login ke keanggotaan tim yang emailnya sama.
-   * Mengembalikan berapa baris yang baru terikat. Aman dipanggil berkali-kali.
+   * Aman dipanggil berkali-kali.
+   *
+   * Hasilnya membedakan "tidak ada yang perlu diikat" dari "fungsinya belum
+   * ada di basis data". Keduanya menghasilkan nol baris, tetapi hanya yang
+   * kedua yang bisa diperbaiki dengan menjalankan migrasi — dan menyamakannya
+   * membuat orang mencari-cari di tempat yang salah berhari-hari.
    */
-  klaimKeanggotaan(): Promise<number>
+  klaimKeanggotaan(): Promise<HasilKlaim>
   myWorkspaces(): Promise<Workspace[]>
   /** Kode Perusahaan milik pengguna yang sedang login; dibuatkan bila belum ada. */
   kodePerusahaan(): Promise<string>
@@ -243,14 +249,23 @@ const realApi: TeamApi = {
     // `is_team_member()` — yang menjaga puluhan kebijakan RLS — selalu
     // bernilai false: seluruhnya merosot menjadi "hanya baris milik sendiri".
     //
-    // Kegagalannya ditelan dengan sengaja. Ini pengikatan yang berjalan di
-    // latar setiap kali daftar workspace dibaca; kalau migrasinya belum
-    // dijalankan, daftar itu tetap harus tampil apa adanya.
+    // Kegagalannya tidak menghentikan apa pun: ini berjalan di latar setiap
+    // kali daftar workspace dibaca. Tetapi SEBABNYA dibawa keluar, karena
+    // "fungsinya belum ada" dan "tidak ada yang perlu diikat" sama-sama nol
+    // baris — dan hanya yang pertama yang bisa diperbaiki dengan menjalankan
+    // migrasi.
     try {
       const res = await restFetch('rpc/team_klaim_keanggotaan', { method: 'POST', body: '{}' })
-      if (!res.ok) return 0
-      return Number(await res.json()) || 0
-    } catch { return 0 }
+      if (res.status === 404) return { terikat: 0, adaFungsi: false }
+      if (!res.ok) {
+        const g = bacaGalatServer(res.status, await badanRespons(res), 'Keanggotaan')
+        return { terikat: 0, adaFungsi: !g.perluMigrasi }
+      }
+      return { terikat: Number(await res.json()) || 0, adaFungsi: true }
+    } catch {
+      // Jaringan putus bukan bukti fungsinya tidak ada.
+      return { terikat: 0, adaFungsi: true }
+    }
   },
 
   async myWorkspaces() {
@@ -303,6 +318,13 @@ export async function perusahaanByKode(kode: string, ms = 8000): Promise<string>
     const rows = await res.json() as Array<{ nama_perusahaan?: string }>
     return rows?.[0]?.nama_perusahaan ?? ''
   } catch { return '' } finally { clearTimeout(timer) }
+}
+
+export interface HasilKlaim {
+  /** Berapa baris keanggotaan yang baru terikat ke akun ini. */
+  terikat: number
+  /** Fungsinya ada di basis data. False = migrasinya belum dijalankan. */
+  adaFungsi: boolean
 }
 
 export function teamApi(): TeamApi {
