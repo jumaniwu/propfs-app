@@ -244,6 +244,36 @@ function keBlob(isi: Blob | string | null | undefined, jenis: string): Blob | nu
 }
 
 /**
+ * Sama seperti keBlob, tetapi juga menerima alamat `blob:` buatan sendiri.
+ *
+ * Penampil berkas menyimpan gambar dari Storage sebagai objek URL — hasil
+ * `URL.createObjectURL(blob)` — lalu mengirim ALAMAT itu ke sini, bukan
+ * berkasnya. Alamat seperti "blob:https://propfs.id/6f2a…" bukan base64,
+ * jadi `atob` melemparnya, dan yang terbaca di layar adalah "Tidak ada isi
+ * berkas yang bisa disimpan" untuk berkas yang justru sedang TERPAMPANG di
+ * layar yang sama. Persis keluhan "gambar kerja tidak bisa diunduh".
+ *
+ * Alamatnya tetap menunjuk berkas yang ada di memori peramban ini, jadi
+ * mengambilnya kembali selalu berhasil dan tidak menyentuh jaringan.
+ *
+ * HANYA `blob:` yang diambil. Alamat http/https sengaja tidak — mengambilnya
+ * berarti modul ini diam-diam menjangkau jaringan atas nama pemanggilnya,
+ * lengkap dengan kredensial dan kegagalan yang bukan miliknya.
+ */
+async function keBlobLengkap(
+  isi: Blob | string | null | undefined, jenis: string,
+): Promise<Blob | null> {
+  const langsung = keBlob(isi, jenis)
+  if (langsung) return langsung
+  const s = String(isi ?? '').trim()
+  if (!/^blob:/i.test(s)) return null
+  try {
+    const b = await fetch(s).then(r => r.blob())
+    return b.size === 0 ? null : b
+  } catch { return null }
+}
+
+/**
  * Simpan sebuah berkas, dan LAPORKAN apa yang terjadi.
  *
  * Urutannya ditentukan satu kenyataan: di WebView Android, `<a download>`
@@ -269,7 +299,7 @@ export async function simpanBerkasRinci(
   const berkas = namaAman(nama)
   const jenis = mime || mimeDariNama(berkas)
 
-  const blob = keBlob(isi, jenis)
+  const blob = await keBlobLengkap(isi, jenis)
   if (!blob) return { ok: false, alasan: 'Tidak ada isi berkas yang bisa disimpan.' }
 
   // ── Jalur web, tidak disentuh ────────────────────────────────────────────
