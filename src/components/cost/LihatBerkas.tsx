@@ -44,7 +44,17 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
   nama?: string
   onTutup: () => void
 }) {
-  const [isi, setIsi] = useState<{ nama: string; mime: string; uri: string } | null>(null)
+  // `blob` disimpan BERDAMPINGAN dengan `uri`, bukan digantikan olehnya.
+  //
+  // `uri` dipakai <img src> dan penampil PDF; `blob` dipakai menyimpan &
+  // membagikan. Sebelumnya hanya `uri` yang ada, dan alamat objek URL
+  // ("blob:https://propfs.id/6f2a…") itulah yang dikirim ke penyimpan —
+  // padahal ia alamat, bukan isi. Yang terbaca di layar: "Tidak ada isi
+  // berkas yang bisa disimpan", untuk berkas yang justru sedang terpampang
+  // di layar yang sama.
+  const [isi, setIsi] = useState<
+    { nama: string; mime: string; uri: string; blob: Blob | null } | null
+  >(null)
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
 
@@ -84,6 +94,7 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
           // berkas besar adalah teks belasan megabita yang harus disimpan
           // utuh di memori, dan itulah yang membuat tab mati sendiri.
           uri: blob ? URL.createObjectURL(blob) : dataUriBerkas(b.berkas_mime, data),
+          blob,
         }
         setIsi(berkas)
 
@@ -136,7 +147,8 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
     if (!isi) return
     setSibuk('buka')
     try {
-      await bukaBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
+      // Berkasnya sendiri, bukan alamatnya.
+      await bukaBerkas(isi.blob ?? isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
     } finally { setSibuk('') }
   }
 
@@ -153,7 +165,8 @@ export default function LihatBerkas({ muat, nama, onTutup }: {
     if (!isi) return
     setSibuk('simpan')
     try {
-      await simpanBerkas(isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
+      // Berkasnya sendiri, bukan alamatnya. Lihat catatan di state `isi`.
+      await simpanBerkas(isi.blob ?? isi.uri, isi.nama || 'lampiran', isi.mime || undefined)
     } finally { setSibuk('') }
   }
 
