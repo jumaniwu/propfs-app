@@ -24,6 +24,7 @@ import { useToast } from '@/hooks/use-toast'
 import {
   bacaEntriPulih, rencanaPulihRealisasi, kalimatPulihRealisasi,
 } from '@/lib/pulihRealisasi'
+import { bacaRealisasiDariSheet, kalimatImpor, type BarisSheet } from '@/lib/imporRealisasiExcel'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { procurementApi } from '@/lib/procurementApi'
@@ -144,9 +145,59 @@ export default function TabRealisasiBiaya() {
   }, [messages, storageKey])
 
   // Lihat catatan yang sama di ChatAiPage: foto dikecilkan sebelum dikirim.
+  /**
+   * Laporan Excel yang pernah diekspor sendiri, dibaca kembali.
+   *
+   * Aplikasi ini yang membuat berkasnya, jadi ia tahu persis bentuknya —
+   * membaca kembali keluaran sendiri adalah hal termudah yang bisa
+   * dilakukannya, dan selama ini tidak pernah ditawarkan. Sesudah pengeluaran
+   * terhapus, satu-satunya salinan yang sering tersisa justru berkas itu, dan
+   * mengetik ulang belasan transaksi bukan pekerjaan yang pantas diminta untuk
+   * memperbaiki kesalahan satu ketukan.
+   */
+  const imporExcel = async (f: File) => {
+    try {
+      const wb = reportXlsx.read(await f.arrayBuffer(), { type: 'array' })
+      const sheets: Record<string, BarisSheet[]> = {}
+      for (const nama of wb.SheetNames) {
+        sheets[nama] = reportXlsx.utils.sheet_to_json(wb.Sheets[nama], {
+          header: 1, raw: false, defval: '',
+        }) as BarisSheet[]
+      }
+      const h = bacaRealisasiDariSheet(sheets, realisasiEntries)
+      if (h.entri.length === 0) {
+        toast({ title: 'Tidak ada yang dimasukkan', description: kalimatImpor(h) })
+        return
+      }
+      if (!window.confirm(`${kalimatImpor(h)}\n\nMasukkan sekarang?`)) return
+      addRealisasiEntries(h.entri)
+      toast({
+        title: `✅ ${h.entri.length} transaksi dimasukkan`,
+        description: 'Dibaca dari laporan Excel, dengan id baru — jadi tidak akan terhapus'
+          + ' lagi oleh tanda hapus yang lama.',
+      })
+    } catch (err) {
+      toast({
+        title: 'Gagal membaca Excel',
+        description: err instanceof Error ? err.message : String(err),
+        variant: 'destructive',
+      })
+    }
+  }
+
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    const results = await Promise.all(files.map(async f => {
+
+    // Berkas Excel TIDAK dikirim ke AI. Ia laporan buatan aplikasi ini
+    // sendiri, dan membacanya langsung jauh lebih tepat — sekaligus tidak
+    // menghabiskan jatah AI untuk data yang sudah terstruktur rapi.
+    const excel = files.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name))
+    for (const f of excel) await imporExcel(f)
+
+    const gambar = files.filter(f => !/\.(xlsx|xls|csv)$/i.test(f.name))
+    if (gambar.length === 0) { e.target.value = ''; return }
+
+    const results = await Promise.all(gambar.map(async f => {
       if (f.size > 25 * 1024 * 1024) { toast({ title: `${f.name} terlalu besar (maks 25MB)`, variant: 'destructive' }); return null }
       const { base64Data, mimeType, byteAsal, byteAkhir } = await kecilkanFoto(f)
       if (byteAkhir < byteAsal * 0.7) {
@@ -687,7 +738,7 @@ export default function TabRealisasiBiaya() {
               <Paperclip className="w-5 h-5" />
             </button>
             <input type="file" ref={fileInputRef} className="hidden" multiple
-              accept=".jpg,.jpeg,.png,.pdf,.webp" onChange={handleFilePick} />
+              accept=".jpg,.jpeg,.png,.pdf,.webp,.xlsx,.xls,.csv" onChange={handleFilePick} />
             <textarea
               className="flex-1 max-h-28 min-h-[44px] resize-none rounded-2xl border border-border bg-muted/30 focus:bg-white text-sm px-4 py-3 outline-none focus:ring-2 focus:ring-navy/20 transition-all"
               placeholder='Ketik pengeluaran... contoh: "Beli semen 20 sak @58rb Toko Maju" atau "Upah 4 tukang 2 hari @150rb"'
