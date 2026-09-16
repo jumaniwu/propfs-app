@@ -244,6 +244,9 @@ begin
     from vendors v where v.self_token = p_token;
   if vendor is null then return false; end if;
 
+  -- BOLEH-HAPUS: vendor mengirim ULANG seluruh daftar barangnya lewat link
+  -- miliknya sendiri, jadi baris lama digantikan seluruhnya oleh yang baru
+  -- pada baris-baris di bawah. Hanya barang milik vendor itu yang terhapus.
   delete from vendor_items where vendor_id = vendor;
 
   for it in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop

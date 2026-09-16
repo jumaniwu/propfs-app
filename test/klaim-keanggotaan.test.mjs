@@ -106,8 +106,16 @@ const sql = tanpaKomentarSql(readFileSync(join(akarSql, 'migration_klaim_keanggo
   assert(/klaimKeanggotaan\(\)/.test(potong), 'dipanggil di dalam myWorkspaces')
   assert(potong.indexOf('klaimKeanggotaan()') < potong.indexOf('rpc/my_workspaces'),
     'dipanggil SEBELUM daftarnya dibaca')
-  assert(/catch \{ return 0 \}/.test(t),
-    'kegagalannya ditelan — daftar workspace tetap tampil walau migrasinya belum dijalankan')
+  // Kegagalannya tidak menghentikan apa pun — daftar workspace tetap tampil
+  // walau migrasinya belum dijalankan. Yang berubah sejak diagnosa akses
+  // ditambahkan: SEBABNYA ikut dibawa keluar, bukan lagi dilebur jadi angka
+  // nol. "Fungsinya belum ada" dan "tidak ada yang perlu diikat" sama-sama
+  // nol baris, dan hanya yang pertama yang bisa diperbaiki dengan migrasi.
+  const badan = t.slice(t.indexOf('async klaimKeanggotaan()'))
+  assert(/catch \{[\s\S]{0,200}return \{ terikat: 0, adaFungsi: true \}/.test(badan),
+    'galat jaringan ditelan, dan TIDAK dianggap bukti fungsinya tidak ada')
+  assert(!/throw/.test(badan.slice(0, badan.indexOf('},'))),
+    'tidak pernah melempar — pemanggilnya hanya membaca daftar workspace')
 }
 
 console.log(`klaim-keanggotaan: ${ok} assert lulus`)

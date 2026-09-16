@@ -1,7 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'fs'
 import { HALAMAN_BAGIKAN, terapkanMeta } from './src/lib/ogShare'
 
 /**
@@ -129,6 +129,91 @@ function pagarKunciPlugin(): Plugin {
 }
 
 /**
+ * Pagar DATA — migrasi tidak boleh menghapus data diam-diam.
+ *
+ * Keluhan yang paling sering berulang dari pemakainya bukan fitur yang kurang,
+ * melainkan satu kalimat: "jangan sampai data lama hilang kalau ada update".
+ * Kekhawatiran itu beralasan — pemasukan senilai ratusan juta pernah lenyap,
+ * dan buku laporan beserta seluruh absensinya pernah hangus karena satu tombol
+ * hapus yang terlihat seperti membuang wadah kosong.
+ *
+ * Janji tidak menjaga apa pun. Yang menjaga adalah build yang BERHENTI.
+ *
+ * Pernyataan yang menghancurkan data ditolak di sini, KECUALI yang memang
+ * disengaja dan ditandai pada baris tepat di atasnya:
+ *
+ *     -- BOLEH-HAPUS: <alasan, satu kalimat>
+ *     delete from vendor_items where vendor_id = vendor;
+ *
+ * Penandanya sengaja merepotkan. Yang menuliskannya harus berhenti sejenak dan
+ * menyebut alasannya — dan alasan itu tertinggal di berkasnya untuk dibaca
+ * orang berikutnya, termasuk oleh yang sedang menelusuri data yang hilang.
+ *
+ * UPDATE dan DELETE tanpa WHERE ditolak TANPA pengecualian. Supabase memuat
+ * ekstensi `safeupdate` untuk peran authenticator: pernyataan seperti itu
+ * ditolak di produksi, sementara PostgreSQL biasa menerimanya — jadi cacatnya
+ * tidak pernah muncul saat diuji di luar Supabase. Pernah terjadi, dan
+ * menggagalkan seluruh penggabungan buku laporan di percobaan pertama.
+ */
+function pagarDataPlugin(): Plugin {
+  return {
+    name: 'propfs-pagar-data',
+    apply: 'build',
+    buildStart() {
+      const dir = path.resolve(__dirname, 'supabase/migrations')
+      if (!existsSync(dir)) return
+
+      const TANDA = /--\s*BOLEH-HAPUS\s*:\s*\S/i
+      // Bentuk yang tidak bisa dibatalkan. `drop function/policy/trigger/index`
+      // TIDAK termasuk: itu mengganti perilaku, bukan membuang isi tabel.
+      const MERUSAK: Array<[string, RegExp]> = [
+        ['DROP TABLE', /^\s*drop\s+table\b/i],
+        ['TRUNCATE', /^\s*truncate\b/i],
+        ['DROP COLUMN', /\bdrop\s+column\b/i],
+        ['DELETE', /^\s*delete\s+from\b/i],
+      ]
+
+      const keluhan: string[] = []
+      for (const f of readdirSync(dir).filter(n => n.endsWith('.sql'))) {
+        const baris = readFileSync(path.join(dir, f), 'utf8').split('\n')
+        baris.forEach((b, i) => {
+          if (b.trim().startsWith('--')) return
+
+          // Penandanya dicari di beberapa baris sebelumnya, bukan satu saja:
+          // pernyataan SQL sering didahului komentar penjelas yang panjang.
+          const ditandai = baris.slice(Math.max(0, i - 4), i).some(x => TANDA.test(x))
+
+          for (const [nama, pola] of MERUSAK) {
+            if (!pola.test(b)) continue
+            if (ditandai) continue
+            keluhan.push(`${f}:${i + 1} ${nama} tanpa penanda — ${b.trim().slice(0, 70)}`)
+          }
+
+          // Tanpa pengecualian, bahkan dengan penanda.
+          if (/^\s*(delete\s+from|update)\s+/i.test(b)) {
+            const sisa = baris.slice(i).join('\n')
+            const titik = sisa.indexOf(';')
+            const pernyataan = titik > 0 ? sisa.slice(0, titik) : sisa.slice(0, 400)
+            if (!/\bwhere\b/i.test(pernyataan)) {
+              keluhan.push(`${f}:${i + 1} UPDATE/DELETE tanpa WHERE — ditolak Supabase (safeupdate)`)
+            }
+          }
+        })
+      }
+
+      if (keluhan.length) {
+        throw new Error(
+          `[pagar-data] Migrasi bisa menghilangkan data:\n  ${keluhan.join('\n  ')}\n\n`
+          + 'Kalau memang disengaja, tulis penandanya pada baris di atasnya:\n'
+          + '  -- BOLEH-HAPUS: <alasan, satu kalimat>',
+        )
+      }
+      console.log('[pagar-data] migrasi diperiksa — tidak ada penghapusan data tanpa penanda.')
+    },
+  }
+}
+
+/**
  * Aplikasi ini SPA, sedangkan crawler WhatsApp/Telegram tidak menjalankan
  * JavaScript — jadi semua tautan yang dikirim menampilkan judul yang sama dari
  * index.html. Plugin ini menyalin index.html hasil build menjadi beberapa
@@ -160,7 +245,7 @@ function bagikanMetaPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), bagikanMetaPlugin(), pagarKunciPlugin()],
+  plugins: [react(), bagikanMetaPlugin(), pagarKunciPlugin(), pagarDataPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
