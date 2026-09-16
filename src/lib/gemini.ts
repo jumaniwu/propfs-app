@@ -21,6 +21,7 @@
 import { buatAnggaran, pantasDicobaLagi, galatWaktuHabis } from './anggaranWaktu.ts'
 import {
   BATAS_TOKEN_MS, bacaTokenSimpanan, denganBatas, ingatToken, tokenIngatan,
+  lupakanToken, masihSegar,
 } from './tokenSesi.ts'
 
 /** Alamat perantara. Bukan alamat Google — itulah inti perubahannya. */
@@ -58,7 +59,59 @@ let undangan = ''
 export function pakaiUndangan(token: string): void { undangan = String(token ?? '').trim() }
 export function lupakanUndangan(): void { undangan = '' }
 
+/**
+ * Token yang BENAR-BENAR baru, dipakai setelah perantara menolak dengan 401.
+ *
+ * Token Supabase berumur satu jam. Aplikasi ini dibuka berjam-jam di lapangan,
+ * jadi kedaluwarsa di tengah pemakaian bukan kasus tepi — itu kejadian
+ * harian. Yang terbaca pemakainya: "Sesi Anda tidak terbaca, jadi permintaan
+ * AI ditolak di gerbangnya", beserta saran keluar lalu masuk kembali — untuk
+ * sesi yang sebenarnya masih sah dan hanya perlu disegarkan.
+ *
+ * Penyegaran itu ada dan otomatis; yang tidak ada adalah yang MEMICUNYA saat
+ * 401 datang. Di sinilah.
+ */
+async function tokenSegar(): Promise<string> {
+  lupakanToken()
+  try {
+    const { supabase } = await import('./supabase')
+    const { data } = await supabase.auth.getSession()
+    let t = data.session?.access_token ?? ''
+    // getSession() menyegarkan yang sudah lewat waktunya, tetapi tidak selalu
+    // yang HAMPIR lewat — dan token yang tinggal beberapa detik akan ditolak
+    // lagi pada percobaan kedua.
+    if (!masihSegar(t)) {
+      const { data: baru } = await supabase.auth.refreshSession()
+      t = baru.session?.access_token ?? t
+    }
+    ingatToken(t)
+    return t
+  } catch {
+    // Gagal menyegarkan bukan alasan melempar: pemanggilnya sudah memegang
+    // jawaban 401 yang asli, dan itu yang harus sampai ke pemakainya.
+    return ''
+  }
+}
+
 async function kirim(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
+  const mulaiSemua = Date.now()
+  const res = await kirimSekali(badan, batasMs)
+
+  // 401 hanya berarti "tokennya tidak berlaku", dan itu paling sering berarti
+  // "sudah kedaluwarsa" — bukan "Anda belum masuk". Disegarkan sekali lalu
+  // diulang; kalau masih ditolak juga, jawaban aslinya yang diteruskan.
+  //
+  // Tamu tidak ikut: ia memang tidak punya sesi untuk disegarkan.
+  if (res.status !== 401 || undangan) return res
+
+  const segar = await tokenSegar()
+  if (!segar) return res
+
+  const sisa = batasMs - (Date.now() - mulaiSemua)
+  return await kirimSekali(badan, Math.max(8_000, sisa))
+}
+
+async function kirimSekali(badan: unknown, batasMs = BATAS_MS): Promise<Response> {
   // Token diambil DI LUAR blok berikut, dan ia punya batas waktunya sendiri.
   //
   // Menaruh `await token()` di dalam susunan header terlihat rapi, tetapi
