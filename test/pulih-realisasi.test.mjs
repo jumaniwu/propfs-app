@@ -121,8 +121,8 @@ const e = (id, jumlah, extra = {}) => ({
     .join('\n')
 
   const store = tanpaKomentar(readFileSync(join(akar, 'store/costStore.ts'), 'utf8'))
-  assert(/pulihkanRealisasi: \(entries\)/.test(store), 'store punya pemulihnya')
-  assert(/nisanRealisasi: state\.nisanRealisasi\.filter\(n => !idBaru\.has/.test(store),
+  assert(/pulihkanRealisasi: \(entries, nisanDiangkat\)/.test(store), 'store punya pemulihnya')
+  assert(/const nisanBaru = state\.nisanRealisasi\.filter\(n => !angkat\.has/.test(store),
     'dan benar-benar MENGANGKAT nisannya')
   assert(/urungReset: \(\)/.test(store), 'ada jalan mengurungkan Reset')
   assert(/buanganReset = get\(\)\.realisasiEntries\.slice\(\)/.test(store),
@@ -135,6 +135,65 @@ const e = (id, jumlah, extra = {}) => ({
     'konfirmasi Reset menyebut NOMINALNYA — itu yang membuat orang berhenti sejenak')
   assert(/perangkat lain/.test(tab), 'dan menyebut jangkauannya ke perangkat lain')
   assert(/rencanaPulihRealisasi/.test(tab), 'pemulihan dari berkas ada di layar')
+}
+
+
+// ── 9. Entri yang MASIH ADA tapi sudah bernisan — bom waktu ─────────
+//
+// Ini keadaan paling berbahaya di seluruh alur, dan yang paling tidak
+// terlihat: setelah Reset ditekan di HP, laptop yang belum menyinkron masih
+// memperlihatkan seluruh datanya — seolah tidak terjadi apa-apa. Tetapi
+// nisannya sudah ada di cloud, dan gabungIsiProyek memberlakukan nisan TANPA
+// SYARAT: `if (id && !dihapus.has(id))`. Sinkronisasi berikutnya menghapusnya.
+//
+// Jadi "sudah ada" bukan alasan untuk tidak berbuat apa-apa. Justru di situlah
+// nisannya harus diangkat, selagi datanya masih ada untuk diselamatkan.
+{
+  const r = rencanaPulihRealisasi(
+    [e('a', 100), e('b', 200)],      // berkas cadangan
+    [{ id: 'a' }, { id: 'b' }],      // keduanya MASIH ADA di aplikasi
+    [{ id: 'a' }, { id: 'b' }],      // …tetapi sudah bernisan
+  )
+  assert(r.entri.length === 0, 'tidak ada yang perlu ditambahkan — datanya memang masih ada')
+  assert(r.sudahAda === 2, 'keduanya tercatat sudah ada')
+  assert(r.nisanDiangkat.length === 2,
+    'TAPI nisannya tetap diangkat — tanpa ini keduanya hilang pada sinkron berikutnya')
+
+  const s = kalimatPulihRealisasi(r)
+  assert(/masih ada/.test(s) && /akan hilang/.test(s),
+    'kalimatnya memperingatkan, bukan berkata "semua sudah ada" lalu diam')
+  assert(!/Semua pengeluaran di berkas ini sudah ada/.test(s),
+    'tidak lagi memakai kalimat yang menenangkan secara keliru')
+}
+
+// ── 10. Yang tidak disebut di cadangan tidak ikut terangkat ─────────
+{
+  const r = rencanaPulihRealisasi(
+    [e('a', 100)],
+    [{ id: 'a' }, { id: 'b' }],
+    [{ id: 'a' }, { id: 'b' }],
+  )
+  assert(r.nisanDiangkat.length === 1 && r.nisanDiangkat[0] === 'a',
+    'hanya yang ada di berkas cadangan — penghapusan lain tetap berlaku')
+}
+
+// ── 11. Store mengangkat nisan walau tidak menambah entri ───────────
+{
+  const akar = new URL('../src', import.meta.url).pathname
+  const store = readFileSync(join(akar, 'store/costStore.ts'), 'utf8')
+    .split('\n').filter(b => !b.trim().startsWith('//')).join('\n')
+  assert(/pulihkanRealisasi: \(entries, nisanDiangkat\)/.test(store),
+    'store menerima daftar nisan yang harus diangkat')
+  assert(/if \(baru\.length === 0 && !nisanBerubah\) return 0/.test(store),
+    'berhenti hanya bila TIDAK ADA yang berubah, termasuk nisannya')
+  assert(/const nisanBerubah = nisanBaru\.length !== state\.nisanRealisasi\.length/.test(store),
+    'perubahan nisan saja sudah cukup untuk menyimpan')
+
+  const tab = readFileSync(join(akar, 'components/cost/TabRealisasiBiaya.tsx'), 'utf8')
+  assert(/r\.entri\.length === 0 && r\.nisanDiangkat\.length === 0/.test(tab),
+    'layar tidak lagi berhenti hanya karena tidak ada entri baru')
+  assert(/pulihkanRealisasi\(r\.entri, r\.nisanDiangkat\)/.test(tab),
+    'dan meneruskan daftar nisannya')
 }
 
 console.log(`pulih-realisasi: ${ok} assert lulus`)

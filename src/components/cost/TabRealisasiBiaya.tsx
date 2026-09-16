@@ -545,15 +545,23 @@ export default function TabRealisasiBiaya() {
                   }
                   const calon = bacaEntriPulih(mentah, projectInfo?.id)
                   const r = rencanaPulihRealisasi(calon, realisasiEntries, useCostStore.getState().nisanRealisasi)
-                  if (r.entri.length === 0) {
+                  // "Tidak ada yang ditambahkan" TIDAK berarti tidak ada yang
+                  // perlu dikerjakan: entri yang masih terlihat tetapi sudah
+                  // bernisan akan terhapus pada sinkronisasi berikutnya, dan
+                  // ini satu-satunya kesempatan mencegahnya.
+                  if (r.entri.length === 0 && r.nisanDiangkat.length === 0) {
                     toast({ title: 'Tidak ada yang dipulihkan', description: kalimatPulihRealisasi(r) })
                     return
                   }
-                  if (!window.confirm(`${kalimatPulihRealisasi(r)}\n\nPulihkan sekarang?`)) return
-                  const n = pulihkanRealisasi(r.entri)
+                  if (!window.confirm(`${kalimatPulihRealisasi(r)}\n\nLanjutkan?`)) return
+                  const n = pulihkanRealisasi(r.entri, r.nisanDiangkat)
                   toast({
-                    title: `✅ ${n} pengeluaran dipulihkan`,
-                    description: 'Catatan "sudah dihapus" ikut dibatalkan, jadi tidak akan hilang lagi saat sinkron.',
+                    title: n > 0
+                      ? `✅ ${n} pengeluaran dipulihkan`
+                      : `✅ ${r.nisanDiangkat.length} tanda "sudah dihapus" dibatalkan`,
+                    description: n > 0
+                      ? 'Catatan "sudah dihapus" ikut dibatalkan, jadi tidak akan hilang lagi saat sinkron.'
+                      : 'Datanya sudah ada, dan sekarang tidak akan terhapus saat sinkron.',
                   })
                 }} />
               <span className="text-xs h-7 px-2 gap-1.5 inline-flex items-center rounded-md

@@ -103,11 +103,28 @@ export function rencanaPulihRealisasi(
   const dipakai = new Set<string>()
   let sudahAda = 0
 
+  // Nisan yang harus diangkat walau entrinya MASIH ADA di perangkat ini.
+  //
+  // Ini yang paling berbahaya dan paling tidak terlihat. Setelah Reset ditekan
+  // di HP, laptop yang belum menyinkron masih memperlihatkan seluruh datanya —
+  // seolah tidak terjadi apa-apa. Tetapi nisannya sudah ada di cloud, dan
+  // penggabungan memberlakukan nisan TANPA SYARAT: `if (id && !dihapus.has(id))`.
+  // Sinkronisasi berikutnya akan menghapusnya juga.
+  //
+  // Jadi "sudah ada" bukan alasan untuk tidak berbuat apa-apa. Justru di
+  // situlah nisannya harus diangkat, selagi datanya masih ada untuk
+  // diselamatkan.
+  const angkatJuga: string[] = []
+
   for (const e of calon ?? []) {
     const id = teks(e?.id)
     const nama = teks(e?.namaMaterial) || teks(e?.namaTukang) || teks(e?.keterangan) || id || '(tanpa nama)'
     if (!id) { dilewati.push({ apa: nama, sebab: 'tidak punya id' }); continue }
-    if (ada.has(id)) { sudahAda++; continue }
+    if (ada.has(id)) {
+      sudahAda++
+      if (idNisan.has(id)) angkatJuga.push(id)
+      continue
+    }
     if (dipakai.has(id)) continue
     const jumlah = angka(e?.jumlah)
     if (jumlah <= 0) { dilewati.push({ apa: nama, sebab: 'nominalnya nol' }); continue }
@@ -117,9 +134,14 @@ export function rencanaPulihRealisasi(
 
   return {
     entri,
-    // Hanya nisan milik entri yang benar-benar dipulihkan. Mengangkat seluruh
-    // nisan akan menghidupkan kembali penghapusan yang memang disengaja.
-    nisanDiangkat: entri.map(e => e.id).filter(id => idNisan.has(id)),
+    // Nisan milik entri yang dipulihkan DAN yang masih ada tapi sudah
+    // bernisan. Yang tidak disebut di berkas cadangan tidak ikut — mengangkat
+    // seluruh nisan akan menghidupkan kembali penghapusan yang memang
+    // disengaja.
+    nisanDiangkat: [
+      ...entri.map(e => e.id).filter(id => idNisan.has(id)),
+      ...angkatJuga,
+    ],
     totalRupiah: entri.reduce((s, e) => s + angka(e.jumlah), 0),
     sudahAda,
     dilewati,
@@ -129,7 +151,16 @@ export function rencanaPulihRealisasi(
 /** Kalimat konfirmasi — menyebut nominal, karena itu yang bisa dicocokkan orang. */
 export function kalimatPulihRealisasi(r: RencanaPulihRealisasi | null | undefined): string {
   const n = r?.entri.length ?? 0
+  const angkat = r?.nisanDiangkat.length ?? 0
   if (n < 1) {
+    // "Sudah ada" TIDAK berarti aman. Bila entri yang masih ada itu bernisan,
+    // sinkronisasi berikutnya akan menghapusnya — dan inilah satu-satunya
+    // kesempatan mencegahnya, selagi datanya masih ada.
+    if (angkat > 0) {
+      return `Datanya masih ada, tetapi ${angkat} di antaranya bertanda "sudah dihapus"`
+        + ' dan akan hilang pada sinkronisasi berikutnya.'
+        + ' Tanda itu akan dibatalkan sekarang.'
+    }
     if ((r?.sudahAda ?? 0) > 0) return 'Semua pengeluaran di berkas ini sudah ada di aplikasi.'
     return 'Tidak ada pengeluaran yang bisa dipulihkan dari berkas ini.'
   }
