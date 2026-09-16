@@ -3,7 +3,7 @@ import { simpanXlsx } from '@/lib/unduhBerkas'
 import {
   ReceiptIcon, Loader2, Paperclip, Send, Download, CheckCircle2,
   FileText, ImageIcon, X, TrendingDown, Wallet, BarChart3, RefreshCw,
-  Package, Hammer, Info, MessageSquare, LayoutDashboard, PackageCheck, Pencil
+  Package, Hammer, Info, MessageSquare, LayoutDashboard, PackageCheck, Pencil, Undo2, Upload
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCostStore } from '@/store/costStore'
@@ -21,6 +21,9 @@ import {
   type PemasukanUsul, type PembayaranUsul,
 } from '@/lib/ai-realisasi'
 import { useToast } from '@/hooks/use-toast'
+import {
+  bacaEntriPulih, rencanaPulihRealisasi, kalimatPulihRealisasi,
+} from '@/lib/pulihRealisasi'
 import { buildReportSheet, reportXlsx } from '@/utils/excel'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { procurementApi } from '@/lib/procurementApi'
@@ -99,7 +102,9 @@ Saya juga bisa mengubah format laporan sesuai permintaan Anda. ✨`
 }
 
 export default function TabRealisasiBiaya() {
-  const { activePlan, projectInfo, realisasiEntries, addRealisasiEntries, updateRealisasiEntry, deleteRealisasiEntry, clearRealisasiEntries } = useCostStore()
+  const { activePlan, projectInfo, realisasiEntries, addRealisasiEntries, updateRealisasiEntry, deleteRealisasiEntry, clearRealisasiEntries, urungReset, pulihkanRealisasi } = useCostStore()
+  /** Berapa entri yang baru saja dibuang Reset — dasar tombol "Urungkan". */
+  const [baruDireset, setBaruDireset] = useState(0)
   const { toast } = useToast()
 
   const storageKey = `propfs-chat-${activePlan?.projectId ?? 'default'}`
@@ -334,8 +339,22 @@ export default function TabRealisasiBiaya() {
   }
 
   const handleReset = () => {
-    if (window.confirm('Hapus semua data pengeluaran & riwayat chat untuk project ini?')) {
+    const n = realisasiEntries.length
+    const total = realisasiEntries.reduce((s, e) => s + (Number(e.jumlah) || 0), 0)
+    // Konfirmasinya menyebut BERAPA dan SENILAI BERAPA.
+    //
+    // "Hapus semua data pengeluaran & riwayat chat untuk project ini?" tidak
+    // memberi satu pun angka untuk ditimbang, jadi ia ditekan seperti dialog
+    // mana pun. Nominal rupiahnya yang membuat orang berhenti sejenak — dan
+    // penghapusan ini menjangkau seluruh perangkat, bukan hanya yang ini.
+    const kalimat = n === 0
+      ? 'Hapus riwayat chat untuk proyek ini?'
+      : `Hapus ${n} pengeluaran senilai Rp ${Math.round(total).toLocaleString('id-ID')}`
+        + ' beserta riwayat chat proyek ini?\n\nIni juga menghapusnya di perangkat lain'
+        + ' saat aplikasi di sana tersinkron.'
+    if (window.confirm(kalimat)) {
       clearRealisasiEntries()
+      setBaruDireset(n)
       setMessages([INITIAL_MSG])
       sessionStorage.removeItem(storageKey)
     }
@@ -485,9 +504,67 @@ export default function TabRealisasiBiaya() {
               <p className="text-[10px] text-muted-foreground">Material & Upah · Gemini 2.5 Flash · Data tersimpan otomatis</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1.5" onClick={handleReset}>
-            <RefreshCw className="w-3 h-3" /> Reset
-          </Button>
+          <div className="flex items-center gap-1.5">
+            {/* Muncul HANYA sesudah Reset, dan hanya selama halaman ini belum
+                ditutup. Reset menjangkau seluruh perangkat lewat nisan yang
+                ikut tersinkron; untuk tindakan sejauh itu, jalan kembali
+                harus ada di tempat yang sama dengan tombol yang melakukannya. */}
+            {baruDireset > 0 && (
+              <Button variant="outline" size="sm"
+                className="text-xs h-7 gap-1.5 border-amber-400 text-amber-800 bg-amber-50"
+                onClick={() => {
+                  const n = urungReset()
+                  setBaruDireset(0)
+                  toast({
+                    title: n > 0 ? `✅ ${n} pengeluaran dikembalikan` : 'Tidak ada yang bisa dikembalikan',
+                    description: n > 0
+                      ? 'Catatan "sudah dihapus" ikut dibatalkan, jadi tidak akan hilang lagi saat sinkron.'
+                      : 'Halaman ini sudah dimuat ulang sejak Reset ditekan.',
+                  })
+                }}>
+                <Undo2 className="w-3 h-3" /> Urungkan Reset
+              </Button>
+            )}
+            {/* Pulihkan dari salinan perangkat lain.
+                Nisan mengejar data ke mana pun ia berada: salinan di laptop
+                pun ikut terhapus begitu laptop itu menyinkron. Yang berhasil
+                diselamatkan SEBELUM itu — lewat berkas cadangan atau salinan
+                localStorage — dimasukkan kembali di sini, berikut pengangkatan
+                nisannya. Tanpa mengangkat nisan, entrinya muncul sebentar lalu
+                hilang sendiri: kegagalan yang paling membingungkan. */}
+            <label className="inline-flex">
+              <input type="file" accept="application/json,.json,.txt" className="hidden"
+                onChange={async e => {
+                  const berkas = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!berkas) return
+                  let mentah: unknown
+                  try { mentah = JSON.parse(await berkas.text()) } catch {
+                    toast({ title: 'Berkas tidak bisa dibaca', description: 'Isinya bukan JSON.', variant: 'destructive' })
+                    return
+                  }
+                  const calon = bacaEntriPulih(mentah, projectInfo?.id)
+                  const r = rencanaPulihRealisasi(calon, realisasiEntries, useCostStore.getState().nisanRealisasi)
+                  if (r.entri.length === 0) {
+                    toast({ title: 'Tidak ada yang dipulihkan', description: kalimatPulihRealisasi(r) })
+                    return
+                  }
+                  if (!window.confirm(`${kalimatPulihRealisasi(r)}\n\nPulihkan sekarang?`)) return
+                  const n = pulihkanRealisasi(r.entri)
+                  toast({
+                    title: `✅ ${n} pengeluaran dipulihkan`,
+                    description: 'Catatan "sudah dihapus" ikut dibatalkan, jadi tidak akan hilang lagi saat sinkron.',
+                  })
+                }} />
+              <span className="text-xs h-7 px-2 gap-1.5 inline-flex items-center rounded-md
+                text-muted-foreground hover:bg-accent cursor-pointer font-medium">
+                <Upload className="w-3 h-3" /> Pulihkan
+              </span>
+            </label>
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7 gap-1.5" onClick={handleReset}>
+              <RefreshCw className="w-3 h-3" /> Reset
+            </Button>
+          </div>
         </div>
 
         {/* Messages */}

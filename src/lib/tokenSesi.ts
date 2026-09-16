@@ -78,7 +78,9 @@ function uraiNilai(mentah: string): unknown {
  * Inilah jaring pengaman ketika Supabase lambat menjawab. Ia dibaca langsung
  * dari tempat Supabase sendiri menyimpannya, jadi isinya token yang sama.
  */
-export function bacaTokenSimpanan(g: Gudang | null | undefined): string {
+export function bacaTokenSimpanan(
+  g: Gudang | null | undefined, sekarang = Date.now(),
+): string {
   if (!g) return ''
   try {
     for (let i = 0; i < g.length; i++) {
@@ -90,7 +92,15 @@ export function bacaTokenSimpanan(g: Gudang | null | undefined): string {
         | { access_token?: string; currentSession?: { access_token?: string } }
         | null
       const t = sesi?.access_token ?? sesi?.currentSession?.access_token
-      if (typeof t === 'string' && t) return t
+      // Token yang sudah lewat waktunya DIABAIKAN, bukan dipakai sebagai
+      // cadangan.
+      //
+      // Cadangan ini dipakai ketika Supabase lambat menjawab. Menyerahkan
+      // token mati ke sana bukan "lebih baik daripada tidak ada": ia
+      // menghasilkan 401 yang meyakinkan, dan pemakainya membaca "Sesi Anda
+      // tidak terbaca" padahal ia jelas-jelas sedang memakai aplikasinya.
+      // Kosong jauh lebih jujur — dan memang memicu penyegaran.
+      if (typeof t === 'string' && t && masihSegar(t, sekarang)) return t
     }
   } catch { /* isinya rusak atau penyimpanan ditolak — anggap tidak ada */ }
   return ''

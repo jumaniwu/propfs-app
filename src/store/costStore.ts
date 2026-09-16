@@ -89,6 +89,18 @@ interface CostStore {
   updateRealisasiEntry: (id: string, patch: Partial<RealisasiEntry>) => void
   deleteRealisasiEntry: (id: string) => void
   clearRealisasiEntries: () => void
+  /**
+   * Kembalikan pengeluaran yang terlanjur dihapus, BESERTA mengangkat
+   * nisannya.
+   *
+   * Mengangkat nisan itu bukan tambahan — ia syaratnya. Nisan ikut
+   * tersinkron, jadi entri yang dipulihkan tanpa mengangkat nisannya akan
+   * terhapus lagi pada sinkronisasi berikutnya, dan yang memulihkannya akan
+   * mengira dirinya salah tekan untuk kedua kalinya.
+   */
+  pulihkanRealisasi: (entries: RealisasiEntry[]) => number
+  /** Entri yang baru saja dibuang Reset, selama halaman ini belum ditutup. */
+  urungReset: () => number
 
   // S-Curve config
   updateSCurveConfig: (duration: number, generated: boolean) => void
@@ -127,6 +139,15 @@ function getUserStorageKey(): string | null {
   } catch { /* ignore */ }
   return null
 }
+
+/**
+ * Entri yang baru saja dibuang oleh Reset, di luar store.
+ *
+ * Di luar karena ia bukan bagian dari keadaan yang disimpan maupun
+ * disinkronkan: ia hanya jaring untuk beberapa menit ke depan, di halaman
+ * ini, sebelum orangnya sadar telah salah tekan.
+ */
+let buanganReset: RealisasiEntry[] = []
 
 function loadLocalData(): SavedCostProject[] {
   try {
@@ -457,6 +478,16 @@ export const useCostStore = create<CostStore>((set, get) => ({
     // seluruhnya kembali pada sinkronisasi berikutnya — kerugian yang persis
     // sama, hanya sekaligus.
     const waktu = new Date().toISOString()
+
+    // Disimpan sebentar supaya bisa diurungkan.
+    //
+    // Nisan membuat Reset menjangkau SELURUH perangkat: salinan yang masih
+    // tersimpan di laptop pun ikut terhapus begitu laptop itu menyinkron.
+    // Untuk tindakan sejauh itu, satu dialog yang mudah ditekan tanpa dibaca
+    // bukan pengaman yang memadai — dan sesudahnya tidak ada apa pun yang
+    // bisa dilakukan. Sekarang ada.
+    buanganReset = get().realisasiEntries.slice()
+
     set(state => ({
       realisasiEntries: [],
       nisanRealisasi: gabungNisan(
@@ -465,6 +496,34 @@ export const useCostStore = create<CostStore>((set, get) => ({
       ),
     }))
     setTimeout(() => get().saveToStorage(), 300)
+  },
+
+  urungReset: () => {
+    const kembali = buanganReset
+    if (kembali.length === 0) return 0
+    const n = get().pulihkanRealisasi(kembali)
+    buanganReset = []
+    return n
+  },
+
+  pulihkanRealisasi: (entries) => {
+    const bersih = (entries ?? []).filter(e => e && String(e.id ?? '').trim())
+    if (bersih.length === 0) return 0
+    const state = get()
+    const ada = new Set(state.realisasiEntries.map(e => String(e.id ?? '')))
+    const baru = bersih.filter(e => !ada.has(String(e.id)))
+    if (baru.length === 0) return 0
+
+    const idBaru = new Set(baru.map(e => String(e.id)))
+    set({
+      realisasiEntries: [...state.realisasiEntries, ...baru],
+      // Nisannya DIANGKAT. Tanpa ini, sinkronisasi berikutnya menghapusnya
+      // lagi — dan itu persis kegagalan yang paling membingungkan: data yang
+      // muncul sebentar lalu hilang sendiri.
+      nisanRealisasi: state.nisanRealisasi.filter(n => !idBaru.has(String(n.id ?? ''))),
+    })
+    setTimeout(() => get().saveToStorage(), 300)
+    return baru.length
   },
 
   // ── Computed helpers ───────────────────────────────────────────────────────
