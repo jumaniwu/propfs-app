@@ -98,7 +98,7 @@ interface CostStore {
    * terhapus lagi pada sinkronisasi berikutnya, dan yang memulihkannya akan
    * mengira dirinya salah tekan untuk kedua kalinya.
    */
-  pulihkanRealisasi: (entries: RealisasiEntry[]) => number
+  pulihkanRealisasi: (entries: RealisasiEntry[], nisanDiangkat?: string[]) => number
   /** Entri yang baru saja dibuang Reset, selama halaman ini belum ditutup. */
   urungReset: () => number
 
@@ -506,21 +506,32 @@ export const useCostStore = create<CostStore>((set, get) => ({
     return n
   },
 
-  pulihkanRealisasi: (entries) => {
-    const bersih = (entries ?? []).filter(e => e && String(e.id ?? '').trim())
-    if (bersih.length === 0) return 0
+  pulihkanRealisasi: (entries, nisanDiangkat) => {
     const state = get()
+    const bersih = (entries ?? []).filter(e => e && String(e.id ?? '').trim())
     const ada = new Set(state.realisasiEntries.map(e => String(e.id ?? '')))
     const baru = bersih.filter(e => !ada.has(String(e.id)))
-    if (baru.length === 0) return 0
 
-    const idBaru = new Set(baru.map(e => String(e.id)))
+    // Nisan yang harus diangkat — termasuk milik entri yang MASIH ADA.
+    //
+    // Entri yang masih terlihat tetapi sudah bernisan adalah keadaan paling
+    // berbahaya di seluruh alur ini: layarnya menunjukkan semuanya baik-baik
+    // saja, dan sinkronisasi berikutnya menghapusnya. Karena itu pemulihan
+    // yang "tidak menambahkan apa pun" tetap harus mengangkat nisannya.
+    const angkat = new Set([
+      ...baru.map(e => String(e.id)),
+      ...(nisanDiangkat ?? []).map(id => String(id ?? '')).filter(Boolean),
+    ])
+    const nisanBaru = state.nisanRealisasi.filter(n => !angkat.has(String(n.id ?? '')))
+    const nisanBerubah = nisanBaru.length !== state.nisanRealisasi.length
+
+    if (baru.length === 0 && !nisanBerubah) return 0
+
     set({
-      realisasiEntries: [...state.realisasiEntries, ...baru],
-      // Nisannya DIANGKAT. Tanpa ini, sinkronisasi berikutnya menghapusnya
-      // lagi — dan itu persis kegagalan yang paling membingungkan: data yang
-      // muncul sebentar lalu hilang sendiri.
-      nisanRealisasi: state.nisanRealisasi.filter(n => !idBaru.has(String(n.id ?? ''))),
+      realisasiEntries: baru.length > 0
+        ? [...state.realisasiEntries, ...baru]
+        : state.realisasiEntries,
+      nisanRealisasi: nisanBaru,
     })
     setTimeout(() => get().saveToStorage(), 300)
     return baru.length
