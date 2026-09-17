@@ -25,7 +25,8 @@ import {
   bacaEntriPulih, rencanaPulihRealisasi, kalimatPulihRealisasi,
 } from '@/lib/pulihRealisasi'
 import { bacaRealisasiDariSheet, kalimatImpor, type BarisSheet } from '@/lib/imporRealisasiExcel'
-import { buildReportSheet, reportXlsx } from '@/utils/excel'
+import { reportXlsx } from '@/utils/excel'
+import { susunWorkbookRealisasi, namaBerkasLaporan } from '@/lib/laporanRealisasiExcel'
 import { getDriveWebhook, uploadToDrive } from '@/lib/fieldReports'
 import { procurementApi } from '@/lib/procurementApi'
 import { penerimaanApi } from '@/lib/penerimaanApi'
@@ -164,17 +165,32 @@ export default function TabRealisasiBiaya() {
           header: 1, raw: false, defval: '',
         }) as BarisSheet[]
       }
+      // Seluruh sheet dibaca, lalu diadu dengan angka yang ditulis laporan
+      // tentang dirinya sendiri — baris TOTAL di Ringkasan dan jumlah
+      // transaksi di subjudul. Tanpa itu, pembacaan yang salah tetap terlihat
+      // rapi: pernah seluruh empat belas transaksi terbaca nol rupiah, dan
+      // yang muncul hanya "14 baris dilewati" dengan nada seperti keterangan.
       const h = bacaRealisasiDariSheet(sheets, realisasiEntries)
+      const gagalPeriksa = !h.periksa.cocok
+
       if (h.entri.length === 0) {
-        toast({ title: 'Tidak ada yang dimasukkan', description: kalimatImpor(h) })
+        toast({
+          title: gagalPeriksa ? '⚠️ Berkas tidak terbaca dengan benar' : 'Tidak ada yang dimasukkan',
+          description: kalimatImpor(h),
+          variant: gagalPeriksa ? 'destructive' : undefined,
+        })
         return
       }
       if (!window.confirm(`${kalimatImpor(h)}\n\nMasukkan sekarang?`)) return
       addRealisasiEntries(h.entri)
       toast({
         title: `✅ ${h.entri.length} transaksi dimasukkan`,
-        description: 'Dibaca dari laporan Excel, dengan id baru — jadi tidak akan terhapus'
-          + ' lagi oleh tanda hapus yang lama.',
+        description: gagalPeriksa
+          ? 'Dimasukkan atas persetujuan Anda, walau angkanya tidak cocok dengan laporan.'
+            + ' Cocokkan kembali dengan berkas aslinya.'
+          : 'Dibaca dari laporan Excel dan sudah dicocokkan dengan totalnya sendiri.'
+            + ' Id-nya baru, jadi tidak akan terhapus lagi oleh tanda hapus yang lama.',
+        variant: gagalPeriksa ? 'destructive' : undefined,
       })
     } catch (err) {
       toast({
@@ -412,95 +428,20 @@ export default function TabRealisasiBiaya() {
   }
 
   // ── Excel Export: laporan rapi (judul, tabel berformat, baris TOTAL/SUM) ──
+  //
+  // Penyusunan workbook-nya ada di src/lib/laporanRealisasiExcel.ts supaya
+  // tes bisa menulis berkas yang PERSIS sama dengan yang diunduh orang, lalu
+  // membacanya kembali lewat pengimpor. Selama kodenya di sini, pembacaan
+  // hanya bisa diuji terhadap sheet buatan tangan — dan sheet buatan tangan
+  // itu lulus sementara berkas sungguhannya gagal.
   const exportToExcel = () => {
     if (realisasiEntries.length === 0) return
-    const wb = reportXlsx.utils.book_new()
     // nama proyek diambil dari judul proyek, bukan kode ID
     const projectName = projectInfo?.projectName?.trim()
       || activePlan?.projectId?.substring(0, 10) || 'Proyek'
-    const printed = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-    const dates = realisasiEntries.map(e => e.tanggal).filter(Boolean).sort()
-    const periode = dates.length ? `Periode: ${dates[0]} s.d. ${dates[dates.length - 1]} · ` : ''
-    const subtitle = `Proyek: ${projectName} · ${periode}Dicetak: ${printed} · ${realisasiEntries.length} transaksi`
-
-    // Sheet 1: Ringkasan
-    const grandTotal = realisasiEntries.reduce((s, e) => s + e.jumlah, 0)
-    const totalMaterial = realisasiEntries.filter(e => e.tipe === 'material').reduce((s, e) => s + e.jumlah, 0)
-    const totalUpah = realisasiEntries.filter(e => e.tipe === 'upah').reduce((s, e) => s + e.jumlah, 0)
-    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
-      title: 'LAPORAN REALISASI BIAYA PROYEK — RINGKASAN',
-      subtitle,
-      headers: ['Uraian', 'Jumlah Transaksi', 'Jumlah (Rp)'],
-      rows: [
-        ['Pembelian Material', realisasiEntries.filter(e => e.tipe === 'material').length, totalMaterial],
-        ['Upah Tukang/Pekerja', realisasiEntries.filter(e => e.tipe === 'upah').length, totalUpah],
-        ['Operasional & Lainnya', realisasiEntries.filter(e => e.tipe !== 'material' && e.tipe !== 'upah').length, grandTotal - totalMaterial - totalUpah],
-      ],
-      sumCols: [1, 2],
-    }), 'Ringkasan')
-
-    // Sheet 2: Rekap per Kategori (gaya laporan akuntan)
-    const kategoriList = [...new Set(realisasiEntries.map(e => e.kategori || 'lainnya'))]
-    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
-      title: 'REKAPITULASI PENGELUARAN PER KATEGORI',
-      subtitle,
-      headers: ['No', 'Kategori', 'Jumlah Transaksi', 'Total (Rp)', '% dari Total'],
-      rows: kategoriList.map((k, i) => {
-        const items = realisasiEntries.filter(e => (e.kategori || 'lainnya') === k)
-        const tot = items.reduce((s, e) => s + e.jumlah, 0)
-        return [i + 1, k.toUpperCase(), items.length, tot,
-          grandTotal > 0 ? `${((tot / grandTotal) * 100).toFixed(1)}%` : '0%']
-      }),
-      sumCols: [2, 3],
-    }), 'Rekap Kategori')
-
-    // Sheet 2: Pembelian Material
-    const mat = realisasiEntries.filter(e => e.tipe === 'material')
-    if (mat.length > 0) {
-      reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
-        title: 'LAPORAN PEMBELIAN MATERIAL',
-        subtitle,
-        headers: ['No', 'Tanggal', 'Nama Material', 'Volume', 'Satuan', 'Harga Satuan (Rp)',
-          'Total (Rp)', 'Supplier/Toko', 'No. Nota', 'Kategori', 'Metode Bayar', 'Status', 'Keterangan'],
-        rows: mat.map((e, i) => [
-          i + 1, e.tanggal, e.namaMaterial || e.keterangan, e.volume ?? '', e.satuan ?? '',
-          e.hargaSatuan ?? '', e.jumlah, e.namaSupplier || '-', e.nomorNota || '-',
-          e.kategori, e.metodePembayaran || 'Cash', e.status, e.keterangan,
-        ]),
-        sumCols: [6],
-      }), 'Pembelian Material')
-    }
-
-    // Sheet 3: Upah Tukang
-    const upah = realisasiEntries.filter(e => e.tipe === 'upah')
-    if (upah.length > 0) {
-      reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
-        title: 'LAPORAN UPAH TUKANG / PEKERJA',
-        subtitle,
-        headers: ['No', 'Tanggal', 'Nama Tukang/Mandor', 'Jenis Pekerjaan', 'Jumlah Orang',
-          'Hari Kerja', 'Upah/Orang/Hari (Rp)', 'Total Upah (Rp)', 'Metode Bayar', 'Status', 'Keterangan'],
-        rows: upah.map((e, i) => [
-          i + 1, e.tanggal, e.namaTukang || e.keterangan, e.jenisKerja || '-', e.jumlahOrang ?? '',
-          e.hariKerja ?? '', e.upahHarian ?? '', e.jumlah, e.metodePembayaran || 'Cash', e.status, e.keterangan,
-        ]),
-        sumCols: [7],
-      }), 'Upah Tukang')
-    }
-
-    // Sheet 4: Semua Transaksi
-    reportXlsx.utils.book_append_sheet(wb, buildReportSheet({
-      title: 'DAFTAR SEMUA TRANSAKSI',
-      subtitle,
-      headers: ['No', 'Tanggal', 'Tipe', 'Keterangan', 'Kategori', 'Total (Rp)', 'Status'],
-      rows: realisasiEntries.map((e, i) => [
-        i + 1, e.tanggal, e.tipe, e.keterangan, e.kategori, e.jumlah, e.status,
-      ]),
-      sumCols: [5],
-    }), 'Semua Transaksi')
-
-    const dateStr = new Date().toLocaleDateString('id-ID').replace(/\//g, '')
-    const safeName = projectName.replace(/[^\p{L}\p{N} _-]/gu, '').trim().replace(/\s+/g, '_') || 'Proyek'
-    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }), `Laporan_Realisasi_${safeName}_${dateStr}.xlsx`)
+    const wb = susunWorkbookRealisasi(realisasiEntries, { namaProyek: projectName })
+    void simpanXlsx(reportXlsx.write(wb, { bookType: 'xlsx', type: 'array' }),
+      namaBerkasLaporan(projectName))
     toast({ title: '✅ Laporan Excel berhasil diunduh!', description: 'Format laporan rapi: judul, tabel berformat, dan baris TOTAL (SUM) di tiap sheet.' })
   }
 
