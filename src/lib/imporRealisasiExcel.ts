@@ -32,18 +32,48 @@ const teks = (v: unknown): string => String(v ?? '').trim()
 /**
  * Angka dari sel Excel, yang bisa berupa angka maupun tulisan.
  *
- * "Rp 1.750.000" dan "1750000" dan 1750000 harus menghasilkan hal yang sama.
- * Titik di sini pemisah RIBUAN, bukan desimal — Number("1.750.000") bernilai
- * NaN, dan Number("1.750") bernilai 1,75. Keduanya salah dengan cara yang
- * tidak terlihat sampai totalnya dijumlahkan.
+ * INI YANG DULU SALAH, DAN SALAHNYA TIDAK KELIHATAN.
+ *
+ * Laporan menulis angkanya dengan format `#,##0`, dan ketika dibaca kembali
+ * Excel menyerahkannya sebagai "5,520,000" — koma sebagai pemisah RIBUAN
+ * gaya Amerika, bukan desimal gaya Indonesia. Versi pertama menukar setiap
+ * koma menjadi titik, jadi "5,520,000" menjadi "5.520.000", dan
+ * Number("5.520.000") bernilai NaN. Setiap baris terbaca nol, lalu ditolak
+ * dengan alasan "nominalnya nol" — laporan berisi empat belas transaksi
+ * masuk sebagai tidak ada apa-apa, tanpa satu pun galat.
+ *
+ * Jadi pemisahnya tidak boleh ditebak dari jenis karakternya, melainkan dari
+ * susunannya:
+ *
+ * - dua jenis pemisah bercampur ("1.234,56") — yang terakhir pasti desimal
+ * - satu jenis, muncul berkali-kali ("5,520,000") — semuanya ribuan
+ * - satu jenis, sekali, tepat tiga angka di belakangnya ("1.750") — ribuan
+ * - selain itu ("12,5") — desimal
  */
 export function angkaSel(v: unknown): number {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0
-  const s = teks(v)
+  const asli = teks(v)
+  if (!asli) return 0
+  // Akuntan menulis angka negatif di dalam kurung.
+  const negatif = /^\(.*\)$/.test(asli) || /^-/.test(asli)
+  const s = asli.replace(/[^\d.,]/g, '')
   if (!s) return 0
-  const bersih = s.replace(/[^\d,-]/g, '').replace(/,/g, '.')
-  const n = Number(bersih)
-  return Number.isFinite(n) ? n : 0
+
+  const pemisah = s.match(/[.,]/g) ?? []
+  let angka = s
+  if (pemisah.length > 0) {
+    const terakhir = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','))
+    const ekor = s.length - terakhir - 1
+    const jenis = new Set(pemisah)
+    const desimal = jenis.size > 1 ? true : pemisah.length > 1 ? false : ekor !== 3
+    angka = desimal
+      ? `${s.slice(0, terakhir).replace(/[.,]/g, '')}.${s.slice(terakhir + 1)}`
+      : s.replace(/[.,]/g, '')
+  }
+
+  const n = Number(angka)
+  if (!Number.isFinite(n)) return 0
+  return negatif && n > 0 ? -n : n
 }
 
 /** Tanggal YYYY-MM-DD dari sel; kosong bila tidak terbaca. */
@@ -99,11 +129,94 @@ function sel(baris: BarisSheet, kolom: Record<string, number>, ...kunci: string[
   return ''
 }
 
+/**
+ * Angka yang disebut laporan tentang dirinya sendiri.
+ *
+ * Sheet "Ringkasan" memuat baris TOTAL berisi jumlah transaksi dan jumlah
+ * rupiah seluruhnya, dan subjudul tiap sheet menyebut "N transaksi". Itu
+ * pembukuan yang dibuat laporan atas isinya sendiri — dipakai di sini untuk
+ * memeriksa hasil pembacaan.
+ */
+export interface Checksum {
+  jumlahTransaksi?: number
+  totalRupiah?: number
+  /** Dari mana angkanya diambil; disebutkan bila ada yang tidak cocok. */
+  sumber: string[]
+}
+
+export interface Periksa {
+  checksum: Checksum
+  /** Yang benar-benar terbaca dari sheet rinci, sebelum penyaringan apa pun. */
+  terbaca: number
+  terbacaRupiah: number
+  cocok: boolean
+  /** Kalimat perbedaannya, bila tidak cocok. */
+  selisih?: string
+}
+
 export interface HasilImpor {
   entri: RealisasiEntry[]
   totalRupiah: number
   /** Baris yang dilewati beserta sebabnya. */
   dilewati: Array<{ apa: string; sebab: string }>
+  /** Hasil pencocokan silang antar sheet. */
+  periksa: Periksa
+}
+
+/**
+ * Baca angka yang disebut laporan tentang dirinya sendiri.
+ *
+ * Satu sheet saja tidak cukup untuk tahu apakah pembacaannya benar. Kalau
+ * kolomnya salah dipetakan atau angkanya salah diurai, hasilnya tetap
+ * kelihatan masuk akal — sampai totalnya dibandingkan dengan yang tertulis
+ * di laporan. Perbandingan itulah satu-satunya hal yang bisa membedakan
+ * "terbaca dengan benar" dari "terbaca dengan rapi tapi salah".
+ */
+export function bacaChecksum(
+  sheets: Record<string, BarisSheet[]> | null | undefined,
+): Checksum {
+  const hasil: Checksum = { sumber: [] }
+  const semua = sheets ?? {}
+
+  // Baris TOTAL di sheet Ringkasan: paling dapat dipercaya, karena isinya
+  // rumus SUM atas seluruh transaksi.
+  for (const nama of Object.keys(semua)) {
+    if (!nama.toLowerCase().includes('ringkasan')) continue
+    const baris = semua[nama] ?? []
+    let kolTransaksi = -1
+    let kolRupiah = -1
+    for (const b of baris) {
+      const sel0 = teks((b ?? [])[0]).toUpperCase()
+      const nama2 = (b ?? []).map(x => teks(x).toLowerCase())
+      if (kolTransaksi < 0 && nama2.some(n => n.includes('uraian'))) {
+        kolTransaksi = nama2.findIndex(n => n.includes('transaksi'))
+        kolRupiah = nama2.findIndex(n => n.includes('jumlah (rp)') || n.includes('(rp)'))
+        continue
+      }
+      if (sel0 !== 'TOTAL') continue
+      if (kolTransaksi >= 0) hasil.jumlahTransaksi = angkaSel((b ?? [])[kolTransaksi])
+      if (kolRupiah >= 0) hasil.totalRupiah = angkaSel((b ?? [])[kolRupiah])
+      hasil.sumber.push('baris TOTAL sheet Ringkasan')
+      break
+    }
+    break
+  }
+
+  // Subjudul menyebut "N transaksi"; dipakai bila Ringkasan tidak terbaca.
+  if (hasil.jumlahTransaksi === undefined) {
+    for (const nama of Object.keys(semua)) {
+      for (const b of (semua[nama] ?? []).slice(0, 4)) {
+        const m = (b ?? []).map(x => teks(x)).join(' ').match(/(\d+)\s+transaksi/i)
+        if (!m) continue
+        hasil.jumlahTransaksi = Number(m[1])
+        hasil.sumber.push(`subjudul sheet ${nama}`)
+        break
+      }
+      if (hasil.jumlahTransaksi !== undefined) break
+    }
+  }
+
+  return hasil
 }
 
 let urut = 0
@@ -140,7 +253,15 @@ export function bacaRealisasiDariSheet(
 
   const sudah = new Set((entriSekarang ?? []).map(tanda))
 
+  // Dihitung sebelum penyaringan apa pun, supaya bisa diadu dengan angka yang
+  // disebut laporan tentang dirinya sendiri. Kalau yang dibandingkan hanya
+  // yang lolos saring, pembacaan yang salah akan selalu tampak cocok.
+  let terbaca = 0
+  let terbacaRupiah = 0
+
   const tambah = (e: RealisasiEntry, apa: string) => {
+    terbaca += 1
+    terbacaRupiah += e.jumlah
     if (e.jumlah <= 0) { dilewati.push({ apa, sebab: 'nominalnya nol' }); return }
     const t = tanda(e)
     if (sudah.has(t)) { dilewati.push({ apa, sebab: 'sudah ada di aplikasi' }); return }
@@ -225,10 +346,35 @@ export function bacaRealisasiDariSheet(
     }
   }
 
+  const checksum = bacaChecksum(sheets)
+  const bedaJumlah = checksum.jumlahTransaksi !== undefined
+    && checksum.jumlahTransaksi !== terbaca
+  // Selisih satu rupiah bisa datang dari pembulatan tampilan, bukan dari
+  // salah baca. Yang dicari di sini kesalahan yang mengubah uangnya.
+  const bedaRupiah = checksum.totalRupiah !== undefined
+    && Math.abs(checksum.totalRupiah - terbacaRupiah) > 1
+
+  const sebab: string[] = []
+  if (bedaJumlah) {
+    sebab.push(`laporan menyebut ${checksum.jumlahTransaksi} transaksi,`
+      + ` yang terbaca ${terbaca}`)
+  }
+  if (bedaRupiah) {
+    sebab.push(`laporan menyebut total Rp ${Math.round(checksum.totalRupiah ?? 0).toLocaleString('id-ID')},`
+      + ` yang terbaca Rp ${Math.round(terbacaRupiah).toLocaleString('id-ID')}`)
+  }
+
   return {
     entri,
     totalRupiah: entri.reduce((s, e) => s + e.jumlah, 0),
     dilewati,
+    periksa: {
+      checksum,
+      terbaca,
+      terbacaRupiah,
+      cocok: sebab.length === 0,
+      selisih: sebab.length ? sebab.join('; ') : undefined,
+    },
   }
 }
 
@@ -238,18 +384,42 @@ function bukanStrip(v: unknown): string | undefined {
   return s && s !== '-' ? s : undefined
 }
 
-/** Kalimat konfirmasi — menyebut nominal, karena itu yang bisa dicocokkan orang. */
+/**
+ * Kalimat konfirmasi — menyebut nominal, karena itu yang bisa dicocokkan orang.
+ *
+ * Hasil pencocokan silang selalu ikut disebut ketika tidak cocok, termasuk
+ * ketika tidak ada yang bisa dimasukkan. Justru di situ ia paling dibutuhkan:
+ * "14 baris dilewati" terdengar seperti keterangan, padahal artinya bisa saja
+ * seluruh laporan salah terbaca.
+ */
 export function kalimatImpor(h: HasilImpor | null | undefined): string {
   const n = h?.entri.length ?? 0
   const lewat = h?.dilewati.length ?? 0
+  const nol = (h?.dilewati ?? []).filter(d => d.sebab === 'nominalnya nol').length
+  const beda = h?.periksa && !h.periksa.cocok ? h.periksa.selisih : undefined
+
   if (n < 1) {
-    return lewat > 0
-      ? `Tidak ada yang bisa dimasukkan — ${lewat} baris dilewati (sudah ada, atau nominalnya nol).`
+    const awal = lewat > 0
+      ? nol === lewat && lewat > 0
+        ? `Tidak ada yang bisa dimasukkan — ${lewat} baris terbaca bernilai nol.`
+        : nol > 0
+          ? `Tidak ada yang bisa dimasukkan — ${lewat} baris dilewati (${nol} terbaca bernilai nol, sisanya sudah ada).`
+          : `Tidak ada yang bisa dimasukkan — ${lewat} baris sudah ada di aplikasi.`
       : 'Tidak ada transaksi yang terbaca dari berkas ini.'
+    return beda
+      ? `${awal} Pembacaannya tidak cocok dengan laporan: ${beda}. Jangan dipakai — kirimkan berkasnya untuk diperiksa.`
+      : awal
   }
+
   const rupiah = `Rp ${Math.round(h?.totalRupiah ?? 0).toLocaleString('id-ID')}`
   const bagian = [`${n} transaksi senilai ${rupiah} akan dimasukkan dari laporan Excel.`]
   if (lewat > 0) bagian.push(`${lewat} baris dilewati karena sudah ada atau nominalnya nol.`)
+  if (beda) {
+    bagian.push(`⚠️ Pembacaannya TIDAK cocok dengan laporan: ${beda}.`
+      + ' Cocokkan dulu dengan laporan aslinya sebelum diteruskan.')
+  } else if (h?.periksa.checksum.sumber.length) {
+    bagian.push(`Sudah dicocokkan dengan ${h.periksa.checksum.sumber.join(' dan ')} — angkanya sama.`)
+  }
   bagian.push('Entri yang sekarang ada tidak diubah.')
   return bagian.join(' ')
 }
