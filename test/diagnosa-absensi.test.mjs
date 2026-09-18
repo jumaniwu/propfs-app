@@ -1,0 +1,164 @@
+// ============================================================
+// Layar kosong harus mengatakan sebabnya.
+//
+// "Belum ada absensi tercatat" muncul untuk tiga keadaan yang sama sekali
+// berbeda: permintaannya ditolak, bukunya memang kosong, atau laporannya ada
+// tapi tanpa absensi. Yang pertama paling berbahaya karena berbunyi seperti
+// yang kedua — orang menyimpulkan datanya hilang padahal datanya utuh dan
+// hanya tidak terambil.
+//
+// Yang diuji di sini bukan tampilannya, melainkan apakah kalimatnya memang
+// BERBEDA untuk sebab yang berbeda, dan apakah ia menolak mengatakan hal
+// yang menenangkan ketika keadaannya belum diketahui.
+// ============================================================
+import { readFileSync } from 'node:fs'
+import { diagnosaAbsensi } from '../src/lib/diagnosaAbsensi.ts'
+
+let ok = 0
+const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1) } ok++ }
+
+// ── 1. Gagal memuat ─────────────────────────────────────────────────
+//
+// Inilah yang dulu ditelan `.catch(() => setReports([]))`.
+{
+  const d = diagnosaAbsensi({
+    galat: 'Gagal memuat laporan (HTTP 401).',
+    jumlahLaporan: 0, jumlahBerabsensi: 0,
+  })
+  assert(d.nada === 'galat', 'kegagalan dikenali sebagai kegagalan')
+  assert(d.pesan.includes('HTTP 401'), 'galat aslinya ikut disebut, bukan disembunyikan')
+  assert(/bukan berarti datanya hilang/i.test(d.pesan),
+    'menolak membiarkan orang menyimpulkan datanya hilang')
+  assert(!/belum ada/i.test(d.judul), 'tidak berpura-pura bahwa memang belum ada isinya')
+  assert((d.saran ?? '').includes('migration_klaim_keanggotaan.sql'),
+    'menyebut langkah yang paling sering jadi sebabnya')
+}
+
+// Kegagalan diperiksa LEBIH DULU daripada angka apa pun. Angka di bawahnya
+// tidak berarti apa-apa bila daftarnya tidak pernah sampai.
+{
+  const d = diagnosaAbsensi({
+    galat: 'Gagal memuat laporan (HTTP 500).',
+    jumlahLaporan: 0, jumlahBerabsensi: 0,
+    bukuLain: [{ nama: 'Rumah Noble Cove', jumlah: 12 }],
+  })
+  assert(d.nada === 'galat', 'galat menang atas dugaan buku kembar')
+}
+
+// ── 2. Memang belum ada isinya ──────────────────────────────────────
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0 })
+  assert(d.nada === 'kosong', 'buku kosong dikenali')
+  assert(/belum menerima/i.test(d.pesan), 'dikatakan apa adanya')
+  assert(/Link Pekerja/.test(d.saran ?? ''), 'menyebut dari mana absensi diisi')
+  assert(!/hilang|gagal/i.test(d.pesan), 'tidak menakut-nakuti tanpa sebab')
+}
+
+// ── 3. Ada laporannya, tapi tanpa absensi ───────────────────────────
+//
+// Keadaan yang paling sering disalahartikan sebagai data hilang.
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 23, jumlahBerabsensi: 0 })
+  assert(d.nada === 'tanpaAbsensi', 'dibedakan dari buku yang kosong')
+  assert(d.judul.includes('23'), 'jumlah laporannya disebutkan')
+  assert(/tidak hilang/i.test(d.pesan), 'menegaskan laporannya masih ada')
+  assert(/Laporan Harian/.test(d.pesan), 'menunjukkan di mana laporannya bisa dilihat')
+}
+
+// ── 4. Buku kembar ──────────────────────────────────────────────────
+//
+// Datanya tidak hilang, hanya masuk ke buku yang berbeda. Yang dibutuhkan
+// menggabungkan, bukan mengisi ulang apa pun.
+{
+  const d = diagnosaAbsensi({
+    jumlahLaporan: 0, jumlahBerabsensi: 0,
+    bukuLain: [{ nama: 'Rumah Noble Cove', jumlah: 12 }],
+  })
+  assert(d.nada === 'adaDiBukuLain', 'buku kembar dikenali')
+  assert(/tidak hilang/i.test(d.pesan), 'menegaskan datanya tidak hilang')
+  assert(d.pesan.includes('12'), 'jumlah laporan di buku lain disebutkan')
+  assert(/Gabungkan/i.test(d.saran ?? ''), 'menyuruh menggabungkan')
+  assert(/[Jj]angan menghapus/.test(d.saran ?? ''), 'melarang menghapus bukunya')
+}
+
+// Buku lain yang KOSONG bukan petunjuk apa-apa, jadi tidak boleh dihitung.
+{
+  const d = diagnosaAbsensi({
+    jumlahLaporan: 0, jumlahBerabsensi: 0,
+    bukuLain: [{ nama: 'Rumah Noble Cove', jumlah: 0 }],
+  })
+  assert(d.nada === 'kosong', 'buku lain yang kosong tidak dianggap petunjuk')
+}
+
+// Ada laporan di buku ini TANPA absensi, sementara buku kembar juga berisi:
+// keduanya perlu disebut, karena absensinya mungkin ada di sebelah.
+{
+  const d = diagnosaAbsensi({
+    jumlahLaporan: 5, jumlahBerabsensi: 0,
+    bukuLain: [{ nama: 'Rumah Noble Cove', jumlah: 9 }],
+  })
+  assert(d.nada === 'tanpaAbsensi', 'yang di buku ini tetap jadi pokoknya')
+  assert(d.pesan.includes('9'), 'buku kembar tetap disebut sebagai kemungkinan')
+  assert(/gabungkan/i.test(d.pesan), 'menyarankan menggabungkan juga di sini')
+}
+
+// ── 5. Ada absensinya ───────────────────────────────────────────────
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 23, jumlahBerabsensi: 18 })
+  assert(d.nada === 'ada', 'keadaan normal dikenali')
+  assert(d.judul.includes('18'), 'jumlah yang berabsensi disebutkan')
+}
+
+// ── 6. Masukan cacat tidak meledak ──────────────────────────────────
+{
+  assert(diagnosaAbsensi(null).nada === 'kosong', 'null tidak meledak')
+  assert(diagnosaAbsensi(undefined).nada === 'kosong', 'undefined tidak meledak')
+  assert(diagnosaAbsensi({}).nada === 'kosong', 'objek kosong tidak meledak')
+  const d = diagnosaAbsensi({ jumlahLaporan: -3, jumlahBerabsensi: -1 })
+  assert(d.nada === 'kosong', 'angka negatif tidak membuat kalimat aneh')
+  assert(!d.judul.includes('-'), 'angka negatif tidak bocor ke layar')
+}
+
+// ── 7. Setiap keadaan punya kalimat sendiri ─────────────────────────
+//
+// Inilah inti perbaikannya: dulu semuanya satu kalimat.
+{
+  const semua = [
+    diagnosaAbsensi({ galat: 'HTTP 401.', jumlahLaporan: 0, jumlahBerabsensi: 0 }),
+    diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0 }),
+    diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 0 }),
+    diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0, bukuLain: [{ nama: 'x', jumlah: 3 }] }),
+    diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 5 }),
+  ]
+  assert(new Set(semua.map(d => d.nada)).size === 5, '5 keadaan, 5 nada berbeda')
+  assert(new Set(semua.map(d => d.judul)).size === 5, '5 judul berbeda')
+  assert(new Set(semua.map(d => d.pesan)).size === 5, '5 penjelasan berbeda')
+  assert(semua.every(d => d.judul && d.pesan), 'tidak ada yang kosong')
+}
+
+// ── 8. Galatnya benar-benar tidak ditelan lagi ──────────────────────
+//
+// Diagnosis sebagus apa pun tidak berguna kalau galatnya sudah dibuang
+// sebelum sampai ke sini.
+{
+  const src = readFileSync(
+    new URL('../src/components/cost/TabLaporanLapangan.tsx', import.meta.url), 'utf8')
+  // Komentar dibuang dulu: catatan di berkas itu SENGAJA mengutip kode lama
+  // supaya alasannya tidak hilang, dan kutipan itu bukan kode yang berjalan.
+  const kode = src.split('\n').filter(b => !/^\s*(\/\/|\*|\/\*)/.test(b)).join('\n')
+  assert(!/catch\(\(\)\s*=>\s*setReports\(\[\]\)\)/.test(kode),
+    'catch yang membuang galat laporan sudah tidak ada di kode yang berjalan')
+  assert(/catch\(\(\)\s*=>\s*setReports\(\[\]\)\)/.test(src),
+    'alasannya tetap tercatat sebagai komentar, supaya tidak dikembalikan orang')
+  assert(/setReportsError/.test(src), 'galatnya disimpan ke state')
+  assert(/galat=\{reportsError\}/.test(src), 'galatnya diteruskan ke panel absensi')
+  assert(/bukuLain=\{bukuLain\}/.test(src), 'buku kembar diteruskan ke panel absensi')
+
+  const panel = readFileSync(
+    new URL('../src/components/cost/PanelRekapAbsensi.tsx', import.meta.url), 'utf8')
+  assert(/diagnosaAbsensi\(/.test(panel), 'panel memakai diagnosisnya')
+  assert(!/Belum ada absensi tercatat\. Absensi diisi mandor/.test(panel),
+    'kalimat serba-guna yang lama sudah tidak ada')
+}
+
+console.log(`diagnosa-absensi: ${ok} assert lulus`)
