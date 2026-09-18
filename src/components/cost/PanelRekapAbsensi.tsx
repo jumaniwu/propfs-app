@@ -16,9 +16,10 @@
 // boleh tersebar bersama link laporan.
 // ============================================================
 import { useMemo, useState } from 'react'
-import { Users, FileSpreadsheet, CalendarRange, Printer, Loader2 } from 'lucide-react'
+import { Users, FileSpreadsheet, CalendarRange, Printer, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { simpanXlsx } from '@/lib/unduhBerkas'
+import { diagnosaAbsensi } from '@/lib/diagnosaAbsensi'
 import {
   rekapAbsensi, totalRekap, bulat, STATUS_HADIR, type SumberAbsensi,
 } from '@/lib/absensiPekerja'
@@ -37,7 +38,9 @@ import {
 
 export type Lingkup = 'bulanan' | 'mingguan' | 'upahBulan'
 
-export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek, token, onUbahUpah }: {
+export default function PanelRekapAbsensi({
+  laporan, pekerja, namaProyek, token, onUbahUpah, galat, bukuLain,
+}: {
   laporan: SumberAbsensi[]
   /** Daftar pekerja terdaftar — tarif hariannya ada di sini, bukan di absensi. */
   pekerja?: PekerjaLapangan[]
@@ -51,6 +54,15 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek, token,
   token?: string
   /** Dipanggil setelah upah berubah, supaya rekapnya dihitung ulang. */
   onUbahUpah?: () => void
+  /**
+   * Pesan kegagalan pemuatan laporan, bila ada.
+   *
+   * Tanpa ini panel tidak bisa membedakan "tidak ada absensi" dari "daftarnya
+   * tidak pernah sampai" — dan keduanya dulu menghasilkan kalimat yang sama.
+   */
+  galat?: string
+  /** Buku lain dengan nama proyek yang sama; gejala buku kembar. */
+  bukuLain?: Array<{ nama: string; jumlah: number }>
 }) {
   // Dua pertanyaan yang berbeda, jadi dua tampilan:
   //   BULANAN  — siapa masuk berapa hari (HOK). Untuk mengawasi.
@@ -119,13 +131,27 @@ export default function PanelRekapAbsensi({ laporan, pekerja, namaProyek, token,
   }
 
   if (berabsensi.length === 0) {
+    // Kosongnya layar ini punya beberapa sebab yang sangat berbeda, dan
+    // sebelumnya semuanya dijawab dengan satu kalimat yang sama.
+    const d = diagnosaAbsensi({
+      galat,
+      jumlahLaporan: laporan.length,
+      jumlahBerabsensi: berabsensi.length,
+      bukuLain,
+    })
+    const merah = d.nada === 'galat'
     return (
-      <div className="py-10 text-center space-y-2">
-        <Users className="w-9 h-9 mx-auto opacity-25" />
-        <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
-          Belum ada absensi tercatat. Absensi diisi mandor lewat <b>Link Pekerja</b>,
-          di dalam form laporan harian yang sama.
-        </p>
+      <div className="py-10 px-4 text-center space-y-2">
+        {merah
+          ? <AlertTriangle className="w-9 h-9 mx-auto text-red-500/70" />
+          : <Users className="w-9 h-9 mx-auto opacity-25" />}
+        <p className={`text-xs font-bold ${merah ? 'text-red-600' : 'text-navy'}`}>{d.judul}</p>
+        <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">{d.pesan}</p>
+        {d.saran && (
+          <p className="text-[11px] text-muted-foreground/80 max-w-sm mx-auto leading-relaxed pt-1">
+            {d.saran}
+          </p>
+        )}
       </div>
     )
   }

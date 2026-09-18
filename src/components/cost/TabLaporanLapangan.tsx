@@ -8,7 +8,7 @@
 // tampilan: KEJADIAN per hari (apa yang dikerjakan) dan REKAP per pekerja
 // (siapa masuk berapa hari). Yang kedua itulah dasar orang dibayar.
 // ============================================================
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   HardHat, Plus, RefreshCw, Loader2, Link2, Send, CalendarDays, Trash2,
   Image as ImageIcon, ExternalLink, Users, ListChecks, Merge, AlertTriangle,
@@ -39,6 +39,13 @@ export default function TabLaporanLapangan() {
   const [openLog, setOpenLog] = useState<FieldLog | null>(null)
   const [reports, setReports] = useState<FieldReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
+  // Kegagalan pemuatan laporan DISIMPAN, tidak ditelan.
+  //
+  // Dulu `.catch(() => setReports([]))` mengubah penolakan RLS, migrasi yang
+  // belum dijalankan, dan jaringan putus menjadi daftar kosong — lalu layarnya
+  // berkata "Belum ada absensi tercatat", persis seperti kalau memang belum
+  // ada yang mengisi. Yang membacanya menyimpulkan datanya hilang.
+  const [reportsError, setReportsError] = useState('')
   const [tampilan, setTampilan] = useState<'harian' | 'absensi' | 'pekerja'>('harian')
   /** Pekerja yang sedang dipindahkan, supaya tombolnya bisa dimatikan. */
   const [pindahJalan, setPindahJalan] = useState('')
@@ -111,9 +118,13 @@ export default function TabLaporanLapangan() {
   function openReports(log: FieldLog) {
     setOpenLog(log)
     setReportsLoading(true)
+    setReportsError('')
     fieldApi().listReports(log.id)
-      .then(setReports)
-      .catch(() => setReports([]))
+      .then(r => { setReports(r); setReportsError('') })
+      .catch(e => {
+        setReports([])
+        setReportsError(e instanceof Error ? e.message : String(e))
+      })
       .finally(() => setReportsLoading(false))
     // Daftar LENGKAP, termasuk yang sudah dinonaktifkan.
     //
@@ -154,6 +165,19 @@ export default function TabLaporanLapangan() {
    * terbelah, sehingga upah dihitung dari separuh datanya.
    */
   const kembar = cariKembar(logs.map(l => ({ ...l, jumlahLaporan: jumlah.get(l.id) })))
+
+  // Buku LAIN dengan nama proyek yang sama, beserta jumlah laporannya.
+  //
+  // Dipakai panel absensi untuk membedakan "belum pernah diisi" dari
+  // "terisi, tapi masuk ke buku kembar". Keduanya menghasilkan layar kosong
+  // yang sama, padahal yang satu perlu diisi dan yang satu perlu digabung.
+  const bukuLain = useMemo(() => {
+    if (!openLog) return []
+    const sama = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+    return logs
+      .filter(l => l.id !== openLog.id && sama(l.project_name, openLog.project_name))
+      .map(l => ({ nama: l.project_name, jumlah: jumlah.get(l.id) ?? 0 }))
+  }, [logs, openLog, jumlah])
 
   async function handleGabung(nama: string) {
     const kel = kembar.find(k => k.nama === nama)
@@ -548,9 +572,25 @@ export default function TabLaporanLapangan() {
             )
           ) : tampilan === 'absensi' ? (
             <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name}
-              token={openLog.report_token} onUbahUpah={() => openReports(openLog)} />
+              token={openLog.report_token} onUbahUpah={() => openReports(openLog)}
+              galat={reportsError} bukuLain={bukuLain} />
           ) : reports.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
+            /* Gagal memuat TIDAK boleh terlihat sama dengan belum ada isinya.
+               Yang satu berarti datanya mungkin utuh tapi tidak terambil;
+               yang satu berarti memang belum ada yang mengirim. */
+            reportsError ? (
+              <div className="py-6 px-4 text-center space-y-1.5">
+                <p className="text-xs font-bold text-red-600">Laporan gagal dimuat</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed max-w-sm mx-auto">
+                  {reportsError} Ini bukan berarti laporannya hilang — daftarnya tidak
+                  pernah sampai ke layar ini.
+                </p>
+                <Button size="sm" variant="outline" className="h-7 text-[10px] mt-1"
+                  onClick={() => openReports(openLog)}>Coba lagi</Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground py-6 text-center">Belum ada laporan dari pekerja.</p>
+            )
           ) : (
             <div className="space-y-2 max-h-[60vh] overflow-y-auto">
               {reports.map(r => (
