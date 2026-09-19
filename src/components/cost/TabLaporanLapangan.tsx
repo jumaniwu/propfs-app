@@ -46,6 +46,17 @@ export default function TabLaporanLapangan() {
   // berkata "Belum ada absensi tercatat", persis seperti kalau memang belum
   // ada yang mengisi. Yang membacanya menyimpulkan datanya hilang.
   const [reportsError, setReportsError] = useState('')
+  /**
+   * Berapa laporan yang SUNGGUH ada di buku ini, dihitung lewat jalur
+   * bertoken yang `security definer` — jalur itu tidak tunduk pada RLS.
+   *
+   * Dibutuhkan karena RLS TIDAK PERNAH melempar galat. Ia mengembalikan
+   * `200 []`, persis seperti buku yang memang belum berisi apa-apa. Tanpa
+   * pembanding ini, "belum ada laporan" dan "ada laporan tapi Anda tidak
+   * boleh membacanya" terlihat sama — dan yang kedua itulah yang terjadi
+   * pada buku yang dibuat pengawas.
+   */
+  const [tersembunyi, setTersembunyi] = useState(0)
   const [tampilan, setTampilan] = useState<'harian' | 'absensi' | 'pekerja'>('harian')
   /** Pekerja yang sedang dipindahkan, supaya tombolnya bisa dimatikan. */
   const [pindahJalan, setPindahJalan] = useState('')
@@ -119,8 +130,20 @@ export default function TabLaporanLapangan() {
     setOpenLog(log)
     setReportsLoading(true)
     setReportsError('')
+    setTersembunyi(0)
     fieldApi().listReports(log.id)
-      .then(r => { setReports(r); setReportsError('') })
+      .then(r => {
+        setReports(r)
+        setReportsError('')
+        // Jalur bertoken hanya ditanya kalau jalur biasa pulang dengan
+        // tangan kosong. Kalau daftarnya sudah terbaca, tidak ada yang
+        // perlu dibuktikan dan tidak ada gunanya menambah satu permintaan.
+        if (r.length === 0 && log.view_token) {
+          fieldApi().getOwnerView(log.view_token)
+            .then(v => setTersembunyi(v?.reports.length ?? 0))
+            .catch(() => setTersembunyi(0))
+        }
+      })
       .catch(e => {
         setReports([])
         setReportsError(e instanceof Error ? e.message : String(e))
@@ -573,7 +596,7 @@ export default function TabLaporanLapangan() {
           ) : tampilan === 'absensi' ? (
             <PanelRekapAbsensi laporan={reports} pekerja={pekerja} namaProyek={openLog.project_name}
               token={openLog.report_token} onUbahUpah={() => openReports(openLog)}
-              galat={reportsError} bukuLain={bukuLain} />
+              galat={reportsError} bukuLain={bukuLain} tersembunyi={tersembunyi} />
           ) : reports.length === 0 ? (
             /* Gagal memuat TIDAK boleh terlihat sama dengan belum ada isinya.
                Yang satu berarti datanya mungkin utuh tapi tidak terambil;

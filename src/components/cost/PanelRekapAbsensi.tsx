@@ -39,7 +39,7 @@ import {
 export type Lingkup = 'bulanan' | 'mingguan' | 'upahBulan'
 
 export default function PanelRekapAbsensi({
-  laporan, pekerja, namaProyek, token, onUbahUpah, galat, bukuLain,
+  laporan, pekerja, namaProyek, token, onUbahUpah, galat, bukuLain, tersembunyi,
 }: {
   laporan: SumberAbsensi[]
   /** Daftar pekerja terdaftar — tarif hariannya ada di sini, bukan di absensi. */
@@ -63,6 +63,8 @@ export default function PanelRekapAbsensi({
   galat?: string
   /** Buku lain dengan nama proyek yang sama; gejala buku kembar. */
   bukuLain?: Array<{ nama: string; jumlah: number }>
+  /** Jumlah laporan sebenarnya, dihitung lewat jalur yang tidak kena RLS. */
+  tersembunyi?: number
 }) {
   // Dua pertanyaan yang berbeda, jadi dua tampilan:
   //   BULANAN  — siapa masuk berapa hari (HOK). Untuk mengawasi.
@@ -138,8 +140,9 @@ export default function PanelRekapAbsensi({
       jumlahLaporan: laporan.length,
       jumlahBerabsensi: berabsensi.length,
       bukuLain,
+      tersembunyi,
     })
-    const merah = d.nada === 'galat'
+    const merah = d.nada === 'galat' || d.nada === 'tersaring'
     return (
       <div className="py-10 px-4 text-center space-y-2">
         {merah
