@@ -33,10 +33,21 @@ export interface KeadaanAbsensi {
   jumlahBerabsensi: number
   /** Buku LAIN dengan nama proyek yang sama, beserta jumlah laporannya. */
   bukuLain?: Array<{ nama: string; jumlah: number }>
+  /**
+   * Berapa laporan yang SUNGGUH ada di buku ini, dihitung lewat jalur
+   * bertoken yang tidak tunduk pada RLS.
+   *
+   * Ini satu-satunya cara membedakan "memang kosong" dari "ada tapi tidak
+   * boleh dibaca". RLS tidak pernah melempar galat: ia mengembalikan
+   * `200 []`, persis seperti tabel yang memang tidak punya isi. Tanpa
+   * pembanding ini, penyaringan izin tidak bisa dibedakan dari kekosongan
+   * oleh siapa pun — termasuk oleh aplikasinya sendiri.
+   */
+  tersembunyi?: number
 }
 
 export interface HasilDiagnosaAbsensi {
-  nada: 'galat' | 'kosong' | 'tanpaAbsensi' | 'adaDiBukuLain' | 'ada'
+  nada: 'galat' | 'tersaring' | 'kosong' | 'tanpaAbsensi' | 'adaDiBukuLain' | 'ada'
   judul: string
   pesan: string
   /** Langkah yang bisa ditempuh sekarang; kosong bila memang tidak ada. */
@@ -73,6 +84,29 @@ export function diagnosaAbsensi(k: KeadaanAbsensi | null | undefined): HasilDiag
       nada: 'ada',
       judul: `${berabsensi} laporan berisi absensi`,
       pesan: `Dari ${jumlahLaporan} laporan di buku ini.`,
+    }
+  }
+
+  // Laporannya ADA, tapi akun ini tidak diizinkan membacanya.
+  //
+  // Diperiksa sebelum kekosongan mana pun, karena inilah satu-satunya
+  // keadaan di mana layar kosong benar-benar berbohong: datanya utuh, jumlahnya
+  // diketahui, dan satu-satunya yang kurang adalah izin.
+  const tersembunyi = Math.max(0, k?.tersembunyi ?? 0)
+  if (tersembunyi > jumlahLaporan) {
+    const tak = tersembunyi - jumlahLaporan
+    return {
+      nada: 'tersaring',
+      judul: `${tak} laporan ada, tapi tidak boleh dibaca akun ini`,
+      pesan: `Buku ini sebenarnya berisi ${tersembunyi} laporan`
+        + `${jumlahLaporan > 0 ? `, tapi hanya ${jumlahLaporan} yang terbaca` : ''}.`
+        + ' Datanya TIDAK hilang — izin bacanya yang belum terpasang. Buku ini'
+        + ' dibuat atas nama akun lain (biasanya pengawas), dan akun Anda belum'
+        + ' terikat sebagai anggota timnya.',
+      saran: 'Jalankan migration_klaim_keanggotaan.sql di Supabase SQL Editor,'
+        + ' lalu migration_buku_milik_perusahaan.sql — urutannya begitu.'
+        + ' Menerbitkan ulang aplikasi lewat GitHub TIDAK menjalankan SQL;'
+        + ' migrasi hanya berjalan kalau ditempel sendiri di SQL Editor.',
     }
   }
 

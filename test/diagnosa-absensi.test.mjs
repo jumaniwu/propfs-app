@@ -102,6 +102,57 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(/gabungkan/i.test(d.pesan), 'menyarankan menggabungkan juga di sini')
 }
 
+// ── 4b. Ada, tapi tidak boleh dibaca ────────────────────────────────
+//
+// Keadaan yang sebenarnya terjadi pada buku Noble Cove: laporannya utuh,
+// tapi bukunya dibuat atas nama pengawas dan RLS menyaringnya. RLS TIDAK
+// melempar galat — ia mengembalikan 200 dengan larik kosong, persis seperti
+// buku yang memang belum berisi. Hanya pembanding lewat jalur bertoken yang
+// bisa membedakannya.
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0, tersembunyi: 23 })
+  assert(d.nada === 'tersaring', 'penyaringan izin dikenali, bukan disebut kosong')
+  assert(d.judul.includes('23'), 'jumlah yang tidak terbaca disebutkan')
+  assert(/TIDAK hilang/.test(d.pesan), 'menegaskan datanya utuh')
+  assert(/izin/i.test(d.pesan), 'menyebut izin sebagai sebabnya')
+  assert((d.saran ?? '').includes('migration_klaim_keanggotaan.sql'), 'menyebut migrasinya')
+  assert(/GitHub TIDAK menjalankan SQL/i.test(d.saran ?? ''),
+    'meluruskan bahwa menerbitkan ulang aplikasi tidak menjalankan migrasi')
+}
+
+// Tersaring SEBAGIAN: sebagian terbaca, sebagian tidak. Yang tidak terbaca
+// tetap harus disebut, bukan ditelan karena "kan sudah ada isinya".
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 4, jumlahBerabsensi: 0, tersembunyi: 23 })
+  assert(d.nada === 'tersaring', 'sebagian tersaring tetap dikenali')
+  assert(d.judul.includes('19'), 'selisih yang tidak terbaca yang disebut')
+  assert(d.pesan.includes('4'), 'yang terbaca ikut disebut')
+}
+
+// Jumlah yang sama berarti tidak ada yang disaring — jangan menuduh.
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0, tersembunyi: 0 })
+  assert(d.nada === 'kosong', 'nol lawan nol bukan penyaringan')
+  const e = diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 0, tersembunyi: 5 })
+  assert(e.nada === 'tanpaAbsensi', 'jumlah yang sama bukan penyaringan')
+}
+
+// Penyaringan kalah dari absensi yang sudah terbaca: kalau rekapnya sudah
+// terisi, tidak ada gunanya menakut-nakuti.
+{
+  const d = diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 5, tersembunyi: 99 })
+  assert(d.nada === 'ada', 'rekap yang sudah terisi tidak diganggu')
+}
+
+// Tapi galat tetap menang atas segalanya: kalau daftarnya tidak pernah
+// sampai, angka pembandingnya tidak bisa dipercaya.
+{
+  const d = diagnosaAbsensi({
+    galat: 'HTTP 500.', jumlahLaporan: 0, jumlahBerabsensi: 0, tersembunyi: 23,
+  })
+  assert(d.nada === 'galat', 'galat menang atas dugaan penyaringan')
+}
+
 // ── 5. Ada absensinya ───────────────────────────────────────────────
 {
   const d = diagnosaAbsensi({ jumlahLaporan: 23, jumlahBerabsensi: 18 })
@@ -129,10 +180,11 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
     diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 0 }),
     diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0, bukuLain: [{ nama: 'x', jumlah: 3 }] }),
     diagnosaAbsensi({ jumlahLaporan: 5, jumlahBerabsensi: 5 }),
+    diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0, tersembunyi: 23 }),
   ]
-  assert(new Set(semua.map(d => d.nada)).size === 5, '5 keadaan, 5 nada berbeda')
-  assert(new Set(semua.map(d => d.judul)).size === 5, '5 judul berbeda')
-  assert(new Set(semua.map(d => d.pesan)).size === 5, '5 penjelasan berbeda')
+  assert(new Set(semua.map(d => d.nada)).size === 6, '6 keadaan, 6 nada berbeda')
+  assert(new Set(semua.map(d => d.judul)).size === 6, '6 judul berbeda')
+  assert(new Set(semua.map(d => d.pesan)).size === 6, '6 penjelasan berbeda')
   assert(semua.every(d => d.judul && d.pesan), 'tidak ada yang kosong')
 }
 
@@ -153,6 +205,9 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(/setReportsError/.test(src), 'galatnya disimpan ke state')
   assert(/galat=\{reportsError\}/.test(src), 'galatnya diteruskan ke panel absensi')
   assert(/bukuLain=\{bukuLain\}/.test(src), 'buku kembar diteruskan ke panel absensi')
+  assert(/getOwnerView\(/.test(src),
+    'jalur bertoken dipakai sebagai pembanding — RLS tidak pernah melempar galat')
+  assert(/tersembunyi=\{tersembunyi\}/.test(src), 'hasil pembandingnya diteruskan')
 
   const panel = readFileSync(
     new URL('../src/components/cost/PanelRekapAbsensi.tsx', import.meta.url), 'utf8')
