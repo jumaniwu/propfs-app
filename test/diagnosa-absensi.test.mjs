@@ -45,6 +45,35 @@ const assert = (c, m) => { if (!c) { console.error('GAGAL:', m); process.exit(1)
   assert(d.nada === 'galat', 'galat menang atas dugaan buku kembar')
 }
 
+// Waktu habis BUKAN penolakan izin, dan sarannya tidak boleh sama.
+//
+// Inilah yang benar-benar terjadi di ponsel: datanya ada, terbaca di laptop,
+// tapi permintaannya terlalu berat untuk data seluler. Menyuruh orang
+// menjalankan migrasi database untuk ini membuatnya membongkar hal yang
+// tidak rusak.
+{
+  const d = diagnosaAbsensi({
+    galat: 'Waktu habis — periksa koneksi internet lalu coba lagi.',
+    jumlahLaporan: 0, jumlahBerabsensi: 0,
+  })
+  assert(d.nada === 'galat', 'tetap dikenali sebagai kegagalan')
+  assert(/[Ww]aktu habis/.test(d.judul), 'judulnya menyebut waktu habis, bukan gagal umum')
+  assert(!/migration_/.test(d.saran ?? ''), 'TIDAK menyuruh menjalankan migrasi')
+  assert(/jangan menjalankan migrasi/i.test(d.saran ?? ''),
+    'justru melarangnya, karena saran keliru lebih buruk daripada tanpa saran')
+  assert(/Wi-Fi/i.test(d.saran ?? ''), 'menyarankan jaringan yang lebih baik')
+  assert(/ponsel/i.test(d.saran ?? ''), 'menyebut beda komputer dan ponsel')
+}
+
+// Penolakan izin tetap mendapat sarannya sendiri.
+{
+  const d = diagnosaAbsensi({
+    galat: 'Gagal memuat laporan (HTTP 403).', jumlahLaporan: 0, jumlahBerabsensi: 0,
+  })
+  assert((d.saran ?? '').includes('migration_klaim_keanggotaan.sql'),
+    'yang bukan timeout tetap diarahkan ke migrasi')
+}
+
 // ── 2. Memang belum ada isinya ──────────────────────────────────────
 {
   const d = diagnosaAbsensi({ jumlahLaporan: 0, jumlahBerabsensi: 0 })

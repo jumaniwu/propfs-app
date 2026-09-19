@@ -68,14 +68,23 @@ export function diagnosaAbsensi(k: KeadaanAbsensi | null | undefined): HasilDiag
   const totalLain = lain.reduce((s, b) => s + b.jumlah, 0)
 
   if (k?.galat) {
+    // Waktu habis dan penolakan izin adalah dua kegagalan yang berbeda, dan
+    // saran yang keliru lebih buruk daripada tidak ada saran: menyuruh orang
+    // menjalankan migrasi database padahal jaringannya yang putus membuatnya
+    // membongkar hal yang tidak rusak.
+    const waktuHabis = /waktu habis|timeout|aborted|failed to fetch|network/i.test(k.galat)
     return {
       nada: 'galat',
-      judul: 'Laporan gagal dimuat',
+      judul: waktuHabis ? 'Waktu habis saat memuat' : 'Laporan gagal dimuat',
       pesan: `${k.galat} Jadi ini BUKAN berarti datanya hilang —`
         + ' daftarnya tidak pernah sampai ke layar ini.',
-      saran: 'Coba muat ulang halaman. Kalau tetap gagal, jalankan'
-        + ' migration_klaim_keanggotaan.sql di Supabase SQL Editor —'
-        + ' penolakan izin baca paling sering datang dari sana.',
+      saran: waktuHabis
+        ? 'Coba lagi, sebaiknya lewat Wi-Fi. Kalau di komputer bisa dibuka'
+          + ' sementara di ponsel tidak, itu soal besarnya data yang diangkut,'
+          + ' bukan soal izin — jangan menjalankan migrasi apa pun untuk ini.'
+        : 'Coba muat ulang halaman. Kalau tetap gagal, jalankan'
+          + ' migration_klaim_keanggotaan.sql di Supabase SQL Editor —'
+          + ' penolakan izin baca paling sering datang dari sana.',
     }
   }
 

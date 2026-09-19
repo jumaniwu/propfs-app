@@ -80,7 +80,15 @@ export interface FieldApi {
   createLog(projectName: string, driveWebhook: string): Promise<FieldLog>
   updateLog(id: string, patch: Partial<Pick<FieldLog, 'project_name' | 'drive_webhook'>>): Promise<void>
   deleteLog(id: string): Promise<void>
+  /**
+   * Daftar laporan satu buku — TANPA foto.
+   *
+   * Fotonya diambil belakangan lewat `fotoLaporan`, begitu orang memintanya.
+   * Membawanya serta membuat panel ini gagal terbuka di ponsel.
+   */
   listReports(logId: string): Promise<FieldReport[]>
+  /** Foto satu laporan, diambil saat diminta. */
+  fotoLaporan(id: string): Promise<string[]>
   /**
    * Laporan harian TERBARU lintas semua log, untuk lonceng notifikasi.
    * Dibatasi jumlahnya karena yang dibutuhkan hanya kabar terkini — menarik
@@ -155,6 +163,23 @@ export interface FieldApi {
 }
 
 // ── REST langsung ────────────────────────────────────────────────────────────
+// Kolom daftar laporan — `photos` SENGAJA TIDAK ikut.
+//
+// Foto disimpan sebagai data URL base64 di dalam barisnya sendiri. Satu buku
+// dengan foto sebulan bisa berukuran puluhan megabita, dan `select=*`
+// mengangkut semuanya setiap kali panel dibuka — walau tidak satu pun foto
+// ditampilkan di layar itu.
+//
+// Di laptop lewat wifi permintaannya masih sempat selesai. Di ponsel lewat
+// data seluler ia melewati batas 15 detik, lalu gagal dengan "Waktu habis" —
+// dan yang terlihat pemakainya adalah data yang ada di laptop tapi hilang di
+// ponsel. Bukan lambat; gagal sama sekali.
+//
+// Halaman pemilik sudah diperbaiki begini sejak migration_owner_foto_perhari:
+// daftarnya tanpa foto, fotonya diambil belakangan begitu diketuk. Panel
+// internal tidak pernah ikut diperbaiki — di sinilah sisanya.
+const KOLOM_DAFTAR = 'id,log_id,tanggal,pelapor,kegiatan,catatan,absensi,created_at'
+
 function supaConf() {
   const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env
   return {
@@ -286,14 +311,25 @@ const realApi: FieldApi = {
   },
   async listReportsTerbaru(batas = 30) {
     const res = await restFetch(
-      `field_reports?select=*&order=created_at.desc,tanggal.desc&limit=${Math.max(1, batas)}`)
+      `field_reports?select=${KOLOM_DAFTAR}&order=created_at.desc,tanggal.desc&limit=${Math.max(1, batas)}`)
     if (!res.ok) throw new Error(`Gagal memuat laporan (HTTP ${res.status}).`)
-    return await res.json() as FieldReport[]
+    const baris = await res.json() as FieldReport[]
+    return (baris ?? []).map(r => ({ ...r, photos: r.photos ?? [] }))
   },
   async listReports(logId) {
-    const res = await restFetch(`field_reports?select=*&log_id=eq.${logId}&order=tanggal.desc,created_at.desc`)
+    const res = await restFetch(
+      `field_reports?select=${KOLOM_DAFTAR}&log_id=eq.${logId}&order=tanggal.desc,created_at.desc`)
     if (!res.ok) throw new Error(`Gagal memuat laporan (HTTP ${res.status}).`)
-    return await res.json() as FieldReport[]
+    const baris = await res.json() as FieldReport[]
+    // `photos` diisi larik kosong, bukan dibiarkan undefined: seluruh pembaca
+    // `r.photos.length` tetap bekerja tanpa penjagaan tambahan di tiap tempat.
+    return (baris ?? []).map(r => ({ ...r, photos: r.photos ?? [] }))
+  },
+  async fotoLaporan(id) {
+    const res = await restFetch(`field_reports?select=photos&id=eq.${id}`)
+    if (!res.ok) throw new Error(`Gagal memuat foto (HTTP ${res.status}).`)
+    const baris = await res.json() as Array<{ photos?: string[] }>
+    return baris?.[0]?.photos ?? []
   },
   async deleteReport(id) {
     // Sama seperti deleteLog: DELETE yang tidak mengenai satu baris pun BUKAN
