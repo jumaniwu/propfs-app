@@ -64,6 +64,15 @@ export default function TabLaporanLapangan() {
   // di absensinya. Kegagalannya ditelan — rekap HOK tetap berguna tanpa upah.
   const [pekerja, setPekerja] = useState<PekerjaLapangan[]>([])
   const [lightbox, setLightbox] = useState<{ photos: string[]; index: number } | null>(null)
+  /**
+   * Foto per laporan, diambil hanya ketika diminta.
+   *
+   * Daftar laporannya sendiri kini datang tanpa foto — lihat KOLOM_DAFTAR di
+   * fieldReports.ts. Membawa foto base64 seluruh buku sekaligus membuat panel
+   * ini gagal terbuka di ponsel, bukan sekadar lambat.
+   */
+  const [foto, setFoto] = useState<Record<string, string[]>>({})
+  const [fotoJalan, setFotoJalan] = useState('')
   // Jumlah laporan per buku. Dipakai memilih buku mana yang dipertahankan
   // saat menggabungkan yang kembar, dan untuk mengatakan berapa yang ikut
   // hangus sebelum sebuah buku dihapus. Kosong bila servernya belum bisa
@@ -158,6 +167,25 @@ export default function TabLaporanLapangan() {
     fieldApi().listPekerjaSemua(log.report_token)
       .then(setPekerja)
       .catch(() => setPekerja([]))
+  }
+
+  async function muatFoto(id: string) {
+    if (foto[id]) { setLightbox({ photos: foto[id], index: 0 }); return }
+    setFotoJalan(id)
+    try {
+      const f = await fieldApi().fotoLaporan(id)
+      setFoto(p => ({ ...p, [id]: f }))
+      if (f.length > 0) setLightbox({ photos: f, index: 0 })
+      else toast({ title: 'Laporan ini tidak berfoto' })
+    } catch (e) {
+      // Kegagalannya DISEBUTKAN. Tombol yang tidak berbuat apa-apa dan tidak
+      // mengatakan apa pun adalah cara paling membingungkan untuk gagal.
+      toast({
+        title: 'Foto gagal dimuat',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setFotoJalan('') }
   }
 
   const copy = (text: string, label: string) => {
@@ -634,15 +662,28 @@ export default function TabLaporanLapangan() {
                     {r.kegiatan.map((k, j) => <li key={j}>{k}</li>)}
                   </ul>
                   {r.catatan && <p className="text-[11px] text-muted-foreground italic">Catatan: {r.catatan}</p>}
-                  {r.photos.length > 0 && (
-                    <div className="grid grid-cols-6 gap-1.5">
-                      {r.photos.map((p, j) => (
-                        <button key={j} type="button" onClick={() => setLightbox({ photos: r.photos, index: j })}
-                          className="block">
-                          <img src={p} alt="" className="w-full h-12 object-cover rounded-lg border border-border" />
-                        </button>
-                      ))}
-                    </div>
+                  {/* Foto diminta, bukan diangkut otomatis. Satu buku berisi
+                      foto sebulan bisa puluhan megabita, dan mengangkutnya
+                      sekaligus membuat panel ini gagal terbuka di ponsel. */}
+                  {foto[r.id] ? (
+                    foto[r.id].length > 0 ? (
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {foto[r.id].map((p, j) => (
+                          <button key={j} type="button"
+                            onClick={() => setLightbox({ photos: foto[r.id], index: j })}
+                            className="block">
+                            <img src={p} alt="" className="w-full h-12 object-cover rounded-lg border border-border" />
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">Tidak ada foto.</p>
+                    )
+                  ) : (
+                    <button type="button" onClick={() => muatFoto(r.id)} disabled={fotoJalan === r.id}
+                      className="text-[10px] font-bold text-navy hover:underline disabled:opacity-50">
+                      {fotoJalan === r.id ? 'Memuat foto…' : '🖼️ Lihat foto'}
+                    </button>
                   )}
                 </div>
               ))}
