@@ -166,8 +166,20 @@ export default function InputPage() {
         toast({ title: 'Kalkulasi selesai!', description: 'Navigasi ke halaman hasil FS.', variant: 'success' })
       }
 
+      // Kalimat di atas MENJANJIKAN perpindahan halaman. Dulu perpindahannya
+      // berada di balik `if (currentProjectId)` tanpa cabang lain: ketika
+      // id-nya kosong, yang terjadi adalah pesan hijau "Kalkulasi selesai!"
+      // lalu halamannya diam di tempat. Yang menekannya menyimpulkan
+      // tombolnya tidak bisa diklik, dan menekannya lagi berkali-kali.
       if (currentProjectId) {
         navigate(`/result/${currentProjectId}`)
+      } else {
+        toast({
+          title: 'Halaman hasil belum bisa dibuka',
+          description: 'Proyek ini belum punya id. Muat ulang halaman ini,'
+            + ' atau buka proyeknya dari Dashboard — isian Anda tetap tersimpan di perangkat.',
+          variant: 'destructive',
+        })
       }
     } catch (err) {
       console.error(err)
@@ -283,24 +295,31 @@ export default function InputPage() {
         </div>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between gap-3 pt-2">
+        {/* Di ponsel tombolnya DITUMPUK, bukan dijejer.
+            Dijejer, barisnya lebih lebar daripada layar: pada langkah 7
+            tombol "Simpan & Publish Hitungan" menjulur 56 piksel ke luar
+            layar 390, dan pada langkah 6 "Selanjutnya" menjulur 105 piksel.
+            Halamannya jadi bisa digeser ke samping, tapi tidak ada yang
+            menyangka harus menggesernya — yang terlihat hanya tombol
+            terpotong yang setengahnya tidak bisa disentuh. */}
+        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <Button
             variant="outline"
             onClick={handleBack}
             disabled={currentStep === 1}
-            className="gap-2"
+            className="gap-2 w-full sm:w-auto"
           >
             <ChevronLeft className="h-4 w-4" />
             Sebelumnya
           </Button>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto">
             {currentStep === 7 ? (
               <>
                 <Button variant="outline" onClick={handleSaveDraft} className="gap-2 hidden sm:flex">
                   <Save className="h-4 w-4" /> Simpan Draft
                 </Button>
-                <Button variant="gold" onClick={() => void handleCalculate()} className="gap-2 font-bold shadow-md shadow-gold/20">
+                <Button variant="gold" onClick={() => void handleCalculate()} className="gap-2 font-bold shadow-md shadow-gold/20 flex-1 sm:flex-none">
                   <Calculator className="h-4 w-4" /> Simpan & Publish Hitungan
                 </Button>
               </>
@@ -310,17 +329,17 @@ export default function InputPage() {
                   <Button
                     variant="outline"
                     onClick={() => void handleCalculate()}
-                    className="gap-2 text-sm"
+                    className="gap-2 text-sm flex-1 sm:flex-none"
                     title="Hitung dengan data yang ada"
                   >
                     <Calculator className="h-4 w-4" /> Hitung Sekarang
                   </Button>
                 ) : (
-                  <Button variant="outline" onClick={handleSaveDraft} className="gap-2 text-sm text-navy">
+                  <Button variant="outline" onClick={handleSaveDraft} className="gap-2 text-sm text-navy flex-1 sm:flex-none">
                     <Save className="h-4 w-4" /> Simpan Draft
                   </Button>
                 )}
-                <Button variant="default" onClick={handleNext} className="gap-2">
+                <Button variant="default" onClick={handleNext} className="gap-2 flex-1 sm:flex-none">
                   Selanjutnya
                   <ChevronRight className="h-4 w-4" />
                 </Button>
