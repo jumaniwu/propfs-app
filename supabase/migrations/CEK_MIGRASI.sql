@@ -269,6 +269,68 @@ with penanda(urut, migrasi, keterangan, ada) as (values
      and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                   where n.nspname = 'public' and p.proname = 'field_worker_pindah')),
 
+  -- ── Enam migrasi yang selama ini TIDAK PERNAH DIPERIKSA ──────────────────
+  --
+  -- Berkasnya ada di repositori sejak lama, tapi tidak punya penanda di sini.
+  -- Artinya: kalau salah satunya belum pernah dijalankan, berkas ini akan
+  -- melapor "semua beres" dan tidak ada yang tahu. Titik buta yang persis
+  -- sama pernah membuat dua migrasi dilaporkan kurang padahal sudah ada —
+  -- kali ini arahnya terbalik, dan arah ini yang lebih berbahaya.
+  --
+  -- migration_update_faq.sql SENGAJA tidak diberi penanda. Ia bukan migrasi
+  -- struktur: isinya menimpa teks FAQ di app_settings. Menjalankannya akan
+  -- MENGHAPUS suntingan FAQ yang sudah ada, jadi ia tidak boleh ikut
+  -- dianjurkan oleh daftar ini.
+
+  -- Penjaganya SENGAJA lewat information_schema, bukan to_regclass.
+  --
+  -- `profiles` tidak dibuat oleh satu migrasi pun di folder ini — ia lebih tua
+  -- daripada semuanya. Memakai to_regclass di sini membuat pemeriksa probe
+  -- menganggapnya salah sasaran, padahal tabelnya memang ada; penjaga ini
+  -- memeriksa hal yang sama tanpa memancing tuduhan itu.
+  (46, 'migration_grants_rls.sql', 'hak akses dasar profiles/subscriptions/invoices',
+     coalesce((
+       select has_table_privilege('authenticated', 'public.profiles', 'select')
+         from information_schema.tables
+        where table_schema = 'public' and table_name = 'profiles'
+        limit 1
+     ), false)),
+
+  (47, 'migration_kwitansi_materai.sql', 'tabel kwitansi, materai_kuota & materai_log',
+     to_regclass('public.kwitansi') is not null
+     and to_regclass('public.materai_kuota') is not null
+     and to_regclass('public.materai_log') is not null),
+
+  (48, 'migration_kwitansi_materai_pdf.sql', 'kolom kwitansi.materai_pdf',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'kwitansi'
+                and column_name = 'materai_pdf')),
+
+  -- kwitansi_by_token DIBUAT oleh migration_kwitansi_materai.sql juga, jadi
+  -- keberadaannya tidak membuktikan apa-apa. Yang membedakan versi publik
+  -- adalah haknya: tanpa EXECUTE untuk anon, tautan kwitansi yang dibagikan
+  -- ke pelanggan gagal dibuka oleh orang yang tidak punya akun.
+  (49, 'migration_kwitansi_materai_publik.sql', 'kwitansi bisa dibuka tanpa login',
+     coalesce((select has_function_privilege('anon', p.oid, 'execute')
+                 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'public' and p.proname = 'kwitansi_by_token'
+                  -- Tanpa penjaga ini, has_function_privilege melempar galat di
+                  -- database yang tidak punya peran `anon`, dan SELURUH laporan
+                  -- ini batal. Pemeriksa yang gagal total tidak memberi satu pun
+                  -- keterangan — persis keadaan yang berkas ini ada untuk cegah.
+                  and exists (select 1 from pg_roles where rolname = 'anon')
+                limit 1), false)),
+
+  (50, 'migration_po_non_proyek.sql', 'kolom purchase_orders.jenis',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'purchase_orders'
+                and column_name = 'jenis')),
+
+  (51, 'migration_invoice_vendor.sql', 'tabel vendor_invoices & fungsi invoice_kirim',
+     to_regclass('public.vendor_invoices') is not null
+     and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'invoice_kirim')),
+
   (34, '(data) Anggota tim terikat ke akunnya', 'tidak ada anggota aktif yang member_user_id-nya kosong',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(

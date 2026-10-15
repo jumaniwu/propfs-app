@@ -368,7 +368,14 @@ export const useFSStore = create<FSStore>((set, get) => ({
   // ── SAVE CURRENT PROJECT ────────────────────────────────
   saveCurrentProject: async () => {
     const { currentProjectId, currentInputs, currentResults } = get()
-    if (!currentProjectId) return
+    // Tanpa id proyek, dulu fungsi ini pulang diam-diam. Pemanggilnya lalu
+    // memeriksa `simpanGagal`, menemukannya kosong, dan menyimpulkan
+    // penyimpanannya berhasil — padahal tidak ada apa pun yang dikirim.
+    // Diam yang terbaca sebagai sukses adalah cara terburuk untuk gagal.
+    if (!currentProjectId) {
+      set({ simpanGagal: 'Proyek ini belum punya id — isiannya belum tersimpan ke server.' })
+      return
+    }
     set({ isSaving: true })
     const now = new Date().toISOString()
 
