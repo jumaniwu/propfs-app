@@ -102,7 +102,13 @@ export default function Header({ breadcrumbs, actions }: HeaderProps) {
         </div>
 
         {/* Right */}
-        <div className="flex items-center gap-2">
+        {/*
+          `shrink-0` supaya kelompok ini tidak pernah diperas sampai isinya
+          saling menindih. Tanpa itu, penanda "Menyimpan…" milik halaman input
+          menumpuk di atas logo di layar sempit — tulisan di atas gambar, dan
+          keduanya jadi tidak terbaca.
+        */}
+        <div className="flex items-center gap-2 shrink-0">
           {actions}
           {!isPortalHome && (
             <Button variant="ghost" size="sm" onClick={() => navigate(beranda)} className="flex gap-1.5 px-2 sm:px-3">
