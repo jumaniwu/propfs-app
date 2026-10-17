@@ -53,6 +53,8 @@ export default function InputPage() {
   // sengaja ketika belum login — dan ketika itu terjadi, yang terlihat pemakai
   // hanya lingkaran berputar tanpa satu pun keterangan.
   const [galatMuat, setGalatMuat] = useState('')
+  /** Sedang menyimpan & menghitung, supaya tombolnya bisa mengatakannya. */
+  const [menghitung, setMenghitung] = useState(false)
   const isSaving = useFSStore(s => s.isSaving)
   const simpanGagal = useFSStore(s => s.simpanGagal)
   const simpanSegera = useFSStore(s => s.simpanSegera)
@@ -122,6 +124,14 @@ export default function InputPage() {
   }
 
   async function handleCalculate() {
+    // Sekali jalan saja.
+    //
+    // Tombolnya tidak pernah menunjukkan bahwa ia sedang bekerja, jadi ketika
+    // penyimpanan tersendat yang menekannya mengira tombolnya rusak dan
+    // menekannya berkali-kali. Setiap tekanan memulai satu penyimpanan baru
+    // di atas yang belum selesai.
+    if (menghitung) return
+    setMenghitung(true)
     try {
       // Basic validation
       if (!currentInputs.namaProyek) {
@@ -184,6 +194,8 @@ export default function InputPage() {
     } catch (err) {
       console.error(err)
       toast({ title: 'Error kalkulasi', description: 'Terjadi kesalahan. Periksa data input.', variant: 'destructive' })
+    } finally {
+      setMenghitung(false)
     }
   }
 
@@ -242,7 +254,7 @@ export default function InputPage() {
                 meninggalkan jejak apa pun — yang mengisi form baru
                 mengetahuinya setelah memuat ulang halaman dan menemukan
                 isiannya kosong. */}
-            <span data-status-simpan className={`text-[10px] font-semibold ${
+            <span data-status-simpan className={`text-[10px] font-semibold whitespace-nowrap ${
               simpanGagal ? 'text-amber-700' : 'text-muted-foreground'}`}>
               {labelSimpan(isSaving ? 'menyimpan' : simpanGagal ? 'gagal' : 'tersimpan', true)}
             </span>
@@ -319,8 +331,11 @@ export default function InputPage() {
                 <Button variant="outline" onClick={handleSaveDraft} className="gap-2 hidden sm:flex">
                   <Save className="h-4 w-4" /> Simpan Draft
                 </Button>
-                <Button variant="gold" onClick={() => void handleCalculate()} className="gap-2 font-bold shadow-md shadow-gold/20 flex-1 sm:flex-none">
-                  <Calculator className="h-4 w-4" /> Simpan & Publish Hitungan
+                <Button variant="gold" onClick={() => void handleCalculate()} disabled={menghitung}
+                  className="gap-2 font-bold shadow-md shadow-gold/20 flex-1 sm:flex-none">
+                  {menghitung
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Menyimpan…</>
+                    : <><Calculator className="h-4 w-4" /> Simpan &amp; Publish Hitungan</>}
                 </Button>
               </>
             ) : (
@@ -331,8 +346,11 @@ export default function InputPage() {
                     onClick={() => void handleCalculate()}
                     className="gap-2 text-sm flex-1 sm:flex-none"
                     title="Hitung dengan data yang ada"
+                    disabled={menghitung}
                   >
-                    <Calculator className="h-4 w-4" /> Hitung Sekarang
+                    {menghitung
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Menyimpan…</>
+                      : <><Calculator className="h-4 w-4" /> Hitung Sekarang</>}
                   </Button>
                 ) : (
                   <Button variant="outline" onClick={handleSaveDraft} className="gap-2 text-sm text-navy flex-1 sm:flex-none">

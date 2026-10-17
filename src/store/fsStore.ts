@@ -15,6 +15,30 @@ import { useAuthStore } from './authStore'
 
 const APP_VERSION = '1.0.0'
 
+/**
+ * Batas waktu menyimpan satu proyek, dalam milidetik.
+ *
+ * Lebih longgar daripada batas memuat: yang dikirim di sini seluruh isian FS
+ * beserta hasil hitungannya, dan unggahan seluler yang lambat memang butuh
+ * waktu. Tapi tetap HARUS ada batasnya — tanpa batas, kegagalannya tidak
+ * pernah tiba, dan layarnya menunggu selamanya tanpa satu pun pesan.
+ */
+const BATAS_SIMPAN_MS = 20000
+
+/** Terjemahkan kegagalan menyimpan menjadi kalimat yang bisa ditindaklanjuti. */
+function pesanSimpanGagal(e: unknown): string {
+  const nama = e instanceof DOMException ? e.name : ''
+  // Sengaja BUKAN String(e): String(null) menghasilkan tulisan "null", dan
+  // tulisan itu akan tampil utuh di layar sebagai keterangan kegagalan. Yang
+  // bukan Error dan bukan tulisan memang tidak punya pesan untuk dibacakan.
+  const teks = e instanceof Error ? e.message : typeof e === 'string' ? e : ''
+  if (nama === 'AbortError' || /abort/i.test(teks)) {
+    return 'Waktu habis saat menyimpan ke server — koneksi terlalu lambat.'
+      + ' Isian Anda tetap aman di perangkat ini.'
+  }
+  return teks || 'Gagal menyimpan ke server.'
+}
+
 // ── DEV MODE: use localStorage when Supabase is not configured ──
 const IS_DEV_MODE = (import.meta as any).env?.VITE_SUPABASE_URL?.includes('placeholder')
 const LS_DEV_KEY  = 'propfs-projects-dev'
@@ -379,6 +403,22 @@ export const useFSStore = create<FSStore>((set, get) => ({
     set({ isSaving: true })
     const now = new Date().toISOString()
 
+    // Permintaan yang MENGGANTUNG adalah kegagalan yang paling sulit dikenali.
+    //
+    // Sampai sekarang upsert di bawah tidak punya batas waktu sama sekali. Di
+    // jaringan seluler yang tersendat, `await`-nya tidak pernah selesai dan
+    // tidak pernah menolak: `isSaving` tetap menyala, penanda "Menyimpan…" di
+    // header macet selamanya, dan pemanggilnya — handleCalculate — menunggu
+    // tanpa batas. Yang menekan tombolnya melihat tombol yang tidak berbuat
+    // apa-apa, lalu menekannya berkali-kali, dan setiap tekanan menambah satu
+    // permintaan menggantung yang baru.
+    //
+    // Isiannya pun tidak ringan: satu baris memuat seluruh isian FS beserta
+    // hasil hitungannya sebagai JSON, dan di unggahan seluler yang lambat
+    // itulah yang paling sering tersendat.
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), BATAS_SIMPAN_MS)
+
     try {
       if (IS_DEV_MODE) {
         const next = get().projects.map(p =>
@@ -404,7 +444,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
         id: currentProjectId, user_id: user.id,
         name: currentInputs.namaProyek || 'Proyek Baru',
         inputs: currentInputs, results: currentResults, updated_at: now,
-      }, { onConflict: 'id' })
+      }, { onConflict: 'id' }).abortSignal(ctrl.signal)
 
       // Hasilnya DIPERIKSA. Dulu baris ini tidak memeriksa apa pun: ditolak
       // RLS, barisnya tidak ada, jaringan putus — ketiganya berakhir sama,
@@ -425,8 +465,9 @@ export const useFSStore = create<FSStore>((set, get) => ({
       hapusDraf(currentProjectId)
     } catch (e) {
       // Draf lokalnya SENGAJA dibiarkan. Justru inilah saatnya ia berguna.
-      set({ simpanGagal: e instanceof Error ? e.message : String(e) })
+      set({ simpanGagal: pesanSimpanGagal(e) })
     } finally {
+      clearTimeout(timer)
       set({ isSaving: false })
     }
   },
