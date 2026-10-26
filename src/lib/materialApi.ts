@@ -81,7 +81,20 @@ export interface MaterialApi {
    * HARUS dijalankan sebelum memanggil ini: jumlah yang turun di bawah yang
    * sudah dipesan membuat vendor dipesani lebih banyak daripada yang diminta.
    */
-  ubahQtyRequest(id: string, qty: number): Promise<void>
+  ubahQtyRequest(id: string, qty: number, catatan?: string): Promise<void>
+  /**
+   * Batalkan permintaan yang SUDAH disetujui.
+   *
+   * Sengaja BUKAN setRequestStatus. Fungsi itu menulis ulang `approver` dan
+   * `approved_at` juga — jadi membatalkan lewat sana menghapus siapa yang
+   * dulu menyetujui permintaan ini dan kapan. Itu isian orang lain, dan
+   * pembatalan tidak punya urusan menghapusnya.
+   *
+   * Yang disentuh di sini hanya `status` dan `catatan_approval`, dan
+   * catatannya pun DITAMBAHKAN di bawah yang sudah ada — lihat
+   * suntingPermintaan.catatanTambah.
+   */
+  batalkanRequest(id: string, catatan: string): Promise<void>
   deleteUsage(id: string): Promise<void>
   deleteRequest(id: string): Promise<void>
   // publik (token pekerja)
@@ -199,12 +212,24 @@ const realApi: MaterialApi = {
     })
     if (!res.ok) throw new Error(`Gagal memperbarui status (HTTP ${res.status}).`)
   },
-  async ubahQtyRequest(id, qty) {
+  async ubahQtyRequest(id, qty, catatan) {
+    // `catatan_approval` hanya ikut dikirim bila memang ada isinya. Mengirim
+    // undefined akan menulis null ke sana dan menghapus catatan persetujuan
+    // yang sudah ada.
+    const isi: Record<string, unknown> = { qty }
+    if (typeof catatan === 'string') isi.catatan_approval = catatan
     const res = await restFetch(`material_requests?id=eq.${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ qty }),
+      body: JSON.stringify(isi),
     })
     if (!res.ok) throw new Error(`Gagal mengubah jumlah (HTTP ${res.status}).`)
+  },
+  async batalkanRequest(id, catatan) {
+    const res = await restFetch(`material_requests?id=eq.${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'ditolak', catatan_approval: catatan }),
+    })
+    if (!res.ok) throw new Error(`Gagal membatalkan (HTTP ${res.status}).`)
   },
   async deleteUsage(id) {
     const res = await restFetch(`material_usage?id=eq.${id}`, { method: 'DELETE' })

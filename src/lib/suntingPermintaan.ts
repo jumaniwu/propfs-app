@@ -191,7 +191,23 @@ export function kalimatBatal(r: RequestRingkas | null | undefined, pos: PoRingka
 }
 
 /**
- * Catatan yang ditulis ke `catatan_approval` saat membatalkan.
+ * Catatan baru DITAMBAHKAN di bawah yang sudah ada, bukan menggantikannya.
+ *
+ * `catatan_approval` berisi tulisan orang yang menyetujui permintaan itu —
+ * sering satu-satunya keterangan kenapa barangnya disetujui. Menimpanya saat
+ * membatalkan atau memperbaiki jumlah akan menghapus isian yang dimasukkan
+ * orang lain, dan penghapusan seperti itu tidak akan pernah disadari siapa
+ * pun sampai catatannya dicari dan ternyata sudah tidak ada.
+ */
+export function catatanTambah(sebelumnya: string | null | undefined, baris: string): string {
+  const lama = (sebelumnya || '').trim()
+  const baru = (baris || '').trim()
+  if (!baru) return lama
+  return lama ? `${lama}\n${baru}` : baru
+}
+
+/**
+ * Catatan yang ditulis saat membatalkan.
  *
  * Statusnya memakai 'ditolak' karena itulah satu-satunya nilai berhenti yang
  * diizinkan kolomnya — menambah 'dibatalkan' menuntut migrasi, dan migrasi
@@ -206,4 +222,23 @@ export function catatanBatal(oleh: string, sebab = ''): string {
   return alasan
     ? `Dibatalkan oleh ${nama} pada ${tanggal}: ${alasan}`
     : `Dibatalkan oleh ${nama} pada ${tanggal}`
+}
+
+/**
+ * Catatan yang ditulis saat jumlahnya diperbaiki.
+ *
+ * Angka lamanya DICATAT. Tanpa ini, memperbaiki 10 Kotak menjadi 2 membuat
+ * angka 10 hilang tanpa jejak — dan ketika kemudian ada yang bertanya kenapa
+ * yang datang cuma 2, tidak ada satu pun tempat untuk melihat bahwa dulu
+ * memang diminta 10.
+ */
+export function catatanUbahQty(
+  oleh: string, lama: number, baru: number, satuan = '',
+): string {
+  const nama = (oleh || '').trim() || 'pengguna'
+  const sat = (satuan || '').trim()
+  const s = sat ? ` ${sat}` : ''
+  const tanggal = new Date().toISOString().slice(0, 10)
+  return `Jumlah diubah oleh ${nama} pada ${tanggal}:`
+    + ` ${tampil(bilangan(lama))}${s} → ${tampil(bilangan(baru))}${s}`
 }
