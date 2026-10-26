@@ -70,6 +70,18 @@ export interface MaterialApi {
     user_id: string
   }): Promise<MaterialRequest>
   setRequestStatus(id: string, status: StatusRequest, approver: string, catatan: string): Promise<void>
+  /**
+   * Perbaiki jumlah permintaan yang SUDAH disetujui.
+   *
+   * Hanya `qty` yang disentuh. Status, approver, dan catatan approval-nya
+   * tetap — permintaan yang jumlahnya diperbaiki tidak kehilangan riwayat
+   * persetujuannya, dan tidak perlu disetujui ulang dari awal.
+   *
+   * Pemeriksaan boleh/tidaknya ada di suntingPermintaan.periksaUbahQty, dan
+   * HARUS dijalankan sebelum memanggil ini: jumlah yang turun di bawah yang
+   * sudah dipesan membuat vendor dipesani lebih banyak daripada yang diminta.
+   */
+  ubahQtyRequest(id: string, qty: number): Promise<void>
   deleteUsage(id: string): Promise<void>
   deleteRequest(id: string): Promise<void>
   // publik (token pekerja)
@@ -186,6 +198,13 @@ const realApi: MaterialApi = {
       }),
     })
     if (!res.ok) throw new Error(`Gagal memperbarui status (HTTP ${res.status}).`)
+  },
+  async ubahQtyRequest(id, qty) {
+    const res = await restFetch(`material_requests?id=eq.${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ qty }),
+    })
+    if (!res.ok) throw new Error(`Gagal mengubah jumlah (HTTP ${res.status}).`)
   },
   async deleteUsage(id) {
     const res = await restFetch(`material_usage?id=eq.${id}`, { method: 'DELETE' })
