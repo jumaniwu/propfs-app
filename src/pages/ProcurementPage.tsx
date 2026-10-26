@@ -39,6 +39,7 @@ import { can } from '@/lib/teamRoles'
 import { materialApi, type MaterialRequest } from '@/lib/materialApi'
 import {
   periksaUbahQty, periksaBatal, kalimatBatal, catatanBatal,
+  catatanUbahQty, catatanTambah,
 } from '@/lib/suntingPermintaan'
 import {
   procurementApi, vendorDaftarLink, poViewLink, invoiceKirimLink,
@@ -884,7 +885,12 @@ function BarisPermintaan({ r, pos, namaSaya, bolehUbah, onUbah }: {
     if (h.peringatan && !window.confirm(`${h.peringatan}\n\nLanjutkan?`)) return
     setJalan(true)
     try {
-      await materialApi().ubahQtyRequest(r.id, baru)
+      // Angka lamanya DICATAT, ditambahkan di bawah catatan yang sudah ada.
+      // Tanpa itu, 10 Kotak yang diperbaiki jadi 2 membuat angka 10 hilang
+      // tanpa jejak — dan tidak ada tempat untuk melihat bahwa dulu memang
+      // diminta 10.
+      await materialApi().ubahQtyRequest(r.id, baru, catatanTambah(
+        r.catatan_approval, catatanUbahQty(namaSaya, Number(r.qty) || 0, baru, r.satuan)))
       toast({ title: '✅ Jumlah diperbarui', description: h.peringatan })
       setSunting(false)
       onUbah()
@@ -906,7 +912,11 @@ function BarisPermintaan({ r, pos, namaSaya, bolehUbah, onUbah }: {
     if (!window.confirm(kalimatBatal(r, pos))) return
     setJalan(true)
     try {
-      await materialApi().setRequestStatus(r.id, 'ditolak', namaSaya, catatanBatal(namaSaya))
+      // batalkanRequest, BUKAN setRequestStatus: yang terakhir menulis ulang
+      // `approver` dan `approved_at` juga, jadi membatalkan lewat sana
+      // menghapus siapa yang dulu menyetujui permintaan ini dan kapan.
+      await materialApi().batalkanRequest(r.id,
+        catatanTambah(r.catatan_approval, catatanBatal(namaSaya)))
       toast({ title: 'Permintaan dibatalkan', description: h.peringatan })
       onUbah()
     } catch (e) {

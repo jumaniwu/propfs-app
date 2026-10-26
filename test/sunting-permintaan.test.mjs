@@ -12,8 +12,10 @@
 //
 // Itulah yang diuji di sini, bukan tampilannya.
 // ============================================================
+import { readFileSync } from 'node:fs'
 import {
   periksaUbahQty, periksaBatal, kalimatBatal, catatanBatal, poYangMenahan,
+  catatanUbahQty, catatanTambah,
 } from '../src/lib/suntingPermintaan.ts'
 
 let ok = 0
@@ -175,6 +177,79 @@ const po = (status, qty, nomor = 'PO/020/10/2026', requestId = 'r1') => ({
 
   assert(/^Dibatalkan oleh pengguna/.test(catatanBatal('', '')), 'tanpa nama tetap terbaca')
   assert(!/: $/.test(catatanBatal('Jumani', '')), 'tanpa sebab tidak meninggalkan titik dua menggantung')
+}
+
+// ── 8. Isian yang sudah ada TIDAK BOLEH hilang ──────────────────────
+//
+// `catatan_approval` berisi tulisan orang yang menyetujui permintaan itu.
+// Menimpanya saat membatalkan menghapus isian orang lain — penghapusan yang
+// tidak akan disadari siapa pun sampai catatannya dicari dan ternyata sudah
+// tidak ada.
+{
+  const asli = 'Disetujui, stok gudang memang habis. — Pak Soni'
+
+  const sesudahBatal = catatanTambah(asli, catatanBatal('Jumani'))
+  assert(sesudahBatal.startsWith(asli), 'catatan persetujuan tetap di tempatnya')
+  assert(/Dibatalkan oleh Jumani/.test(sesudahBatal), 'catatan pembatalan ditambahkan')
+  assert(sesudahBatal.split('\n').length === 2, 'ditambahkan sebagai baris baru')
+
+  const sesudahUbah = catatanTambah(asli, catatanUbahQty('Jumani', 10, 2, 'Kotak'))
+  assert(sesudahUbah.startsWith(asli), 'catatan persetujuan tetap ada saat jumlah diubah')
+
+  // Berkali-kali disunting: semuanya menumpuk, tidak ada yang tergeser.
+  const dua = catatanTambah(sesudahUbah, catatanBatal('Jumani'))
+  assert(dua.split('\n').length === 3, 'riwayatnya menumpuk, bukan saling menimpa')
+  assert(dua.startsWith(asli), 'yang paling awal tetap paling atas')
+
+  // Tanpa catatan sebelumnya, tidak meninggalkan baris kosong di atas.
+  assert(!catatanTambah('', catatanBatal('Jumani')).startsWith('\n'), 'tanpa catatan lama tidak berbaris kosong')
+  assert(catatanTambah(null, 'x') === 'x', 'null diperlakukan sebagai kosong')
+  assert(catatanTambah(asli, '') === asli, 'baris kosong tidak menambah apa-apa')
+  assert(catatanTambah(asli, '   ') === asli, 'spasi saja tidak menambah apa-apa')
+}
+
+// ── 9. Angka lama tercatat sebelum ditimpa ──────────────────────────
+{
+  const c = catatanUbahQty('Jumani', 10, 2, 'Kotak')
+  assert(/10 Kotak/.test(c), 'angka LAMA tercatat — ini yang akan hilang tanpa catatan ini')
+  assert(/2 Kotak/.test(c), 'angka barunya tercatat')
+  assert(/→/.test(c), 'arah perubahannya terbaca')
+  assert(/Jumani/.test(c) && /\d{4}-\d{2}-\d{2}/.test(c), 'siapa & kapan tercatat')
+  assert(!/ {2}/.test(catatanUbahQty('Jumani', 10, 2, '')), 'satuan kosong tidak menyisakan spasi ganda')
+  assert(/2\.5 Kotak/.test(catatanUbahQty('a', 10, 2.5, 'Kotak')), 'pecahan tidak dibulatkan di catatannya')
+}
+
+// ── 10. Jalur penyimpanannya memang tidak menghapus ─────────────────
+//
+// Aturan sebagus apa pun tidak berguna kalau permintaannya tetap menulis
+// ulang kolom yang bukan urusannya.
+{
+  const api = readFileSync(new URL('../src/lib/materialApi.ts', import.meta.url), 'utf8')
+  const hal = readFileSync(new URL('../src/pages/ProcurementPage.tsx', import.meta.url), 'utf8')
+
+  const batal = api.match(/async batalkanRequest\(id, catatan\)[\s\S]*?\n  \},/)[0]
+  assert(/method: 'PATCH'/.test(batal), 'membatalkan memakai PATCH, bukan DELETE')
+  assert(!/approver/.test(batal), 'approver TIDAK ikut ditulis ulang')
+  assert(!/approved_at/.test(batal), 'approved_at TIDAK ikut ditulis ulang')
+  assert(!/\bqty\b/.test(batal), 'jumlahnya tidak ikut disentuh saat membatalkan')
+
+  const ubah = api.match(/async ubahQtyRequest\(id, qty, catatan\)[\s\S]*?\n  \},/)[0]
+  assert(/method: 'PATCH'/.test(ubah), 'mengubah jumlah memakai PATCH')
+  assert(/typeof catatan === 'string'/.test(ubah),
+    'catatan hanya dikirim bila ada — undefined akan menulis null dan menghapus catatannya')
+  // Diperiksa sebagai KUNCI (`status:`), bukan kata lepas — `res.status`
+  // pada pesan galatnya bukan kolom yang dikirim ke server.
+  assert(!/status:/.test(ubah), 'statusnya tidak ikut berubah saat jumlah diperbaiki')
+
+  // Layarnya benar-benar memakai jalur yang menjaga, bukan yang menimpa.
+  assert(/batalkanRequest\(r\.id,/.test(hal), 'layar memakai batalkanRequest')
+  assert(!/setRequestStatus\(r\.id/.test(hal), 'tidak lagi lewat setRequestStatus yang menimpa approver')
+  assert(/catatanTambah\(\s*\n?\s*r\.catatan_approval/.test(hal.replace(/\s+/g, ' '))
+    || /catatanTambah\(r\.catatan_approval/.test(hal.replace(/\s+/g, ' ')),
+    'catatan lama diteruskan supaya ditambahkan, bukan ditimpa')
+
+  // Tidak ada penghapusan sama sekali di jalur fitur ini.
+  assert(!/deleteRequest/.test(hal), 'fitur ini tidak pernah menghapus permintaan')
 }
 
 console.log(`sunting-permintaan: ${ok} assert lulus`)
