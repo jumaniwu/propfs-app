@@ -38,6 +38,9 @@ import { teamApi, roleSaatIni, type Workspace } from '@/lib/teamApi'
 import { can } from '@/lib/teamRoles'
 import { materialApi, type MaterialRequest } from '@/lib/materialApi'
 import {
+  periksaUbahQty, periksaBatal, kalimatBatal, catatanBatal,
+} from '@/lib/suntingPermintaan'
+import {
   procurementApi, vendorDaftarLink, poViewLink, invoiceKirimLink,
   type BarisInvoice,
   type ProfilVendorPublik,
@@ -843,6 +846,132 @@ function FormBarangManual({ vendors, onBatal, onSukses }: {
   )
 }
 
+/**
+ * Satu baris "Menunggu Dipesan" — bisa diperbaiki jumlahnya & dibatalkan.
+ *
+ * Sampai sekarang permintaan yang sudah disetujui tidak bisa disentuh lagi.
+ * Salah ketik "3 Kotak" padahal maksudnya 1, atau barangnya ternyata tidak
+ * jadi dibeli — keduanya hanya bisa diselesaikan dengan membiarkannya
+ * menggantung selamanya di daftar ini.
+ *
+ * Seluruh pemeriksaan boleh/tidaknya ada di src/lib/suntingPermintaan.ts.
+ * Di sini hanya penyampaiannya: yang ditolak menyebut sebabnya, yang
+ * berisiko minta persetujuan dulu.
+ */
+function BarisPermintaan({ r, pos, namaSaya, bolehUbah, onUbah }: {
+  r: MaterialRequest
+  pos: PurchaseOrder[]
+  namaSaya: string
+  bolehUbah: boolean
+  onUbah: () => void
+}) {
+  const { toast } = useToast()
+  const [sunting, setSunting] = useState(false)
+  const [nilai, setNilai] = useState(String(r.qty ?? ''))
+  const [jalan, setJalan] = useState(false)
+
+  // Koma diterima apa adanya: di papan ketik ponsel itu yang muncul lebih
+  // dulu, dan "2,5" yang ditolak mentah-mentah hanya membingungkan.
+  const angkaKetik = (t: string) => Number(String(t).replace(',', '.'))
+
+  async function simpanQty() {
+    const baru = angkaKetik(nilai)
+    const h = periksaUbahQty(r, baru, pos)
+    if (!h.boleh) {
+      toast({ title: 'Jumlahnya tidak bisa diubah', description: h.alasan, variant: 'destructive' })
+      return
+    }
+    if (h.peringatan && !window.confirm(`${h.peringatan}\n\nLanjutkan?`)) return
+    setJalan(true)
+    try {
+      await materialApi().ubahQtyRequest(r.id, baru)
+      toast({ title: '✅ Jumlah diperbarui', description: h.peringatan })
+      setSunting(false)
+      onUbah()
+    } catch (e) {
+      toast({
+        title: 'Gagal mengubah jumlah',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setJalan(false) }
+  }
+
+  async function batalkan() {
+    const h = periksaBatal(r, pos)
+    if (!h.boleh) {
+      toast({ title: 'Tidak bisa dibatalkan', description: h.alasan, variant: 'destructive' })
+      return
+    }
+    if (!window.confirm(kalimatBatal(r, pos))) return
+    setJalan(true)
+    try {
+      await materialApi().setRequestStatus(r.id, 'ditolak', namaSaya, catatanBatal(namaSaya))
+      toast({ title: 'Permintaan dibatalkan', description: h.peringatan })
+      onUbah()
+    } catch (e) {
+      toast({
+        title: 'Gagal membatalkan',
+        description: e instanceof Error ? e.message : String(e),
+        variant: 'destructive',
+      })
+    } finally { setJalan(false) }
+  }
+
+  if (sunting) {
+    return (
+      <div className="rounded-lg bg-slate-50 px-2.5 py-2 space-y-2">
+        <p className="text-xs font-semibold text-navy truncate">{r.nama}</p>
+        <div className="flex items-center gap-2">
+          <input
+            autoFocus type="text" inputMode="decimal" value={nilai}
+            onChange={e => setNilai(e.target.value)}
+            className="flex-1 min-w-0 h-9 rounded-lg border border-border px-2.5 text-sm outline-none focus:ring-2 focus:ring-navy/20"
+          />
+          <span className="text-xs text-muted-foreground shrink-0">{r.satuan}</span>
+          <Button size="sm" onClick={() => void simpanQty()} disabled={jalan}
+            className="h-9 gap-1 bg-navy text-white hover:bg-navy/90 shrink-0">
+            {jalan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Simpan
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setSunting(false); setNilai(String(r.qty ?? '')) }}
+            disabled={jalan} className="h-9 shrink-0">Batal</Button>
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          Jumlah seluruh permintaan, bukan sisanya. Sekarang {angka(Number(r.qty) || 0)} {r.satuan}.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-2">
+      <span className="font-semibold text-navy truncate">{r.nama}</span>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-muted-foreground">sisa {angka(sisaQty(r))} {r.satuan}</span>
+        {/* 40×40 piksel, bukan sekadar ikon berpadding.
+            Versi pertamanya 26 piksel — di bawah ambang yang nyaman untuk
+            jari, dan salah satu dari keduanya tombol PEMBATALAN. Meleset di
+            situ bukan sekadar merepotkan. */}
+        {bolehUbah && (
+          <>
+            <button type="button" title="Ubah jumlah" disabled={jalan}
+              onClick={() => { setNilai(String(r.qty ?? '')); setSunting(true) }}
+              className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-navy hover:bg-white disabled:opacity-40">
+              <PenLine className="w-3.5 h-3.5" />
+            </button>
+            <button type="button" title="Batalkan permintaan" disabled={jalan}
+              onClick={() => void batalkan()}
+              className="h-10 w-10 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-600 hover:bg-white disabled:opacity-40">
+              {jalan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ══ TAB PURCHASE ORDER ══════════════════════════════════════════════════════
 function TabPo({
   pos, requests, vendors, semuaVendor, items, projectName, lokasiProyek, perusahaan,
@@ -892,14 +1021,14 @@ function TabPo({
           )}
         </div>
         {requests.length > 0 && (
-          <div className="mt-3 space-y-1.5">
-            {requests.slice(0, 5).map(r => (
-              <div key={r.id} className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 px-2.5 py-2">
-                <span className="font-semibold text-navy truncate">{r.nama}</span>
-                <span className="text-muted-foreground shrink-0">
-                  sisa {angka(sisaQty(r))} {r.satuan}
-                </span>
-              </div>
+          /* SELURUHNYA, bukan lima teratas.
+             Dulu daftarnya dipotong di lima sementara judulnya menyebut sebelas
+             — dan begitu barisnya bisa disunting, enam sisanya menjadi
+             permintaan yang tidak ada cara untuk memperbaikinya. */
+          <div className="mt-3 space-y-1.5 max-h-72 overflow-y-auto overscroll-contain">
+            {requests.map(r => (
+              <BarisPermintaan key={r.id} r={r} pos={pos} namaSaya={namaSaya}
+                bolehUbah={bolehUbah} onUbah={onUbah} />
             ))}
           </div>
         )}
