@@ -4,9 +4,21 @@
 // Deploy via: supabase functions deploy payment-webhook --no-verify-jwt
 //
 // Required Secrets:
-// - RESEND_API_KEY (re_anGjs5XZ_BkYH9EF28K3RdzFoHfKDo69w)
+// - RESEND_API_KEY        (JANGAN tulis nilainya di sini — repo ini publik)
 // - SUPABASE_URL
 // - SUPABASE_SERVICE_ROLE_KEY
+// - PAYMENT_WEBHOOK_SECRET  — string acak panjang. Isi yang SAMA di header
+//                             `x-propfs-webhook-secret` pada Database Webhook
+//                             tabel invoices (Supabase → Database → Webhooks).
+//
+// KENAPA RAHASIA ITU WAJIB.
+//
+// Fungsi ini di-deploy dengan --no-verify-jwt, jadi tanpa rahasia bersama
+// tidak ada yang membedakan Database Webhook kita dari permintaan lain.
+//
+// Tanpa PAYMENT_WEBHOOK_SECRET, fungsi ini MENOLAK semua permintaan. Email
+// kuitansi berhenti sampai rahasianya dipasang — dan itu disengaja: kuitansi
+// yang tertunda jauh lebih murah daripada phishing yang terkirim.
 // ==============================================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -16,9 +28,33 @@ const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
 // Setup your from_email later when the domain is verified on Resend:
 const FROM_EMAIL = 'PropFS Finance <hello@propfs.id>' 
 
+/** Isian dari luar TIDAK pernah masuk mentah ke HTML email. */
+const esc = (v: unknown): string => String(v ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+/** Perbandingan waktu-konstan, supaya rahasianya tidak bisa ditebak per huruf. */
+function samaPersis(a: string, b: string): boolean {
+  // String kosong TIDAK pernah dianggap cocok — rahasia yang tidak terpasang
+  // tidak boleh sama dengan header yang tidak dikirim.
+  if (!a || a.length !== b.length) return false
+  let beda = 0
+  for (let i = 0; i < a.length; i++) beda |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return beda === 0
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 })
+  }
+
+  const rahasia = Deno.env.get('PAYMENT_WEBHOOK_SECRET') ?? ''
+  if (rahasia.length < 16) {
+    console.error('[payment-webhook] PAYMENT_WEBHOOK_SECRET belum dipasang — semua permintaan ditolak.')
+    return new Response(JSON.stringify({ error: 'Webhook belum dikonfigurasi' }), { status: 503 })
+  }
+  if (!samaPersis(req.headers.get('x-propfs-webhook-secret') ?? '', rahasia)) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
   }
 
   try {
@@ -59,8 +95,8 @@ serve(async (req) => {
             
             <div style="background: #f8f8f8; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                <h2 style="margin-top: 0;">Detail Invoice</h2>
-               <p><strong>No. Invoice:</strong> ${newRecord.invoice_number}</p>
-               <p><strong>Paket:</strong> ${newRecord.plan_id.toUpperCase()}</p>
+               <p><strong>No. Invoice:</strong> ${esc(newRecord.invoice_number)}</p>
+               <p><strong>Paket:</strong> ${esc(String(newRecord.plan_id ?? '').toUpperCase())}</p>
                <p><strong>Total Bayar:</strong> ${totalIdr} (Termasuk PPN)</p>
                <p><strong>Status:</strong> <span style="color: #059669; font-weight: bold;">LUNAS ✅</span></p>
             </div>
@@ -90,7 +126,7 @@ serve(async (req) => {
           body: JSON.stringify({
              from: FROM_EMAIL,
              to: [userEmail],
-             subject: `🎉 Pembayaran Berhasil - Invoice ${newRecord.invoice_number}`,
+             subject: `🎉 Pembayaran Berhasil - Invoice ${String(newRecord.invoice_number ?? '').replace(/[\r\n]/g, ' ').slice(0, 60)}`,
              html: htmlContent
           })
         })
@@ -111,6 +147,6 @@ serve(async (req) => {
     
   } catch (error: any) {
     console.error('Webhook Error:', error.message)
-    return new Response(JSON.stringify({ error: error.message }), { status: 400 })
+    return new Response(JSON.stringify({ error: 'Gagal memproses webhook' }), { status: 400 })
   }
 })
