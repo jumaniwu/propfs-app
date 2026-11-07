@@ -5,10 +5,35 @@
 // tampak sah — dan begitu seseorang memakainya, rahasianya langsung terbaca
 // publik tanpa satu pun tanda. Kunci Gemini sudah pernah bocor persis begitu,
 // dipakai orang lain, dan project-nya disuspend Google.
+//
+// ── Notifikasi pembayaran Midtrans ──────────────────────────────────────────
+//
+// Tanda tangannya diperiksa di sini; seluruh keputusan sesudahnya — berapa
+// yang harus dibayar, paket apa yang diaktifkan, apakah sudah pernah
+// diproses — ada di api/_lib/aktivasi.ts, yang juga dipakai
+// /api/verifikasi-bayar. Satu tempat, supaya dua jalur tidak pernah memutus
+// pembayaran yang sama dengan cara yang berbeda.
+//
+// Versi sebelumnya mengaktifkan langganan lewat
+// `upsert(..., { onConflict: 'user_id' })`, padahal subscriptions tidak punya
+// kunci unik pada user_id saja — hanya (user_id, product) bersyarat. Upsert
+// itu ditolak database, hasilnya tidak diperiksa, dan invoice berubah lunas
+// sementara paketnya tidak pernah aktif.
 
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
+import { aktifkan, dbDariSupabase, urlSupabase } from './_lib/aktivasi.js';
+
+/** Perbandingan waktu-konstan; string kosong tidak pernah cocok. */
+function samaPersis(a: string, b: string): boolean {
+  // Panjang dibandingkan dalam BYTE: timingSafeEqual melempar galat bila
+  // panjang byte-nya berbeda, dan tanda tangan kiriman bisa berisi apa saja.
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ba.length === 0 || ba.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ba, bb);
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -23,128 +48,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       gross_amount = '',
       signature_key = '',
       transaction_status = '',
+      fraud_status = '',
+      payment_type = '',
     } = body;
 
-    // 1. Verify Signature for security
     const serverKey = process.env.MIDTRANS_SERVER_KEY;
     if (!serverKey) return res.status(500).json({ message: 'Server key not configured' });
-    
-    // For Midtrans "Test notification URL", they might not send a valid signature.
-    // If order_id is empty or it's a test payload, we might just return 200 OK to satisfy their ping.
+
+    // Ping "Test notification URL" dari dashboard Midtrans: dijawab OK tanpa
+    // mengubah apa pun.
     if (!order_id || String(order_id).startsWith('payment_notif_test')) {
-       return res.status(200).json({ status: 'OK', message: 'Test ping received' });
+      return res.status(200).json({ status: 'OK', message: 'Test ping received' });
     }
 
     const hashed = crypto
       .createHash('sha512')
       .update(`${order_id}${status_code}${gross_amount}${serverKey}`)
       .digest('hex');
-
-    if (hashed !== signature_key) {
+    if (!samaPersis(hashed, String(signature_key))) {
       return res.status(403).json({ message: 'Invalid signature' });
     }
 
-    // Initialize Supabase lazily
-    if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('[Webhook] Missing Supabase environment variables');
+    const kunciServis = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!kunciServis) {
+      console.error('[Webhook] SUPABASE_SERVICE_ROLE_KEY belum disetel');
       return res.status(500).json({ message: 'Server configuration error' });
     }
-    const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(urlSupabase(process.env), kunciServis);
+    const db = dbDariSupabase(supabase);
 
-    // 2. Handle status updates
-    let invoiceId: string = '';
-    const orderParts = String(order_id).split('_');
-    if (orderParts.length >= 4 && orderParts[0] === 'pck' && orderParts[1] === 'inv') {
-      invoiceId = orderParts[2];
-    } else {
-      invoiceId = orderParts[0];
+    const lunas = transaction_status === 'settlement'
+      || (transaction_status === 'capture' && (!fraud_status || fraud_status === 'accept'));
+
+    if (lunas) {
+      const hasil = await aktifkan(db, {
+        orderId: String(order_id),
+        dibayar: Number(gross_amount),
+        metode: String(payment_type || 'midtrans'),
+      });
+      console.log(`[Webhook] order_id=${order_id} → ${hasil.status}: ${hasil.pesan}`);
+      // Midtrans hanya perlu tahu notifikasinya diterima. Keadaan yang perlu
+      // ditinjau sudah tercatat di invoice-nya; mengembalikan galat hanya
+      // membuat Midtrans mengirim ulang hal yang sama berkali-kali.
+      return res.status(200).json({ status: 'OK', hasil: hasil.status });
     }
-    
-    console.log(`[Webhook] Processing order_id=${order_id}, resolved invoiceId=${invoiceId}, status=${transaction_status}`);
 
-    if (transaction_status === 'settlement' || transaction_status === 'capture') {
-      const { data: invoice, error: invError } = await supabase
-        .from('invoices')
-        .update({ status: 'paid', paid_at: new Date().toISOString(), payment_method: 'bank_transfer' })
-        .or(`midtrans_order_id.eq.${order_id},id.eq.${invoiceId}`)
-        .select()
-        .single();
-
-      if (invError) {
-        console.error('Invoice update error:', invError);
-        return res.status(500).json({ message: 'Database error', error: invError.message });
+    if (transaction_status === 'expire' || transaction_status === 'cancel') {
+      const inv = await db.cariInvoice(String(order_id));
+      // Invoice yang SUDAH lunas tidak pernah dikembalikan menjadi kedaluwarsa.
+      // Notifikasi lama untuk transaksi yang gagal bisa datang sesudah
+      // pembayaran berikutnya berhasil.
+      if (inv) {
+        await supabase.from('invoices').update({ status: 'expired' })
+          .eq('id', inv.id).neq('status', 'paid');
       }
-
-      if (invoice) {
-        // ── Add-on: increment project slot instead of creating subscription ──
-        if (invoice.plan_id === 'addon_fs') {
-          await supabase.rpc('increment_addon_slots', { uid: invoice.user_id, slot_col: 'addon_fs_slots' });
-          console.log(`[Webhook] FS addon slot added for user ${invoice.user_id}`);
-        } else if (invoice.plan_id === 'addon_cost') {
-          await supabase.rpc('increment_addon_slots', { uid: invoice.user_id, slot_col: 'addon_cost_slots' });
-          console.log(`[Webhook] Cost addon slot added for user ${invoice.user_id}`);
-        } else if (invoice.plan_id === 'addon_user') {
-          // Slot pengguna tim — dipakai kuota di halaman Tim & Pengguna.
-          const { error: slotErr } = await supabase.rpc('increment_addon_user_slots', {
-            uid: invoice.user_id, jumlah: 1,
-          });
-          if (slotErr) console.error('[Webhook] Team user slot failed:', slotErr.message);
-          else console.log(`[Webhook] Team user slot added for user ${invoice.user_id}`);
-        } else {
-          // ── Regular subscription plan ──
-          // Calculate duration based on invoice period
-          const periodStart = new Date(invoice.period_start).getTime();
-          const periodEnd = new Date(invoice.period_end).getTime();
-          const durationMs = periodEnd - periodStart;
-          
-          const now = new Date();
-          const expiresAt = new Date(now.getTime() + durationMs);
-
-          await supabase.from('subscriptions').upsert({
-            user_id: invoice.user_id,
-            plan_id: invoice.plan_id,
-            status: 'active',
-            started_at: now.toISOString(),
-            expired_at: expiresAt.toISOString(),
-            midtrans_order_id: order_id,
-          }, { onConflict: 'user_id' });
-        }
-
-        // ── Referral Commission Logic ──
-        try {
-          const { data: settings } = await supabase.from('app_settings').select('key, value').in('key', ['affiliate_enabled', 'affiliate_commission_pct']);
-          const affiliateEnabled = settings?.find((s: any) => s.key === 'affiliate_enabled')?.value === 'true' || settings?.find((s: any) => s.key === 'affiliate_enabled')?.value === true;
-          
-          if (affiliateEnabled) {
-            const { data: profile } = await supabase.from('profiles').select('referred_by').eq('id', invoice.user_id).single();
-            if (profile && profile.referred_by) {
-              const commPct = parseInt(settings?.find((s: any) => s.key === 'affiliate_commission_pct')?.value || '10', 10);
-              const commIdr = Math.floor(invoice.total_idr * (commPct / 100));
-              
-              await supabase.from('referral_earnings').insert({
-                referrer_id: profile.referred_by,
-                referred_user_id: invoice.user_id,
-                invoice_id: invoice.id,
-                commission_idr: commIdr,
-                commission_pct: commPct,
-                status: 'pending'
-              });
-              console.log(`[Webhook] Referral commission recorded for referrer ${profile.referred_by}`);
-            }
-          }
-        } catch (refErr) {
-          console.error('[Webhook] Failed to process referral commission:', refErr);
-        }
-
-        console.log(`[Webhook] Invoice ${invoiceId} marked as PAID.`);
-      }
-    } else if (transaction_status === 'expire' || transaction_status === 'cancel') {
-      await supabase.from('invoices').update({ status: 'expired' }).eq('id', invoiceId);
     }
 
     return res.status(200).json({ status: 'OK' });
   } catch (err: any) {
     console.error('[Webhook Error]', err);
-    return res.status(500).json({ message: 'Internal Server Error', details: err.message });
+    return res.status(500).json({ message: 'Internal Server Error' });
   }
 }

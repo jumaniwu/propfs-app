@@ -125,20 +125,29 @@ export async function getUserInvoices(): Promise<Invoice[]> {
   return (data ?? []) as Invoice[]
 }
 
-export async function initiatePayment(planId: string, months: number = 1, invoiceId?: string, totalIdr?: number): Promise<{
+/** Token login untuk endpoint server; kosong bila belum login. */
+async function tokenLogin(): Promise<string> {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.access_token ?? ''
+}
+
+/**
+ * Mulai pembayaran sebuah invoice.
+ *
+ * Yang dikirim hanya id invoice. Nilai yang ditagih dibaca server dari
+ * invoice di database dan diperiksa terhadap harga resmi paketnya — dulu
+ * angka dari sini yang ditagih apa adanya. Parameter lain dipertahankan
+ * supaya pemanggil lama tidak perlu diubah, tetapi tidak lagi dipakai.
+ */
+export async function initiatePayment(_planId: string, _months: number = 1, invoiceId?: string, _totalIdr?: number): Promise<{
   snapToken: string
   orderId: string
 } | null> {
   try {
     const response = await fetch('/api/initiate-payment', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        plan_id: planId,
-        months,
-        invoice_id: invoiceId,
-        total_idr: totalIdr   // pass the real amount so backend doesn't need DB
-      })
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await tokenLogin()}` },
+      body: JSON.stringify({ invoice_id: invoiceId }),
     })
 
     if (!response.ok) {
@@ -300,5 +309,47 @@ export function generateInvoicePDF(invoice: Invoice) {
     win.document.write(html)
     win.document.close()
     win.print()
+  }
+}
+
+export interface HasilVerifikasi {
+  /** 'paid' = lunas & paket aktif; 'pending' = menunggu; selain itu perlu ditinjau. */
+  status: string
+  pesan: string
+}
+
+/**
+ * Minta server memastikan pembayaran sebuah invoice LANGSUNG ke Midtrans.
+ *
+ * Inilah pengganti "pop-up bilang sukses, jadi browser mengaktifkan paket
+ * sendiri". Browser tidak pernah lagi menandai invoice lunas atau membuat
+ * langganan; ia hanya bertanya, dan server yang memutuskan berdasarkan
+ * jawaban Midtrans.
+ */
+export async function verifikasiBayar(invoiceId: string): Promise<HasilVerifikasi> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 20000)
+  try {
+    const res = await fetch('/api/verifikasi-bayar', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await tokenLogin()}` },
+      body: JSON.stringify({ invoice_id: invoiceId }),
+    })
+    const isi = await res.json().catch(() => ({})) as { status?: string; pesan?: string; message?: string }
+    if (!res.ok && res.status !== 202) {
+      return { status: 'galat', pesan: isi.message || isi.pesan || `Server menolak (HTTP ${res.status}).` }
+    }
+    return { status: isi.status || 'galat', pesan: isi.pesan || isi.message || '' }
+  } catch (e) {
+    const batal = e instanceof DOMException && e.name === 'AbortError'
+    return {
+      status: 'galat',
+      pesan: batal
+        ? 'Server lambat menjawab. Paket akan aktif otomatis begitu pembayaran terkonfirmasi.'
+        : 'Gagal menghubungi server. Paket akan aktif otomatis begitu pembayaran terkonfirmasi.',
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }

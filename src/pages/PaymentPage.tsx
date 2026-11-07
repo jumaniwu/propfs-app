@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { CheckCircle2, ChevronLeft, CreditCard, ShieldCheck, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { initiatePayment, openPaymentPopup, generateInvoicePDF, Invoice } from '@/lib/invoice'
+import { initiatePayment, openPaymentPopup, generateInvoicePDF, verifikasiBayar, Invoice } from '@/lib/invoice'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
@@ -13,7 +13,7 @@ export default function PaymentPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const beranda = useRutaMasuk()
-  const { user, bankDetails, paymentSettings } = useAuthStore()
+  const { user, bankDetails, paymentSettings, refreshSubscription } = useAuthStore()
 
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
@@ -81,44 +81,35 @@ export default function PaymentPage() {
       
       if (!paymentRes) throw new Error('Gagal memproses ke Midtrans.')
 
+      // Pop-up Midtrans yang berkata "sukses" hanyalah kabar dari browser.
+      // Aktivasi paket diputuskan server, yang memastikan langsung ke
+      // Midtrans; di sini browser hanya bertanya hasilnya. Kedua jalur
+      // (berhasil & menunggu) bertanya dengan cara yang sama: transfer bank
+      // sering baru terkonfirmasi beberapa detik kemudian.
+      const tanyaServer = async () => {
+        const h = await verifikasiBayar(invoice.id)
+        if (h.status === 'paid') {
+          await refreshSubscription()
+          toast({ title: 'Pembayaran Berhasil! 🎉', description: h.pesan || 'Paket Anda sudah aktif.' })
+        } else if (h.status === 'pending') {
+          toast({ title: 'Menunggu Pembayaran', description: h.pesan })
+        } else {
+          toast({
+            title: 'Pembayaran sedang diperiksa',
+            description: h.pesan || 'Kami akan mengaktifkan paket begitu pembayaran terkonfirmasi.',
+          })
+        }
+        navigate(beranda)
+      }
+
       await openPaymentPopup(
         paymentRes.snapToken,
-        async () => {
-          // onSuccess — update invoice status in DB
-          const now = new Date().toISOString()
-          
-          // Update Supabase
-          if (invoice.id && !invoice.id.startsWith('local_')) {
-            await supabase
-              .from('invoices')
-              .update({ status: 'paid', paid_at: now, payment_method: 'midtrans' })
-              .eq('id', invoice.id)
-          }
-
-          // Update localStorage cache
-          const updatedInv = { ...invoice, status: 'paid' as const, paid_at: now }
-          localStorage.setItem(`propfs_invoice_${invoice.id}`, JSON.stringify(updatedInv))
-          
-          // Auto-provision subscription
-          await supabase.from('subscriptions').insert({
-             user_id: user.id,
-             plan_id: invoice.plan_id,
-             status: 'active',
-             started_at: now,
-             expired_at: new Date(Date.now() + 30 * 86400000).toISOString()
-          })
-
-          toast({ title: 'Pembayaran Berhasil! 🎉', description: `Invoice lunas dan paket telah diaktifkan.` })
-          navigate(beranda)
-        },
+        () => { void tanyaServer() },
         () => {
           toast({ title: 'Pembayaran Gagal', variant: 'destructive' })
           setIsProcessing(false)
         },
-        () => {
-          toast({ title: 'Menunggu Pembayaran', description: 'Status invoice: PENDING. Kami akan memperbarui otomatis setelah pembayaran dikonfirmasi.' })
-          navigate(beranda)
-        }
+        () => { void tanyaServer() },
       )
     } catch (e: any) {
       toast({ title: 'Error', description: e.message, variant: 'destructive' })
