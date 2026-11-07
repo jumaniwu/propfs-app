@@ -127,9 +127,51 @@ slot as (
                       where i.user_id = p.id and i.status = 'paid' and i.plan_id like 'addon%')
 ),
 
--- 8. Apakah penutup celah sudah terpasang.
-penutup as (
+-- 8. Sudah membayar, tetapi paketnya tidak aktif.
+--    Kebalikan baris 2: bukan celah, melainkan pelanggan yang dirugikan.
+--    Invoice paket yang lunas dan periodenya belum habis, sementara
+--    pemiliknya tidak punya langganan berbayar yang masih berjalan.
+belum_aktif as (
   select 8,
+         'Sudah bayar, tetapi paketnya tidak aktif',
+         count(*),
+         string_agg(i.invoice_number || ' — ' || coalesce(to_jsonb(pr) ->> 'email', i.user_id::text) ||
+                    ' (' || i.plan_id || ', s.d. ' || left(to_jsonb(i) ->> 'period_end', 10) || ')', '; '),
+         'Pelanggan ini membayar tetapi tidak menerima paketnya. Aktifkan dari panel admin ' ||
+         'sampai tanggal akhir periode invoice-nya.'
+    from invoices i
+    left join profiles pr on pr.id = i.user_id
+   where i.status = 'paid'
+     and i.plan_id not like 'addon%'
+     and i.plan_id <> 'free'
+     and (to_jsonb(i) ->> 'period_end') is not null
+     and (to_jsonb(i) ->> 'period_end')::timestamptz > now()
+     and not exists (
+           select 1 from subscriptions s
+            where s.user_id = i.user_id
+              and s.status = 'active'
+              and s.plan_id <> 'free'
+              and coalesce(to_jsonb(s) ->> 'expired_at', to_jsonb(s) ->> 'expires_at') is not null
+              and coalesce(to_jsonb(s) ->> 'expired_at', to_jsonb(s) ->> 'expires_at')::timestamptz > now())
+),
+
+-- 9. Pembayaran yang ditahan sistem untuk ditinjau.
+tinjau as (
+  select 9,
+         'Pembayaran yang menunggu tinjauan',
+         count(*),
+         string_agg(i.invoice_number || ': ' ||
+                    left(regexp_replace(to_jsonb(i) ->> 'notes', '\s+', ' ', 'g'), 200), '; '),
+         'Uangnya sudah masuk tetapi paket tidak diaktifkan otomatis (nilai kurang, paket tidak ' ||
+         'dikenal, atau aktivasi gagal). Cocokkan dengan Midtrans lalu putuskan dari panel admin.'
+    from invoices i
+   where (to_jsonb(i) ->> 'notes') like '%PERLU DITINJAU%'
+      or (to_jsonb(i) ->> 'notes') like '%AKTIVASI GAGAL%'
+),
+
+-- 10. & 11. Apakah penutup celah sudah terpasang.
+penutup as (
+  select 10,
          'Penjaga kolom profil (migration_kunci_keamanan.sql)',
          case when exists (select 1 from pg_trigger
                             where tgname = 'trg_lindungi_kolom_profil' and not tgisinternal)
@@ -138,6 +180,23 @@ penutup as (
                             where tgname = 'trg_lindungi_kolom_profil' and not tgisinternal)
               then 'terpasang' else 'BELUM TERPASANG — celah role masih terbuka' end,
          'Jalankan migration_kunci_keamanan.sql bila belum.'
+),
+
+penutup_bayar as (
+  select 11,
+         'Penjaga langganan & invoice (migration_kunci_pembayaran.sql)',
+         case when exists (select 1 from pg_trigger
+                            where tgname = 'trg_lindungi_langganan' and not tgisinternal)
+               and exists (select 1 from pg_trigger
+                            where tgname = 'trg_lindungi_invoice' and not tgisinternal)
+              then 0 else 1 end,
+         case when exists (select 1 from pg_trigger
+                            where tgname = 'trg_lindungi_langganan' and not tgisinternal)
+               and exists (select 1 from pg_trigger
+                            where tgname = 'trg_lindungi_invoice' and not tgisinternal)
+              then 'terpasang' else 'belum terpasang' end,
+         'Jalankan migration_kunci_pembayaran.sql HANYA SESUDAH versi aplikasi terbaru ter-deploy ' ||
+         'dan satu pembayaran percobaan berhasil mengaktifkan paketnya.'
 )
 
 -- Daftar admin SELALU berisi minimal pemilik akun, jadi bukan alarm: ia
@@ -151,6 +210,7 @@ select case when urut = 1 then 'ℹ️'
   from (
     select * from admin union all select * from langganan union all select * from murah
     union all select * from receh union all select * from trial union all select * from fitur
-    union all select * from slot union all select * from penutup
+    union all select * from slot union all select * from belum_aktif union all select * from tinjau
+    union all select * from penutup union all select * from penutup_bayar
   ) semua
  order by urut;

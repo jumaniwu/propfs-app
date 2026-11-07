@@ -340,6 +340,16 @@ with penanda(urut, migrasi, keterangan, ada) as (values
                 and p.prosrc like '%to_jsonb%')
      and exists (select 1 from pg_trigger where tgname = 'trg_lindungi_kolom_profil' and not tgisinternal)),
 
+  -- Dijalankan SESUDAH versi aplikasi terbaru ter-deploy — lihat kepala berkasnya.
+  (53, 'migration_kunci_pembayaran.sql', 'langganan & status invoice hanya diubah sistem pembayaran (jalankan sesudah deploy)',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'lindungi_invoice'
+                and p.prosrc like '%to_jsonb%')
+     and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'lindungi_langganan')
+     and exists (select 1 from pg_trigger where tgname = 'trg_lindungi_invoice' and not tgisinternal)
+     and exists (select 1 from pg_trigger where tgname = 'trg_lindungi_langganan' and not tgisinternal)),
+
   (34, '(data) Anggota tim terikat ke akunnya', 'tidak ada anggota aktif yang member_user_id-nya kosong',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
