@@ -18,7 +18,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Security check: Ensure this is called by Vercel Cron
   // You need to set CRON_SECRET in Vercel Environment Variables
   const authHeader = req.headers.authorization;
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // GAGAL TERTUTUP. Dulu pemeriksaannya berbunyi
+  // `if (process.env.CRON_SECRET && ...)` — bila rahasianya tidak dipasang,
+  // seluruh pemeriksaan dilewati dan siapa pun bisa memicu pengiriman email
+  // pengingat ke semua pelanggan, berapa kali pun, dengan kunci servis.
+  // Rahasia yang lupa dipasang harus mematikan cron-nya, bukan membukanya.
+  const rahasiaCron = process.env.CRON_SECRET ?? ''
+  if (rahasiaCron.length < 16) {
+    console.error('[cron-reminders] CRON_SECRET belum dipasang — permintaan ditolak.')
+    return res.status(503).json({ message: 'Cron belum dikonfigurasi' })
+  }
+  if (authHeader !== `Bearer ${rahasiaCron}`) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
 

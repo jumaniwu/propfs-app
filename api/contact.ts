@@ -18,7 +18,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { name, email, message } = req.body ?? {}
+  const mentah = req.body ?? {}
+  // Isian formulir di-escape sebelum masuk HTML. Formulir ini terbuka untuk
+  // siapa saja, dan emailnya mendarat di kotak masuk kita sendiri — tempat
+  // yang paling berbahaya untuk sebuah tautan atau tombol tiruan.
+  const esc = (v: unknown) => String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+  const name = esc(mentah.name).slice(0, 120)
+  const email = String(mentah.email ?? '').trim().slice(0, 254)
+  const message = esc(mentah.message).slice(0, 5000)
 
   // Validate inputs
   if (!name?.trim() || !email?.trim() || !message?.trim()) {
@@ -26,7 +35,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Basic email format validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  // Tanpa < > " ' — alamat ini masuk ke HTML (mailto & teks) apa adanya.
+  const emailRegex = /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/
   if (!emailRegex.test(email)) {
     return res.status(400).json({ error: 'Format email tidak valid.' })
   }

@@ -331,6 +331,15 @@ with penanda(urut, migrasi, keterangan, ada) as (values
      and exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                   where n.nspname = 'public' and p.proname = 'invoice_kirim')),
 
+  -- Penutup celah keamanan. Diperiksa dari ISINYA juga, bukan hanya namanya:
+  -- versi yang menyebut kolom lewat NEW.x akan meledak di database yang
+  -- sebagian migrasinya belum dijalankan, dan yang benar memakai to_jsonb.
+  (52, 'migration_kunci_keamanan.sql', 'role & kolom berbayar profil hanya bisa diubah superadmin',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'lindungi_kolom_profil'
+                and p.prosrc like '%to_jsonb%')
+     and exists (select 1 from pg_trigger where tgname = 'trg_lindungi_kolom_profil' and not tgisinternal)),
+
   (34, '(data) Anggota tim terikat ke akunnya', 'tidak ada anggota aktif yang member_user_id-nya kosong',
      coalesce((
        select (xpath('/row/c/text()', query_to_xml(
