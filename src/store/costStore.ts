@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { gabungProyek, sisipkanProyek, gabungNisan, type Nisan } from '../lib/sinkronProyek'
 import { dataOwnerId } from '../lib/teamApi'
 import { tandaiMenyimpan, tandaiTersimpan, tandaiGagal } from '../lib/syncStatus'
+import { buatAntrean, pesanKirimGagal } from '../lib/antreanKirim'
 
 export interface ProjectInfo {
   id: string
@@ -190,27 +191,50 @@ async function tungguPemilik(maksMs = 6000): Promise<string | null> {
   }
 }
 
+/**
+ * Batas waktu satu kiriman/tarikan ke cloud, dalam milidetik.
+ *
+ * Sampai sekarang tidak ada batasnya sama sekali. Kiriman yang menggantung di
+ * jaringan seluler tidak pernah selesai DAN tidak pernah gagal: penanda
+ * "Menyimpan…" menyala selamanya, dan perubahannya tidak pernah sampai ke
+ * perangkat lain — tanpa satu pun tanda bahwa ada yang salah.
+ */
+const BATAS_SINKRON_MS = 20000
+
 /** true bila proyeknya benar-benar sampai di server. */
 async function upsertCloudProject(p: SavedCostProject): Promise<boolean> {
   const user_id = cloudUserId()
   // Belum login: data tetap aman di localStorage, bukan kegagalan.
   if (!user_id) { tandaiTersimpan(); return false }
   tandaiMenyimpan()
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), BATAS_SINKRON_MS)
   try {
     const { error } = await supabase.from('cost_projects').upsert(
       { user_id, id: p.info.id, data: p, updated_at: p.updatedAt },
       { onConflict: 'user_id,id' },
-    )
+    ).abortSignal(ctrl.signal)
     if (error) throw error
     tandaiTersimpan()
     return true
   } catch (e) {
-    const pesan = e instanceof Error ? e.message : String(e)
+    const pesan = pesanKirimGagal(e)
     console.warn('[cost] gagal sinkron proyek ke cloud:', pesan)
     tandaiGagal(pesan)
     return false
+  } finally {
+    clearTimeout(timer)
   }
 }
+
+/**
+ * Semua kiriman proyek lewat SATU jalur per proyek.
+ *
+ * Versi lama yang tersendat lalu tiba sesudah versi baru akan menimpanya di
+ * server. Lewat antrean ini kiriman tidak pernah saling mendahului, dan yang
+ * terakhir terkirim selalu yang paling baru.
+ */
+const kirimProyek = buatAntrean<SavedCostProject>(upsertCloudProject, p => p.info.id)
 
 async function deleteCloudProject(id: string): Promise<void> {
   const user_id = cloudUserId()
@@ -260,9 +284,13 @@ export const useCostStore = create<CostStore>((set, get) => ({
     // Dibaca ULANG di sini, bukan dipakai dari memori: antara halaman dibuka
     // dan jawaban cloud tiba, pemakainya bisa saja sudah menyimpan sesuatu.
     const local = loadLocalData()
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), BATAS_SINKRON_MS)
     try {
       const { data, error } = await supabase
         .from('cost_projects').select('data').eq('user_id', user_id)
+        .abortSignal(ctrl.signal)
+      clearTimeout(timer)
       if (error) throw error
       const cloud = (data ?? [])
         .map(r => r.data as SavedCostProject)
@@ -281,14 +309,15 @@ export const useCostStore = create<CostStore>((set, get) => ({
       const dorong = paksaDorong ? gabungan : perluDorong
       let gagal = 0
       for (const p of dorong) {
-        const berhasil = await upsertCloudProject(p)
+        const berhasil = await kirimProyek(p)
         if (!berhasil) gagal++
       }
       if (gagal === 0) tandaiTersimpan()
 
       return { ok: gagal === 0, lokal: gabungan.length, cloud: cloud.length, gagal }
     } catch (e) {
-      const pesan = e instanceof Error ? e.message : String(e)
+      clearTimeout(timer)
+      const pesan = pesanKirimGagal(e)
       console.warn('[cost] sinkron cloud gagal:', pesan)
       tandaiGagal(pesan)
       return { ok: false, lokal: local.length, cloud: 0 }
@@ -323,7 +352,7 @@ export const useCostStore = create<CostStore>((set, get) => ({
 
     set({ savedProjects: nextProjects })
     saveLocalData(nextProjects)
-    void upsertCloudProject(updatedProject)
+    void kirimProyek(updatedProject)
   },
 
   initProject: (info) => {
