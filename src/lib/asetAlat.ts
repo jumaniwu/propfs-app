@@ -41,6 +41,13 @@ export const TONE_KONDISI: Record<KondisiAlat, string> = {
 export interface AsetAlat {
   id: string
   nama: string
+  /**
+   * NOMOR ASET — yang ditulis/ditempel di badan alatnya, mis. 008/NBI/XI/26.
+   *
+   * Lima gerinda bermerek sama tidak bisa dibedakan dari nama, merek, atau
+   * fotonya. Hanya nomor inilah yang menjawab "gerinda YANG MANA yang
+   * dipinjam Budi" ketika satu di antaranya kembali rusak.
+   */
   kode: string
   merek: string
   nomor_seri: string
@@ -61,6 +68,19 @@ export interface AsetAlat {
   catatan: string
   /** Terisi bila alat dijual/dihapusbukukan — penyusutannya berhenti. */
   dilepas_at: string | null
+  /**
+   * Foto alatnya, data URL dengan cap tanggal & jam tercetak di gambar.
+   * Opsional di tipe karena baris lama (sebelum migration_aset_lengkap) tidak
+   * memilikinya; alat BARU wajib berfoto — lihat siapSimpanAset.
+   */
+  foto?: string
+  /**
+   * Kelengkapan yang SEHARUSNYA ikut bersama alat ini: cover pelindung,
+   * kunci, kabel, tas. Daftar inilah yang dicentang saat alat diserahkan dan
+   * diperiksa saat kembali — tanpanya "ada yang kurang" tidak bisa dijawab,
+   * karena tidak ada yang tahu apa saja yang seharusnya ada.
+   */
+  kelengkapan?: string[]
   created_at?: string
 }
 
@@ -68,7 +88,7 @@ export const ASET_KOSONG: Omit<AsetAlat, 'id'> = {
   nama: '', kode: '', merek: '', nomor_seri: '',
   tanggal_beli: '', harga: 0, umur_bulan: 60, nilai_residu: 0,
   kondisi: 'baik', lokasi_project_id: null, lokasi_nama: '', pemegang: '',
-  po_id: null, catatan: '', dilepas_at: null,
+  po_id: null, catatan: '', dilepas_at: null, foto: '', kelengkapan: [],
 }
 
 /** Umur ekonomis yang lazim, supaya tidak perlu ditebak sendiri tiap kali. */
@@ -228,6 +248,173 @@ export function lokasiAlat(
   return String(ketemu?.nama ?? a?.lokasi_nama ?? '').trim() || 'Proyek (tidak dikenal)'
 }
 
+// ── Nomor aset ─────────────────────────────────────────────────────────────
+
+const BULAN_ROMAWI = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII']
+
+/** Bulan 1–12 dalam angka romawi; di luar itu kosong. */
+export function romawi(bulan: number): string {
+  return BULAN_ROMAWI[Math.floor(Number(bulan)) - 1] ?? ''
+}
+
+/**
+ * Nomor aset dalam bentuk bakunya: huruf besar, tanpa spasi di sekitar "/".
+ *
+ * Yang diketik di HP berbeda-beda — "008/nbi/xi/26", "008 / NBI / XI / 26" —
+ * padahal maksudnya satu alat. Tanpa dirapikan, nomor yang sama bisa
+ * tersimpan dua kali dan pemeriksaan "nomor sudah dipakai" kebobolan.
+ */
+export function normalNomorAset(v: unknown): string {
+  return String(v ?? '')
+    .toUpperCase()
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** Pola NNN/SINGKATAN/BULAN-ROMAWI/TT, mis. 008/NBI/XI/26. */
+const POLA_NOMOR = /^(\d{1,6})\/([A-Z0-9-]{1,12})\/(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)\/(\d{2})$/
+
+export interface BagianNomorAset { urut: number; singkatan: string; bulan: string; tahun: string }
+
+/** Bagian-bagian nomor aset berpola baku; null untuk bentuk lain. */
+export function uraiNomorAset(v: unknown): BagianNomorAset | null {
+  const m = normalNomorAset(v).match(POLA_NOMOR)
+  return m ? { urut: Number(m[1]), singkatan: m[2], bulan: m[3], tahun: m[4] } : null
+}
+
+const BUKAN_NAMA = new Set(['PT', 'CV', 'UD', 'TBK', 'PD', 'FA', 'KOPERASI'])
+
+/** Singkatan dari nama perusahaan: "PT Nusa Bangun Indah" → "NBI". */
+export function singkatanDariNama(nama: unknown): string {
+  const huruf = String(nama ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(k => k && !BUKAN_NAMA.has(k))
+    .map(k => k[0])
+    .join('')
+  return huruf.slice(0, 5) || 'AST'
+}
+
+/**
+ * Usulan nomor aset berikutnya. Hanya USULAN — kolomnya tetap bisa diketik,
+ * karena alat yang sudah ditulisi nomor di badannya harus dicatat dengan
+ * nomor yang tertulis itu, bukan nomor baru.
+ *
+ * Singkatannya diambil dari alat yang terakhir dicatat dengan pola baku,
+ * supaya cukup sekali saja diketik. Nomor urutnya melanjutkan yang terbesar
+ * untuk singkatan itu — sepanjang masa, tidak dimulai ulang tiap bulan —
+ * sehingga tidak ada dua alat bernomor urut sama walau bulannya berbeda.
+ */
+export function usulNomorAset(
+  daftar: ReadonlyArray<Partial<AsetAlat>> | null | undefined,
+  pilihan: { singkatan?: string; tanggal?: unknown } = {},
+): string {
+  const urut = [...(daftar ?? [])]
+    .sort((a, b) => String(b?.created_at ?? '').localeCompare(String(a?.created_at ?? '')))
+  const terakhir = urut.map(a => uraiNomorAset(a?.kode)).find(Boolean)
+  const singkatan = terakhir?.singkatan
+    || normalNomorAset(pilihan.singkatan).replace(/[^A-Z0-9-]/g, '').slice(0, 12)
+    || 'AST'
+  const maks = urut.reduce((m, a) => {
+    const b = uraiNomorAset(a?.kode)
+    return b && b.singkatan === singkatan ? Math.max(m, b.urut) : m
+  }, 0)
+  // Bulan & tahun dibaca LANGSUNG dari teks YYYY-MM-DD bila ada: lewat Date,
+  // "2026-11-01" adalah tengah malam UTC — di zona waktu barat itu masih
+  // tanggal 31 Oktober, dan nomornya jatuh ke bulan yang salah.
+  const teksTgl = String(pilihan.tanggal ?? '').match(/^(\d{4})-(\d{2})/)
+  const tgl = tanggal(pilihan.tanggal) ?? new Date()
+  const tahun = teksTgl ? Number(teksTgl[1]) : tgl.getFullYear()
+  const bulan = teksTgl ? Number(teksTgl[2]) : tgl.getMonth() + 1
+  return `${String(maks + 1).padStart(3, '0')}/${singkatan}/${romawi(bulan) || romawi(tgl.getMonth() + 1)}/${
+    String(tahun).slice(-2)}`
+}
+
+/**
+ * Alat lain yang sudah memakai nomor ini. Alat yang sudah dilepas IKUT
+ * diperiksa: nomor yang pernah tertulis di sebuah alat tidak boleh dipakai
+ * ulang, karena catatan peminjaman lamanya masih menyebut nomor itu.
+ */
+export function nomorAsetKembar(
+  daftar: ReadonlyArray<Partial<AsetAlat>> | null | undefined, kode: unknown, kecualiId?: unknown,
+): Partial<AsetAlat> | undefined {
+  const k = normalNomorAset(kode)
+  if (!k) return undefined
+  const kecuali = String(kecualiId ?? '')
+  return (daftar ?? []).find(a => a && String(a.id ?? '') !== kecuali && normalNomorAset(a.kode) === k)
+}
+
+// ── Kelengkapan ────────────────────────────────────────────────────────────
+
+/** Usulan cepat; tetap bisa diketik bebas. */
+export const USUL_KELENGKAPAN = [
+  'Kabel power', 'Kunci', 'Cover pelindung', 'Gagang samping', 'Mata / disc', 'Tas / box', 'Charger', 'Baterai',
+]
+
+/**
+ * Daftar kelengkapan yang rapi: tanpa kosong, tanpa kembar (huruf besar-kecil
+ * diabaikan), paling banyak 20 butir @ 60 huruf. Menerima larik maupun teks
+ * berpisah koma/baris — data lama dan isian tangan sama-sama terbaca.
+ */
+export function normalKelengkapan(v: unknown): string[] {
+  const mentah = Array.isArray(v) ? v : String(v ?? '').split(/[,\n]/)
+  const hasil: string[] = []
+  const ada = new Set<string>()
+  for (const x of mentah) {
+    const t = String(x ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+    const kunci = t.toLowerCase()
+    if (!t || ada.has(kunci)) continue
+    ada.add(kunci)
+    hasil.push(t)
+    if (hasil.length >= 20) break
+  }
+  return hasil
+}
+
+/** Cari alat lewat nomor aset, nama, merek, atau nomor seri. */
+export function cocokCari(a: Partial<AsetAlat> | null | undefined, q: unknown): boolean {
+  const kata = normalNomorAset(q).toLowerCase().split(' ').filter(Boolean)
+  if (kata.length === 0) return true
+  const isi = [a?.kode, a?.nama, a?.merek, a?.nomor_seri]
+    .map(x => normalNomorAset(x).toLowerCase()).join(' ')
+  return kata.every(k => isi.includes(k))
+}
+
+/** Apa yang belum lengkap pada alat yang SUDAH tercatat (data lama). */
+export function kurangDataAset(a: Partial<AsetAlat> | null | undefined): string[] {
+  const kurang: string[] = []
+  if (!normalNomorAset(a?.kode)) kurang.push('nomor aset')
+  if (!String(a?.foto ?? '').trim()) kurang.push('foto')
+  return kurang
+}
+
+/**
+ * Apa yang harus terisi pada IDENTITAS alat: nama, nomor aset yang belum
+ * dipakai alat lain, dan fotonya.
+ *
+ * Dipakai saat mencatat alat baru maupun saat melengkapi alat lama.
+ */
+export function siapIdentitasAset(
+  a: Partial<AsetAlat> | null | undefined,
+  daftar: ReadonlyArray<Partial<AsetAlat>> | null | undefined = [],
+): { boleh: boolean; alasan: string } {
+  if (!String(a?.nama ?? '').trim()) return { boleh: false, alasan: 'Nama alat belum diisi.' }
+  const kode = normalNomorAset(a?.kode)
+  if (!kode) {
+    return { boleh: false, alasan: 'Nomor aset belum diisi — samakan dengan yang tertulis di badan alatnya.' }
+  }
+  const kembar = nomorAsetKembar(daftar, kode, a?.id)
+  if (kembar) {
+    return { boleh: false, alasan: `Nomor ${kode} sudah dipakai ${String(kembar.nama ?? 'alat lain').trim()}.` }
+  }
+  if (!String(a?.foto ?? '').trim()) {
+    return { boleh: false, alasan: 'Ambil foto alatnya — nomor asetnya sebaiknya ikut terlihat di foto.' }
+  }
+  return { boleh: true, alasan: '' }
+}
+
 /**
  * Apa yang harus terisi sebelum alat boleh dicatat.
  *
@@ -237,8 +424,10 @@ export function lokasiAlat(
  */
 export function siapSimpanAset(
   a: Partial<AsetAlat> | null | undefined,
+  daftar: ReadonlyArray<Partial<AsetAlat>> | null | undefined = [],
 ): { boleh: boolean; alasan: string } {
-  if (!String(a?.nama ?? '').trim()) return { boleh: false, alasan: 'Nama alat belum diisi.' }
+  const identitas = siapIdentitasAset(a, daftar)
+  if (!identitas.boleh) return identitas
   if (!tanggal(a?.tanggal_beli)) return { boleh: false, alasan: 'Tanggal beli belum diisi.' }
   if (!(angka(a?.harga) > 0)) return { boleh: false, alasan: 'Harga perolehan masih nol.' }
   if (angka(a?.umur_bulan) < 0) return { boleh: false, alasan: 'Umur ekonomis tidak boleh minus.' }

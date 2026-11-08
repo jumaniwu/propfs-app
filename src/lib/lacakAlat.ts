@@ -23,6 +23,8 @@
 // Tanpa DOM & tanpa jaringan supaya bisa diuji di Node.
 // ============================================================
 
+import { normalKelengkapan, kurangDataAset, masihDimiliki, type AsetAlat } from './asetAlat.ts'
+
 const teks = (v: unknown): string => String(v ?? '').trim()
 const waktuMs = (v: unknown): number => {
   const t = Date.parse(teks(v))
@@ -53,6 +55,8 @@ export interface Peminjaman {
   aset_id: string
   /** Nama alat, disalin saat dipinjam. Lihat catatan di bawah. */
   aset_nama?: string
+  /** Nomor aset, disalin saat dipinjam — alasannya sama dengan nama. */
+  aset_kode?: string
 
   project_id?: string | null
   project_nama?: string
@@ -66,6 +70,8 @@ export interface Peminjaman {
   pinjam_kondisi?: string
   pinjam_foto?: string
   pinjam_catatan?: string
+  /** Kelengkapan yang IKUT diserahkan — yang dicentang saat dipinjam. */
+  pinjam_kelengkapan?: string[]
 
   /** Kosong = belum kembali. */
   kembali_at?: string | null
@@ -73,6 +79,8 @@ export interface Peminjaman {
   kembali_kondisi?: string
   kembali_foto?: string
   kembali_catatan?: string
+  /** Kelengkapan yang ikut KEMBALI. Yang diserahkan tetapi tidak ada di sini = kurang. */
+  kembali_kelengkapan?: string[]
 
   /** Janji dikembalikan. Kosong = tanpa batas waktu yang disepakati. */
   janji_kembali?: string | null
@@ -148,7 +156,14 @@ export function siapPinjam(p: Partial<Peminjaman> | null | undefined): Periksa {
   return { boleh: true, alasan: '' }
 }
 
-/** Apa yang wajib terisi sebelum pengembalian dicatat. */
+/**
+ * Apa yang wajib terisi sebelum pengembalian dicatat.
+ *
+ * Bila ada yang kurang atau kondisinya menurun, CATATAN ikut wajib. "Cover
+ * pelindung tidak kembali" tanpa keterangan apa pun akan ditanyakan seminggu
+ * kemudian, ketika tidak ada lagi yang ingat — keterangannya hanya mudah
+ * didapat sekarang, selagi pemegangnya berdiri di depan gudang.
+ */
 export function siapKembali(p: Partial<Peminjaman> | null | undefined): Periksa {
   if (!teks(p?.kembali_at)) return { boleh: false, alasan: 'Waktu pengembalian belum terisi.' }
   if (!teks(p?.kembali_foto)) {
@@ -157,7 +172,74 @@ export function siapKembali(p: Partial<Peminjaman> | null | undefined): Periksa 
   if (waktuMs(p?.kembali_at) < waktuMs(p?.pinjam_at)) {
     return { boleh: false, alasan: 'Waktu kembali lebih awal daripada waktu pinjam. Periksa lagi.' }
   }
+  const masalah = kembaliBermasalah(p as Peminjaman)
+  if (masalah && !teks(p?.kembali_catatan)) {
+    const kurang = kelengkapanKurang(p as Peminjaman)
+    return {
+      boleh: false,
+      alasan: kurang.length
+        ? `Tulis catatan: ke mana ${kurang.join(', ')}?`
+        : 'Tulis catatan: apa yang terjadi dengan alatnya?',
+    }
+  }
   return { boleh: true, alasan: '' }
+}
+
+const kunciButir = (v: unknown): string => teks(v).replace(/\s+/g, ' ').toLowerCase()
+
+/**
+ * Kelengkapan yang diserahkan tetapi TIDAK ikut kembali.
+ *
+ * Hanya untuk peminjaman yang sudah kembali; selama alatnya masih di luar,
+ * belum ada yang "kurang". Peminjaman lama tanpa daftar kelengkapan tidak
+ * pernah kurang apa pun — tidak ada yang tercatat diserahkan.
+ */
+export function kelengkapanKurang(p: Partial<Peminjaman> | null | undefined): string[] {
+  if (!p || !teks(p.kembali_at)) return []
+  const kembali = new Set(normalKelengkapan(p.kembali_kelengkapan).map(kunciButir))
+  return normalKelengkapan(p.pinjam_kelengkapan).filter(k => !kembali.has(kunciButir(k)))
+}
+
+/** Pengembalian yang perlu ditindaklanjuti: ada yang kurang, atau kondisinya menurun. */
+export function kembaliBermasalah(p: Partial<Peminjaman> | null | undefined): boolean {
+  if (!p || !teks(p.kembali_at)) return false
+  return kondisiMemburuk(p as Peminjaman) || kelengkapanKurang(p).length > 0
+}
+
+/** Masalah sebuah pengembalian dalam satu kalimat; kosong bila tidak ada. */
+export function masalahKembali(p: Partial<Peminjaman> | null | undefined): string {
+  if (!kembaliBermasalah(p)) return ''
+  const bagian: string[] = []
+  const kurang = kelengkapanKurang(p)
+  if (kurang.length) bagian.push(`Kurang: ${kurang.join(', ')}`)
+  if (kondisiMemburuk(p as Peminjaman)) {
+    bagian.push(`kondisi ${LABEL_KONDISI_SERAH[kondisiSah(p?.pinjam_kondisi)].toLowerCase()} → ${
+      LABEL_KONDISI_SERAH[kondisiSah(p?.kembali_kondisi)].toLowerCase()}`)
+  }
+  return bagian.join(' · ')
+}
+
+/** Peminjaman terakhir yang SUDAH kembali untuk sebuah alat. */
+export function pengembalianTerakhir(
+  daftar: Peminjaman[] | null | undefined, asetId: unknown,
+): Peminjaman | undefined {
+  return riwayatAlat(daftar, asetId).find(p => !masihDipinjam(p))
+}
+
+/**
+ * Kelengkapan yang dicentang bawaan saat alat akan diserahkan.
+ *
+ * Seluruh kelengkapan alatnya, KECUALI yang tidak ikut kembali pada
+ * pengembalian terakhir. Cover yang hilang di tangan Budi tidak boleh
+ * tercatat "diserahkan" kepada peminjam berikutnya — yang lalu ditagih atas
+ * barang yang tidak pernah ia terima. Bila barangnya sudah diganti, cukup
+ * dicentang lagi.
+ */
+export function kelengkapanSiapSerah(
+  kelengkapanAlat: unknown, daftar: Peminjaman[] | null | undefined, asetId: unknown,
+): string[] {
+  const hilang = new Set(kelengkapanKurang(pengembalianTerakhir(daftar, asetId)).map(kunciButir))
+  return normalKelengkapan(kelengkapanAlat).filter(k => !hilang.has(kunciButir(k)))
 }
 
 /** Lama peminjaman dalam hari, dibulatkan ke bawah. */
@@ -221,6 +303,8 @@ export interface RingkasLacak {
   diLuar: number
   terlambat: number
   rusakSaatKembali: number
+  /** Pengembalian yang kurang kelengkapan atau kondisinya menurun. */
+  bermasalah: number
 }
 
 /** Ringkasan untuk kepala halaman. */
@@ -232,6 +316,7 @@ export function ringkasLacak(
     diLuar: d.filter(masihDipinjam).length,
     terlambat: d.filter(p => terlambat(p, sekarang)).length,
     rusakSaatKembali: d.filter(kondisiMemburuk).length,
+    bermasalah: d.filter(kembaliBermasalah).length,
   }
 }
 
@@ -268,11 +353,13 @@ export function pesanTandaTerima(p: Peminjaman | null | undefined): string {
   }
   const baris = [
     masihDipinjam(p) ? '*TANDA TERIMA ALAT*' : '*TANDA TERIMA ALAT — SUDAH KEMBALI*',
-    `Alat: ${teks(p.aset_nama) || '-'}`,
+    `Alat: ${teks(p.aset_nama) || '-'}${teks(p.aset_kode) ? ` (No. ${teks(p.aset_kode)})` : ''}`,
     `Dipegang: ${teks(p.pemegang) || '-'}`,
   ]
   if (teks(p.project_nama)) baris.push(`Lokasi: ${teks(p.project_nama)}`)
   baris.push(`Dipinjam: ${tgl(p.pinjam_at)} · kondisi ${LABEL_KONDISI_SERAH[kondisiSah(p.pinjam_kondisi)].toLowerCase()}`)
+  const ikut = normalKelengkapan(p.pinjam_kelengkapan)
+  if (ikut.length) baris.push(`Kelengkapan: ${ikut.join(', ')}`)
 
   if (masihDipinjam(p)) {
     // Janji kembali disebut hanya bila ada. Menuliskan "Janji kembali: -"
@@ -281,8 +368,43 @@ export function pesanTandaTerima(p: Peminjaman | null | undefined): string {
   } else {
     baris.push(`Dikembalikan: ${tgl(p.kembali_at)} · kondisi ${LABEL_KONDISI_SERAH[kondisiSah(p.kembali_kondisi)].toLowerCase()}`)
     if (kondisiMemburuk(p)) baris.push('CATATAN: kondisi alat menurun selama dipinjam.')
+    const kurang = kelengkapanKurang(p)
+    if (kurang.length) baris.push(`KURANG: ${kurang.join(', ')}`)
   }
   const catatan = teks(masihDipinjam(p) ? p.pinjam_catatan : p.kembali_catatan)
   if (catatan) baris.push(`Catatan: ${catatan}`)
   return baris.join('\n')
+}
+
+// ── Saringan daftar alat ────────────────────────────────────────────────────
+
+export type Saringan = 'semua' | 'dipinjam' | 'gudang' | 'cek'
+
+export const LABEL_SARINGAN: Record<Saringan, string> = {
+  semua: 'Semua',
+  dipinjam: 'Dipinjam',
+  gudang: 'Di gudang',
+  cek: 'Perlu dicek',
+}
+
+/**
+ * Saringan mana saja yang memuat sebuah alat.
+ *
+ * "Perlu dicek" = sesuatu yang harus ditindaklanjuti seseorang: lewat janji
+ * kembali, pengembalian terakhir kurang/rusak, kondisinya tidak baik, atau
+ * nomor aset/fotonya belum ada. Alat yang sudah dilepas hanya ada di "Semua".
+ */
+export function saringanAlat(
+  a: Partial<AsetAlat> | null | undefined, daftar: Peminjaman[] | null | undefined, sekarang = Date.now(),
+): Saringan[] {
+  const hasil: Saringan[] = ['semua']
+  if (!a || !masihDimiliki(a)) return hasil
+  const berjalan = pinjamanBerjalan(daftar, a.id)
+  hasil.push(berjalan ? 'dipinjam' : 'gudang')
+  const masalahTerakhir = !berjalan && kembaliBermasalah(pengembalianTerakhir(daftar, a.id))
+  if ((berjalan && terlambat(berjalan, sekarang)) || masalahTerakhir
+    || (a.kondisi && a.kondisi !== 'baik') || kurangDataAset(a).length > 0) {
+    hasil.push('cek')
+  }
+  return hasil
 }

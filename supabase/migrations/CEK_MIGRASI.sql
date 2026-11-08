@@ -340,6 +340,14 @@ with penanda(urut, migrasi, keterangan, ada) as (values
                 and p.prosrc like '%to_jsonb%')
      and exists (select 1 from pg_trigger where tgname = 'trg_lindungi_kolom_profil' and not tgisinternal)),
 
+  (54, 'migration_aset_lengkap.sql', 'nomor aset, foto alat & kelengkapan serah-terima',
+     exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'aset_alat' and column_name = 'foto')
+     and exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'aset_alat' and column_name = 'kelengkapan')
+     and exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'aset_pinjam' and column_name = 'kembali_kelengkapan')),
+
   -- Dijalankan SESUDAH versi aplikasi terbaru ter-deploy — lihat kepala berkasnya.
   (53, 'migration_kunci_pembayaran.sql', 'langganan & status invoice hanya diubah sistem pembayaran (jalankan sesudah deploy)',
      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
