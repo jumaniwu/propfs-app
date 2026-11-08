@@ -13,25 +13,26 @@
 // ============================================================
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Wrench, Building2, Plus, Trash2, Loader2, RefreshCw, MapPin, Download, X,
-  ArrowRightLeft,
+  Wrench, Building2, Plus, Trash2, Loader2, RefreshCw, Download, X, Search,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 import { useAkuntanStore } from '@/store/akuntanStore'
 import { asetApi } from '@/lib/asetApi'
 import {
-  nilaiBuku, sisaUmur, lokasiAlat, siapSimpanAset, masihDimiliki,
-  totalAsetTetap, totalPerolehan, penyusutanBulanIni,
-  ASET_KOSONG, PILIHAN_UMUR, LABEL_KONDISI, TONE_KONDISI,
-  type AsetAlat, type KondisiAlat,
+  masihDimiliki, totalAsetTetap, totalPerolehan, penyusutanBulanIni, singkatanDariNama, cocokCari,
+  ASET_KOSONG,
+  type AsetAlat,
 } from '@/lib/asetAlat'
 import { asetPinjamApi } from '@/lib/asetPinjamApi'
 import {
-  keberadaanAlat, ringkasLacak, kalimatLacak, pinjamanBerjalan, terlambat,
-  type Peminjaman,
+  ringkasLacak, kalimatLacak, saringanAlat, LABEL_SARINGAN,
+  type Peminjaman, type Saringan,
 } from '@/lib/lacakAlat'
+import { useAuthStore } from '@/store/authStore'
 import SerahAlat from './SerahAlat'
+import FormAset, { type DrafAset } from './FormAset'
+import KartuAset from './KartuAset'
 import { poKantorBelumTercatat, type UsulDariPo } from '@/lib/sinkronRealisasi'
 import DaftarBulanan from './DaftarBulanan'
 import { jenisPo } from '@/lib/procurement'
@@ -237,14 +238,15 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
   onUbah: () => void
 }) {
   const { toast } = useToast()
+  const perusahaan = useAuthStore(s => s.profile?.company)
   const [daftar, setDaftar] = useState<AsetAlat[]>([])
   const [memuat, setMemuat] = useState(true)
   const [galat, setGalat] = useState('')
-  const [buka, setBuka] = useState(false)
-  const [draf, setDraf] = useState<Omit<AsetAlat, 'id'>>({ ...ASET_KOSONG })
-  const [simpan, setSimpan] = useState(false)
+  const [form, setForm] = useState<{ mode: 'baru' | 'ubah'; awal: DrafAset } | null>(null)
   const [pinjaman, setPinjaman] = useState<Peminjaman[]>([])
   const [serah, setSerah] = useState<AsetAlat | null>(null)
+  const [cari, setCari] = useState('')
+  const [saring, setSaring] = useState<Saringan>('semua')
 
   async function muat() {
     setMemuat(true)
@@ -273,6 +275,7 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
   const perolehan = totalPerolehan(daftar)
   const buku = totalAsetTetap(daftar, hariIni)
   const susut = penyusutanBulanIni(daftar, hariIni)
+  const singkatan = singkatanDariNama(perusahaan)
 
   /**
    * Barang dari PO alat yang sudah datang tetapi belum ada di daftar aset.
@@ -285,16 +288,30 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
     return poAlat.filter(p => adaDo.has(p.id))
   }, [daftar, pos, dos])
 
-  const siap = siapSimpanAset(draf)
+  const hitung = useMemo(() => {
+    const h: Record<Saringan, number> = { semua: 0, dipinjam: 0, gudang: 0, cek: 0 }
+    for (const a of daftar) for (const k of saringanAlat(a, pinjaman)) h[k]++
+    return h
+  }, [daftar, pinjaman])
+  const tampil = daftar.filter(a => cocokCari(a, cari) && saringanAlat(a, pinjaman).includes(saring))
 
-  async function simpanAset() {
-    if (!siap.boleh || simpan) return
-    setSimpan(true)
+  async function simpanForm(d: DrafAset) {
+    if (!form) return
     try {
-      await asetApi().buat(draf)
-      toast({ title: 'Alat dicatat sebagai aset' })
-      setDraf({ ...ASET_KOSONG })
-      setBuka(false)
+      if (form.mode === 'baru') {
+        const { id: _abaikan, ...isi } = d
+        await asetApi().buat(isi)
+        toast({ title: 'Alat dicatat sebagai aset', description: d.kode })
+      } else if (d.id) {
+        // Hanya identitas alat. Harga, tanggal beli, dan umur ekonomis tidak
+        // ikut: ketiganya menentukan penyusutan yang sudah masuk laporan.
+        await asetApi().ubah(d.id, {
+          nama: d.nama, kode: d.kode, merek: d.merek, nomor_seri: d.nomor_seri,
+          foto: d.foto ?? '', kelengkapan: d.kelengkapan ?? [],
+        })
+        toast({ title: 'Data alat diperbarui', description: d.kode })
+      }
+      setForm(null)
       await muat()
       onUbah()
     } catch (e) {
@@ -302,7 +319,7 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
         title: 'Gagal menyimpan', variant: 'destructive',
         description: e instanceof Error ? e.message : String(e),
       })
-    } finally { setSimpan(false) }
+    }
   }
 
   async function ubah(id: string, patch: Partial<AsetAlat>) {
@@ -320,15 +337,17 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
   /** Isi formulir dari PO alat — nama, harga, dan tanggalnya sudah ada di sana. */
   function dariPo(po: PurchaseOrder) {
     const it = (po.items ?? [])[0]
-    setDraf({
-      ...ASET_KOSONG,
-      nama: String(it?.nama ?? '').trim(),
-      harga: Number(po.total) || Number(it?.subtotal) || 0,
-      tanggal_beli: String(po.tanggal ?? '').slice(0, 10),
-      po_id: po.id,
-      catatan: `Dari ${po.nomor} · ${po.vendor_nama}`,
+    setForm({
+      mode: 'baru',
+      awal: {
+        ...ASET_KOSONG,
+        nama: String(it?.nama ?? '').trim(),
+        harga: Number(po.total) || Number(it?.subtotal) || 0,
+        tanggal_beli: String(po.tanggal ?? '').slice(0, 10),
+        po_id: po.id,
+        catatan: `Dari ${po.nomor} · ${po.vendor_nama}`,
+      },
     })
-    setBuka(true)
   }
 
   return (
@@ -338,7 +357,7 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
           <Wrench className="w-4 h-4 text-navy shrink-0" />
           <h3 className="font-bold text-navy text-sm truncate">Aset & Alat ({hidup.length})</h3>
         </div>
-        <button onClick={() => void muat()} disabled={memuat}
+        <button onClick={() => { void muat(); void muatPinjaman() }} disabled={memuat}
           className="p-1.5 text-muted-foreground hover:text-navy" aria-label="Muat ulang">
           <RefreshCw className={`w-3.5 h-3.5 ${memuat ? 'animate-spin' : ''}`} />
         </button>
@@ -372,7 +391,7 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
       )}
 
       {/* PO alat yang barangnya sudah datang tapi belum jadi aset */}
-      {bolehUbah && belumDicatat.length > 0 && (
+      {bolehUbah && belumDicatat.length > 0 && !form && (
         <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 space-y-2">
           <p className="text-[11px] font-bold text-blue-900">
             {belumDicatat.length} pembelian alat sudah datang tetapi belum jadi aset.
@@ -395,66 +414,42 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
         </div>
       )}
 
-      {bolehUbah && (buka ? (
-        <div className="rounded-xl border-2 border-gold/40 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-navy">Catat alat</p>
-            <button onClick={() => { setBuka(false); setDraf({ ...ASET_KOSONG }) }}
-              className="text-muted-foreground hover:text-navy"><X className="w-4 h-4" /></button>
-          </div>
-          <input data-aset-nama value={draf.nama} placeholder="Nama alat, mis. Genset 5000W"
-            onChange={e => setDraf(d => ({ ...d, nama: e.target.value }))}
-            className={`${inputCls} font-semibold`} />
-          <div className="grid grid-cols-2 gap-2">
-            <input value={draf.merek} placeholder="Merek"
-              onChange={e => setDraf(d => ({ ...d, merek: e.target.value }))} className={inputCls} />
-            <input value={draf.nomor_seri} placeholder="Nomor seri"
-              onChange={e => setDraf(d => ({ ...d, nomor_seri: e.target.value }))} className={inputCls} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="space-y-1">
-              <span className="text-[10px] font-medium text-muted-foreground">Tanggal beli</span>
-              <input type="date" data-aset-tanggal value={draf.tanggal_beli}
-                onChange={e => setDraf(d => ({ ...d, tanggal_beli: e.target.value }))}
-                className={inputCls} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] font-medium text-muted-foreground">Harga (Rp)</span>
-              <input type="number" min={0} data-aset-harga value={draf.harga || ''}
-                onChange={e => setDraf(d => ({ ...d, harga: Number(e.target.value) || 0 }))}
-                inputMode="numeric" className={inputCls} />
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] font-medium text-muted-foreground">Umur ekonomis</span>
-              <select value={draf.umur_bulan} data-aset-umur
-                onChange={e => setDraf(d => ({ ...d, umur_bulan: Number(e.target.value) }))}
-                className={inputCls}>
-                {PILIHAN_UMUR.map(p => (
-                  <option key={p.bulan} value={p.bulan}>{p.label}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] font-medium text-muted-foreground">Nilai residu (Rp)</span>
-              <input type="number" min={0} value={draf.nilai_residu || ''}
-                onChange={e => setDraf(d => ({ ...d, nilai_residu: Number(e.target.value) || 0 }))}
-                placeholder="0" inputMode="numeric" className={inputCls} />
-            </label>
-          </div>
-          {!siap.boleh && <p className="text-[11px] text-amber-800">{siap.alasan}</p>}
-          <Button data-simpan-aset onClick={() => void simpanAset()} disabled={!siap.boleh || simpan}
-            className="w-full gap-1.5 bg-navy hover:bg-navy/90 font-bold h-10">
-            {simpan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            Simpan Alat
-          </Button>
-        </div>
+      {bolehUbah && (form ? (
+        <FormAset key={`${form.mode}-${form.awal.id ?? 'baru'}`} mode={form.mode} awal={form.awal}
+          daftar={daftar} singkatan={singkatan}
+          onBatal={() => setForm(null)} onSimpan={simpanForm} />
       ) : (
-        <button data-buka-aset onClick={() => setBuka(true)}
+        <button data-buka-aset onClick={() => setForm({ mode: 'baru', awal: { ...ASET_KOSONG } })}
           className="w-full rounded-xl border-2 border-dashed border-border py-2.5
             text-[11px] font-bold text-navy hover:bg-slate-50">
           + Catat alat kerja
         </button>
       ))}
+
+      {/* Cari & saring. Dengan puluhan gerinda bermerek sama, satu-satunya
+          cara menemukan "yang dibawa Budi" adalah nomor asetnya atau
+          saringan "Dipinjam". */}
+      {daftar.length > 0 && (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input data-cari-aset value={cari} onChange={e => setCari(e.target.value)}
+              placeholder="Cari nomor aset, nama, merek…"
+              className={`${inputCls} pl-8`} />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.keys(LABEL_SARINGAN) as Saringan[]).map(k => (
+              <button key={k} type="button" data-saring={k} onClick={() => setSaring(k)}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+                  saring === k
+                    ? (k === 'cek' ? 'bg-rose-600 border-rose-600 text-white' : 'bg-navy border-navy text-white')
+                    : (k === 'cek' && hitung.cek > 0 ? 'border-rose-300 text-rose-700' : 'border-border text-navy')}`}>
+                {LABEL_SARINGAN[k]} ({hitung[k]})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {memuat && daftar.length === 0 ? (
         <div className="py-6 flex justify-center">
@@ -464,97 +459,21 @@ function BagianAset({ daftarProyek, pos, dos, bolehUbah, onUbah }: {
         <p className="text-xs text-muted-foreground py-3 text-center">
           Belum ada alat tercatat. Alat yang dibeli lewat PO Alat Kerja bisa dicatat dari sini.
         </p>
+      ) : tampil.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-3 text-center">Tidak ada alat yang cocok.</p>
       ) : (
-        <div className="space-y-2 max-h-[50vh] overflow-y-auto overscroll-contain pr-0.5">
-          {daftar.map(a => (
-            <div key={a.id} className={`rounded-xl border p-3 space-y-2 min-w-0 ${
-              masihDimiliki(a) ? 'border-border' : 'border-border bg-slate-50 opacity-70'}`}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-navy break-words">{a.nama}</p>
-                  <p className="text-[10px] text-muted-foreground break-words">
-                    {[a.merek, a.nomor_seri].filter(Boolean).join(' · ') || 'tanpa merek'}
-                    {' · beli '}{a.tanggal_beli}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs font-bold text-navy tabular-nums">
-                    {fmt(nilaiBuku(a, hariIni))}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground tabular-nums">
-                    dari {fmt(a.harga)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full
-                  ${TONE_KONDISI[a.kondisi]}`}>{LABEL_KONDISI[a.kondisi]}</span>
-                {/* Keberadaan alat dibaca dari catatan serah-terima bila ada,
-                    karena hanya di sanalah ada NAMA orangnya — dan ketika
-                    sebuah alat dicari, yang ditelepon orangnya; proyek tidak
-                    mengangkat telepon. Alat yang belum pernah dipinjamkan
-                    lewat aplikasi tetap memakai kolom lokasi lamanya. */}
-                <span className={`flex items-center gap-1 text-[10px] ${
-                  pinjamanBerjalan(pinjaman, a.id) && terlambat(pinjamanBerjalan(pinjaman, a.id))
-                    ? 'font-bold text-rose-700' : 'text-muted-foreground'}`}>
-                  <MapPin className="w-3 h-3 shrink-0" />
-                  {pinjamanBerjalan(pinjaman, a.id)
-                    ? keberadaanAlat(pinjaman, a.id)
-                    : lokasiAlat(a, daftarProyek)}
-                </span>
-                {masihDimiliki(a) && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {sisaUmur(a, hariIni) > 0 ? `sisa ${sisaUmur(a, hariIni)} bln` : 'umur habis'}
-                  </span>
-                )}
-              </div>
-
-              {bolehUbah && masihDimiliki(a) && (
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Dulu di sini ada dropdown lokasi. Ia menjawab "alat ini di
-                      mana" dan tidak lebih: menggantinya MENIMPA jawaban lama,
-                      sehingga siapa yang membawanya kemarin tidak tersimpan di
-                      mana pun — dan itu justru yang dicari ketika alatnya tidak
-                      ketemu. Tombol ini mencatat peristiwanya, dan lokasi alat
-                      mengikutinya sendiri. */}
-                  <button data-serah-alat onClick={() => setSerah(a)}
-                    className="h-8 rounded-lg border border-navy/30 bg-navy/[0.04] px-2
-                      flex items-center justify-center gap-1
-                      text-[11px] font-bold text-navy hover:bg-navy/10">
-                    <ArrowRightLeft className="w-3 h-3 shrink-0" />
-                    {pinjamanBerjalan(pinjaman, a.id) ? 'Catat kembali' : 'Serahkan'}
-                  </button>
-                  {/* Kondisi hanya bisa diubah langsung selama alatnya di
-                      gudang. Ketika ia sedang di luar, kondisinya ditentukan
-                      foto pengembaliannya — membiarkannya diubah dari sini
-                      memberi dua penulis untuk satu jawaban, dan keduanya pasti
-                      berselisih. */}
-                  {pinjamanBerjalan(pinjaman, a.id) ? (
-                    <span className="h-8 rounded-lg border border-dashed border-border px-2
-                      flex items-center justify-center text-[10px] text-muted-foreground text-center">
-                      Kondisi diisi saat kembali
-                    </span>
-                  ) : (
-                    <select value={a.kondisi} aria-label={`Kondisi ${a.nama}`}
-                      onChange={e => void ubah(a.id, { kondisi: e.target.value as KondisiAlat })}
-                      className="h-8 rounded-lg border border-border px-2 text-[11px] font-semibold text-navy">
-                      {(Object.keys(LABEL_KONDISI) as KondisiAlat[]).map(k => (
-                        <option key={k} value={k}>{LABEL_KONDISI[k]}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-
-              {bolehUbah && masihDimiliki(a) && (
-                <button data-lepas-aset
-                  onClick={() => void ubah(a.id, { dilepas_at: new Date().toISOString() })}
-                  className="text-[10px] font-bold text-muted-foreground underline">
-                  Tandai sudah dilepas / dijual
-                </button>
-              )}
-            </div>
+        <div className="space-y-2 max-h-[60vh] overflow-y-auto overscroll-contain pr-0.5">
+          {tampil.map(a => (
+            <KartuAset key={a.id} alat={a} pinjaman={pinjaman} daftarProyek={daftarProyek}
+              bolehUbah={bolehUbah} hariIni={hariIni}
+              onSerah={() => setSerah(a)}
+              onUbahKondisi={k => void ubah(a.id, { kondisi: k })}
+              onLengkapi={() => setForm({ mode: 'ubah', awal: { ...a } })}
+              onLepas={() => {
+                if (window.confirm(`Tandai ${a.kode || a.nama} sudah dilepas / dijual? Penyusutannya berhenti.`)) {
+                  void ubah(a.id, { dilepas_at: new Date().toISOString() })
+                }
+              }} />
           ))}
         </div>
       )}

@@ -17,7 +17,7 @@
 // ============================================================
 import { useMemo, useState } from 'react'
 import {
-  X, Loader2, ArrowRightLeft, Undo2, Share2, Camera, Clock, AlertTriangle,
+  X, Loader2, ArrowRightLeft, Undo2, Share2, Camera, Clock, AlertTriangle, CheckSquare, Square,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -28,11 +28,13 @@ import { Z_TIRAI, PADDING_BAWAH_TIRAI } from '@/lib/lapisan'
 import { asetPinjamApi } from '@/lib/asetPinjamApi'
 import {
   masihDipinjam, pinjamanBerjalan, bolehPinjam, siapPinjam, siapKembali,
-  lamaHari, terlambat, kondisiMemburuk, riwayatAlat, pesanTandaTerima,
+  lamaHari, terlambat, riwayatAlat, pesanTandaTerima,
+  kelengkapanSiapSerah, kelengkapanKurang, kembaliBermasalah, masalahKembali,
   LABEL_KONDISI_SERAH, kondisiSah,
   type Peminjaman, type KondisiSerah,
 } from '@/lib/lacakAlat'
-import type { AsetAlat } from '@/lib/asetAlat'
+import { normalKelengkapan, type AsetAlat } from '@/lib/asetAlat'
+import { useAuthStore } from '@/store/authStore'
 
 const inputCls = 'w-full rounded-xl border border-border bg-white px-3 py-2 text-sm '
   + 'focus:outline-none focus:ring-2 focus:ring-gold/40'
@@ -54,6 +56,9 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
   onBerubah: () => void | Promise<void>
 }) {
   const { toast } = useToast()
+  // Siapa yang MENCATAT — petugas gudang/admin, bukan peminjamnya. Ketika
+  // sebuah catatan dipertanyakan, inilah orang yang ditanya.
+  const pencatat = useAuthStore(s => s.profile?.full_name ?? '') || ''
   const [sibuk, setSibuk] = useState(false)
   const [foto, setFoto] = useState('')
   const [olahFoto, setOlahFoto] = useState(false)
@@ -70,6 +75,17 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
   const [kondisi, setKondisi] = useState<KondisiSerah>(kondisiSah(alat.kondisi))
   const [catatan, setCatatan] = useState('')
 
+  // Kelengkapan yang dicentang. Saat menyerahkan: kelengkapan alatnya, minus
+  // yang tidak kembali terakhir kali. Saat menerima kembali: semua yang
+  // tercatat ikut diserahkan — yang tidak ada, dihapus centangnya.
+  const daftarCentang = mode === 'pinjam'
+    ? normalKelengkapan([...normalKelengkapan(alat.kelengkapan)])
+    : normalKelengkapan(berjalan?.pinjam_kelengkapan)
+  const [centang, setCentang] = useState<string[]>(() => mode === 'pinjam'
+    ? kelengkapanSiapSerah(alat.kelengkapan, daftar, alat.id)
+    : normalKelengkapan(berjalan?.pinjam_kelengkapan))
+  const tandai = (k: string) => setCentang(c => c.includes(k) ? c.filter(x => x !== k) : [...c, k])
+
   /**
    * Foto dikecilkan DAN dicap di sini, sekali, sebelum disimpan.
    *
@@ -82,9 +98,8 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
     if (!f) return
     setOlahFoto(true)
     try {
-      const ket = mode === 'pinjam'
-        ? `Pinjam · ${alat.nama}`
-        : `Kembali · ${alat.nama}`
+      const nama = [alat.kode, alat.nama].filter(Boolean).join(' · ')
+      const ket = mode === 'pinjam' ? `Pinjam · ${nama}` : `Kembali · ${nama}`
       setFoto(await downscaleWithStamp(f, ket, 1000, 0.7))
     } catch (e) {
       toast({
@@ -98,8 +113,13 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
     aset_id: alat.id, pemegang, pinjam_at: new Date().toISOString(), pinjam_foto: foto,
   }
   const drafKembali: Partial<Peminjaman> = {
-    pinjam_at: berjalan?.pinjam_at, kembali_at: new Date().toISOString(), kembali_foto: foto,
+    ...berjalan,
+    kembali_at: new Date().toISOString(), kembali_foto: foto,
+    kembali_kondisi: kondisi, kembali_catatan: catatan, kembali_kelengkapan: centang,
   }
+  // Dihitung saat itu juga, sebelum disimpan — supaya yang kurang terlihat
+  // selagi peminjamnya masih berdiri di depan gudang.
+  const kurangSekarang = mode === 'kembali' ? kelengkapanKurang(drafKembali) : []
   const bisa = mode === 'pinjam' ? bolehPinjam(daftar, alat.id) : { boleh: true, alasan: '' }
   const siap = mode === 'pinjam' ? siapPinjam(drafPinjam) : siapKembali(drafKembali)
 
@@ -115,14 +135,17 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
           // diperbaiki setahun kemudian tidak boleh mengubah bunyi tanda
           // terima yang sudah dicetak dan disepakati.
           aset_nama: alat.nama,
+          aset_kode: alat.kode ?? '',
           project_id: proyek || null,
           project_nama: p?.nama ?? '',
           pemegang: pemegang.trim(),
           pemegang_hp: hp.trim(),
           pinjam_at: new Date().toISOString(),
+          pinjam_oleh: pencatat,
           pinjam_kondisi: kondisi,
           pinjam_foto: foto,
           pinjam_catatan: catatan.trim(),
+          pinjam_kelengkapan: normalKelengkapan(centang),
           janji_kembali: janji || null,
           kembali_at: null,
         })
@@ -130,11 +153,17 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
       } else if (berjalan?.id) {
         await asetPinjamApi().kembalikan(berjalan.id, {
           kembali_at: new Date().toISOString(),
+          kembali_oleh: pencatat,
           kembali_kondisi: kondisi,
           kembali_foto: foto,
           kembali_catatan: catatan.trim(),
+          kembali_kelengkapan: normalKelengkapan(centang),
         })
-        toast({ title: 'Pengembalian dicatat' })
+        toast({
+          title: kurangSekarang.length ? 'Pengembalian dicatat — ada yang kurang' : 'Pengembalian dicatat',
+          description: kurangSekarang.length ? `Kurang: ${kurangSekarang.join(', ')}` : undefined,
+          variant: kurangSekarang.length ? 'destructive' : undefined,
+        })
       }
       setFoto(''); setPemegang(''); setHp(''); setCatatan(''); setJanji('')
       await onBerubah()
@@ -159,7 +188,15 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
           max-h-[92vh] flex flex-col min-h-0">
 
         <div className="flex items-start justify-between gap-2 p-4 pb-2 shrink-0">
-          <div className="min-w-0">
+          {alat.foto && (
+            <img src={alat.foto} alt={alat.nama}
+              className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" />
+          )}
+          <div className="min-w-0 flex-1">
+            {alat.kode && (
+              <span className="inline-block font-mono text-[10px] font-black text-navy bg-gold/15
+                border border-gold/40 rounded px-1.5 py-px tracking-wide break-all">{alat.kode}</span>
+            )}
             <h3 className="font-bold text-navy text-sm break-words">{alat.nama}</h3>
             <p className="text-[11px] text-muted-foreground break-words">
               {berjalan
@@ -217,6 +254,41 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
                 </>
               )}
 
+              {daftarCentang.length > 0 ? (
+                <div data-centang-kelengkapan className="space-y-1">
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    {mode === 'pinjam' ? 'Kelengkapan yang ikut diserahkan' : 'Kelengkapan yang ikut kembali'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {daftarCentang.map(k => {
+                      const ya = centang.includes(k)
+                      const kurang = mode === 'kembali' && !ya
+                      return (
+                        <button key={k} type="button" data-butir-centang onClick={() => tandai(k)}
+                          aria-pressed={ya}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left
+                            text-[11px] font-semibold break-words ${
+                            kurang ? 'border-rose-300 bg-rose-50 text-rose-800'
+                              : ya ? 'border-navy/30 bg-navy/[0.04] text-navy' : 'border-border text-muted-foreground'}`}>
+                          {ya ? <CheckSquare className="w-3.5 h-3.5 shrink-0" /> : <Square className="w-3.5 h-3.5 shrink-0" />}
+                          {k}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {kurangSekarang.length > 0 && (
+                    <p data-kurang-sekarang className="text-[11px] font-bold text-rose-700">
+                      Kurang: {kurangSekarang.join(', ')} — tercatat atas nama {berjalan?.pemegang}.
+                    </p>
+                  )}
+                </div>
+              ) : mode === 'pinjam' && (
+                <p className="text-[10px] text-muted-foreground">
+                  Alat ini belum punya daftar kelengkapan — isi lewat “Ubah data” supaya yang kurang
+                  saat kembali bisa ketahuan.
+                </p>
+              )}
+
               <label className="block space-y-1">
                 <span className="text-[10px] font-medium text-muted-foreground">
                   Kondisi saat {mode === 'pinjam' ? 'diserahkan' : 'dikembalikan'}
@@ -230,7 +302,11 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
               </label>
 
               <textarea value={catatan} onChange={e => setCatatan(e.target.value)} rows={2}
-                placeholder="Catatan, mis. kabel roll ikut dibawa" className={inputCls} />
+                placeholder={mode === 'kembali' && kembaliBermasalah(drafKembali)
+                  ? 'Wajib: apa yang terjadi? mis. cover patah di lokasi, kunci hilang'
+                  : 'Catatan, mis. kabel roll ikut dibawa'}
+                className={`${inputCls} ${mode === 'kembali' && kembaliBermasalah(drafKembali) && !catatan.trim()
+                  ? 'border-rose-300' : ''}`} />
 
               {/* Foto WAJIB, dan capnya dibakar ke dalam gambarnya. Tanggal
                   yang hanya tersimpan di baris database membuktikan waktunya
@@ -275,7 +351,9 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
                   masihDipinjam(p) ? 'border-navy/30 bg-navy/[0.03]' : 'border-border'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-navy break-words">{p.pemegang}</p>
+                    <p className="text-xs font-bold text-navy break-words">
+                      {p.pemegang}{p.pemegang_hp ? ` · ${p.pemegang_hp}` : ''}
+                    </p>
                     <p className="text-[10px] text-muted-foreground break-words">
                       {p.project_nama || 'tanpa proyek'} · {lamaHari(p)} hari
                     </p>
@@ -299,9 +377,26 @@ export default function SerahAlat({ alat, daftar, daftarProyek, bolehUbah, onTut
                   )}
                 </div>
 
-                {kondisiMemburuk(p) && (
-                  <p className="text-[10px] font-bold text-rose-700">
-                    Kondisi menurun selama dipinjam.
+                {normalKelengkapan(p.pinjam_kelengkapan).length > 0 && (
+                  <p className="text-[10px] text-muted-foreground break-words">
+                    Diserahkan bersama: {normalKelengkapan(p.pinjam_kelengkapan).join(', ')}
+                  </p>
+                )}
+                {kembaliBermasalah(p) && (
+                  <p data-masalah-riwayat className="text-[10px] font-bold text-rose-700 break-words">
+                    {masalahKembali(p)}
+                  </p>
+                )}
+                {(p.pinjam_catatan || p.kembali_catatan) && (
+                  <div className="text-[10px] text-navy/80 space-y-0.5 break-words">
+                    {p.pinjam_catatan && <p>Saat pinjam: “{p.pinjam_catatan}”</p>}
+                    {p.kembali_catatan && <p>Saat kembali: “{p.kembali_catatan}”</p>}
+                  </div>
+                )}
+                {(p.pinjam_oleh || p.kembali_oleh) && (
+                  <p className="text-[9px] text-muted-foreground break-words">
+                    Dicatat {[p.pinjam_oleh && `serah: ${p.pinjam_oleh}`, p.kembali_oleh && `terima: ${p.kembali_oleh}`]
+                      .filter(Boolean).join(' · ')}
                   </p>
                 )}
 

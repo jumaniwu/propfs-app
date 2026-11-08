@@ -33,6 +33,8 @@ const GENSET = {
   tanggal_beli: '2026-01-15', harga: 60_000_000, umur_bulan: 60, nilai_residu: 0,
   kondisi: 'baik', lokasi_project_id: null, lokasi_nama: '', pemegang: '',
   po_id: null, catatan: '', dilepas_at: null,
+  // Alat baru wajib berfoto (lihat aset-lengkap.test.mjs).
+  foto: 'data:image/jpeg;base64,x', kelengkapan: ['Kabel power'],
 }
 const JULI = new Date('2026-07-15T00:00:00Z')
 

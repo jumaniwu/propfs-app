@@ -30,15 +30,22 @@ const PESAN_403 = ' Aksesnya ditolak. Coba keluar lalu masuk lagi; bila tetap be
 const PESAN_409 = 'Alat ini baru saja dicatat dipinjam orang lain.'
   + ' Muat ulang daftarnya dulu — jangan dicatat dua kali.'
 
+const PESAN_KOLOM = ' Kolom kelengkapan belum ada:'
+  + ' jalankan migration_aset_lengkap.sql di Supabase SQL Editor.'
+
+async function gagal(res: Response, apa: string): Promise<string> {
+  if (res.status === 409) return PESAN_409
+  if (res.status === 400) {
+    const isi = await res.text().catch(() => '')
+    if (/PGRST204|column/i.test(isi)) return `Gagal ${apa} (HTTP 400).${PESAN_KOLOM}`
+  }
+  return `Gagal ${apa} (HTTP ${res.status}).`
+    + (res.status === 404 ? PESAN_404 : res.status === 403 ? PESAN_403 : '')
+}
+
 async function json<T>(path: string, init: RequestInit, apa: string): Promise<T> {
   const res = await restFetch(path, init, 15000)
-  if (!res.ok) {
-    throw new Error(
-      res.status === 409 ? PESAN_409
-        : `Gagal ${apa} (HTTP ${res.status}).`
-          + (res.status === 404 ? PESAN_404 : res.status === 403 ? PESAN_403 : ''),
-    )
-  }
+  if (!res.ok) throw new Error(await gagal(res, apa))
   return await res.json() as T
 }
 
@@ -72,10 +79,7 @@ const nyata: AsetPinjamApi = {
       method: 'PATCH', body: JSON.stringify(patch),
       headers: { Prefer: 'return=representation' },
     }, 15000)
-    if (!res.ok) {
-      throw new Error(`Gagal mencatat pengembalian (HTTP ${res.status}).`
-        + (res.status === 404 ? PESAN_404 : res.status === 403 ? PESAN_403 : ''))
-    }
+    if (!res.ok) throw new Error(await gagal(res, 'mencatat pengembalian'))
     const rows = await res.json() as Peminjaman[]
     if (!rows.length) {
       throw new Error('Pengembalian alat ini sudah dicatat sebelumnya. Muat ulang daftarnya.')

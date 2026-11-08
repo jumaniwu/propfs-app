@@ -23,14 +23,28 @@ const PESAN_404 = ' Jalankan migration_aset_alat.sql di Supabase SQL Editor.'
 const PESAN_403 = ' Aksesnya ditolak. Coba keluar lalu masuk lagi; bila tetap begitu,'
   + ' pastikan migration_aset_alat.sql sudah dijalankan di Supabase.'
 
+// Kolom foto/kelengkapan baru ada setelah migration_aset_lengkap.sql. Tanpa
+// itu PostgREST menolak dengan 400 "Could not find the 'foto' column" — benar,
+// tetapi tidak memberi tahu apa yang harus dilakukan.
+const PESAN_KOLOM = ' Kolom nomor aset/foto/kelengkapan belum ada:'
+  + ' jalankan migration_aset_lengkap.sql di Supabase SQL Editor.'
+
+/** Penjelasan untuk respons yang gagal; membaca isinya hanya bila perlu. */
+export async function jelaskanGagal(res: Response, apa: string): Promise<string> {
+  let tambahan = res.status === 404 ? PESAN_404 : res.status === 403 ? PESAN_403 : ''
+  if (res.status === 400 || res.status === 409) {
+    const isi = await res.text().catch(() => '')
+    if (/PGRST204|column/i.test(isi)) tambahan = PESAN_KOLOM
+    else if (/aset_alat_nomor_unik|duplicate key/i.test(isi)) {
+      return 'Nomor aset ini sudah dipakai alat lain. Periksa nomor yang tertulis di alatnya.'
+    }
+  }
+  return `Gagal ${apa} (HTTP ${res.status}).${tambahan}`
+}
+
 async function json<T>(path: string, init: RequestInit, apa: string): Promise<T> {
   const res = await restFetch(path, init, 15000)
-  if (!res.ok) {
-    throw new Error(
-      `Gagal ${apa} (HTTP ${res.status}).`
-      + (res.status === 404 ? PESAN_404 : res.status === 403 ? PESAN_403 : ''),
-    )
-  }
+  if (!res.ok) throw new Error(await jelaskanGagal(res, apa))
   return await res.json() as T
 }
 
@@ -53,7 +67,7 @@ const nyata: AsetApi = {
     const res = await restFetch(`aset_alat?id=eq.${id}`, {
       method: 'PATCH', body: JSON.stringify(patch),
     })
-    if (!res.ok) throw new Error(`Gagal memperbarui alat (HTTP ${res.status}).`)
+    if (!res.ok) throw new Error(await jelaskanGagal(res, 'memperbarui alat'))
   },
   async hapus(id) {
     const res = await restFetch(`aset_alat?id=eq.${id}`, { method: 'DELETE' })
