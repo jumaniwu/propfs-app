@@ -17,6 +17,7 @@ import type {
   AssetLahan,
 } from '../types/fs.types'
 import { calcCashFlow } from './cashflow'
+import { rincianBiayaTower } from './biayaTower'
 
 // ── STATUS HELPER ──────────────────────────────────────────
 export function getStatusKelayakan(netMarginPct: number): StatusKelayakan {
@@ -51,15 +52,10 @@ export function getSellingEntities(inputs: FSInputs): SellingEntity[] {
   for (const t of inputs.tipeBangunan) {
     if (t.kategori === 'apartemen') {
       const units = t.tipeUnit || []
-      const totalNSA = units.reduce((s, u) => s + ((u.luasSemigross || 0) * (u.jumlahUnit || 0)), 0)
-      const efisiensi = t.efisiensiLantai || 80
-      const totalGFA  = totalNSA / (efisiensi / 100)
-      
-      const podiumCost = (t.luasPodiumParkiran || 0) * (t.biayaKonstruksiPodiumPerM2 || 0)
-      const towerCostRaw = totalGFA * (t.biayaKonstruksiTowerPerM2 || 0) 
-      const baseCost = podiumCost + towerCostRaw
-      // Normalize cost per m2 of NSA so it can scale with units sold smoothly
-      const biayaPokokPerM2 = totalNSA > 0 ? baseCost / totalNSA : 0
+      // Biaya tower + podium dibagi luas jual. Rumusnya di biayaTower.ts —
+      // SATU tempat, yang juga dipakai halaman Biaya Pembangunan untuk
+      // menampilkan angka yang sama persis dengan yang dihitung di sini.
+      const biayaPokokPerM2 = rincianBiayaTower(t).hppPerM2
 
       for (const u of units) {
         entities.push({

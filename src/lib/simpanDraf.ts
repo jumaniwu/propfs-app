@@ -77,6 +77,56 @@ export function buatPenunda(
   }
 }
 
+// ── Satu kiriman sekaligus ──────────────────────────────────────────────────
+
+export interface SatuSekaligus {
+  /**
+   * Minta giliran. `null` = giliran DIPEGANG pemanggil: kerjakan, lalu
+   * panggil `keluar()` di `finally`. Selain itu: ada kiriman yang sedang
+   * berjalan, dan yang dikembalikan adalah janji SATU kiriman susulan —
+   * `ulang` dijalankan sekali setelah kiriman itu selesai, membaca isian
+   * TERBARU saat itu, dan semua yang datang selama menunggu dilayani olehnya.
+   */
+  masuk(ulang: () => Promise<void>): Promise<void> | null
+  keluar(): void
+  sibuk(): boolean
+}
+
+/**
+ * Penunda hanya mencegah satu kiriman per ketikan; ia tidak mencegah kiriman
+ * baru berangkat selagi yang sebelumnya masih di jalan. Di sinyal seluler,
+ * kiriman berisi isian LAMA bisa tiba sesudah yang baru — dan server menyimpan
+ * yang tiba terakhir. Pembatas ini menjamin kiriman tidak pernah tumpang
+ * tindih, dan yang terakhir berangkat selalu membawa isian terbaru.
+ */
+export function buatSatuSekaligus(): SatuSekaligus {
+  let berjalan: Promise<void> | null = null
+  let lepas: () => void = () => {}
+  let susulan: Promise<void> | null = null
+  return {
+    masuk(ulang) {
+      if (berjalan) {
+        if (!susulan) {
+          susulan = berjalan.then(() => {
+            susulan = null
+            return ulang()
+          })
+        }
+        return susulan
+      }
+      berjalan = new Promise<void>(r => { lepas = r })
+      return null
+    },
+    keluar() {
+      const l = lepas
+      berjalan = null
+      lepas = () => {}
+      l()
+    },
+    sibuk: () => berjalan !== null,
+  }
+}
+
 // ── Draf lokal ──────────────────────────────────────────────────────────────
 
 const AWALAN = 'propfs:draf:'
