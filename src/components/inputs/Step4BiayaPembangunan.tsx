@@ -2,8 +2,11 @@ import { useMemo } from 'react'
 import { Label } from '@/components/ui/label'
 import RupiahInput from '@/components/shared/RupiahInput'
 import { formatRupiah } from '@/engine/formatter'
-import { calcBiayaPersiapan, calcBiayaOperasional } from '@/engine/calculator'
-import type { FSInputs } from '@/types/fs.types'
+import {
+  calcBiayaPersiapan, calcBiayaOperasional, getSellingEntities, calcBiayaBangunPerUnit,
+} from '@/engine/calculator'
+import type { FSInputs, TipeBangunan } from '@/types/fs.types'
+import BiayaTowerApartemen from './BiayaTowerApartemen'
 
 interface Props {
   inputs: FSInputs
@@ -94,14 +97,16 @@ export default function Step4BiayaPembangunan({ inputs, onChange }: Props) {
   const totalBiayaPersiapan   = useMemo(() => calcBiayaPersiapan(inputs), [inputs])
   const totalBiayaOperasional = useMemo(() => calcBiayaOperasional(inputs), [inputs])
 
+  // Dihitung dari entitas jual — rumah tapak per tipe, apartemen per tipe
+  // UNIT — persis seperti mesin hitung. Dulu dihitung dari isian per tipe
+  // bangunan, sehingga tower apartemen (luas & unitnya ada di tipe unit,
+  // bukan di towernya) selalu menyumbang Rp 0.
   const totalBiayaBangun = useMemo(() => {
     let total = 0
-    for (const tipe of inputs.tipeBangunan) {
+    for (const ent of getSellingEntities(inputs)) {
       for (let fase = 1; fase <= inputs.jumlahFase; fase++) {
-        const kenaikan    = Math.pow(1 + tipe.kenaikanBiayaPerFase / 100, fase - 1)
-        const biayaPerUnit = tipe.biayaKonstruksiPerM2 * kenaikan * tipe.luasBangunan
-        const unitTerjual  = inputs.penjualan.find(p => p.tipeId === tipe.id && p.fase === fase)?.unitTerjual ?? 0
-        total += biayaPerUnit * (unitTerjual || tipe.jumlahUnit / inputs.jumlahFase)
+        const unitTerjual = inputs.penjualan.find(p => p.tipeId === ent.id && p.fase === fase)?.unitTerjual ?? 0
+        total += calcBiayaBangunPerUnit(ent, fase) * (unitTerjual || ent.jumlahUnit / inputs.jumlahFase)
       }
     }
     return total
@@ -163,6 +168,11 @@ export default function Step4BiayaPembangunan({ inputs, onChange }: Props) {
       tipeBangunan: inputs.tipeBangunan.map(t =>
         t.id === tipeId ? { ...t, [field]: value } : t
       )
+    })
+
+  const ubahTipe = (tipeId: string, patch: Partial<TipeBangunan>) =>
+    onChange({
+      tipeBangunan: inputs.tipeBangunan.map(t => t.id === tipeId ? { ...t, ...patch } : t),
     })
 
   return (
@@ -518,7 +528,14 @@ export default function Step4BiayaPembangunan({ inputs, onChange }: Props) {
         <div>
           <SectionTitle>C. Biaya Pokok Bangunan (per tipe)</SectionTitle>
           <div className="space-y-4">
-            {inputs.tipeBangunan.map((tipe, i) => (
+            {inputs.tipeBangunan.map((tipe, i) => tipe.kategori === 'apartemen' ? (
+              // Tower apartemen punya isiannya sendiri: biaya tower per m² GFA
+              // dan podium per m². Kolom rumah tapak di bawah tidak dibaca
+              // perhitungan apartemen — menampilkannya untuk tower membuat
+              // angka yang diketik diabaikan tanpa tanda.
+              <BiayaTowerApartemen key={tipe.id} tipe={tipe} urutan={i} jumlahFase={inputs.jumlahFase}
+                onUbah={patch => ubahTipe(tipe.id, patch)} />
+            ) : (
               <div key={tipe.id} className="border border-border rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-sm">{tipe.nama || `Tipe ${i + 1}`}</h4>

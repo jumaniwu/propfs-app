@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import {
-  buatPenunda, simpanDraf, bacaDraf, hapusDraf, drafLebihBaru, type Penunda,
+  buatPenunda, buatSatuSekaligus, simpanDraf, bacaDraf, hapusDraf, drafLebihBaru, type Penunda,
 } from '@/lib/simpanDraf'
 import { v4 as uuidv4 } from 'uuid'
 import type { FSInputs, FSResults, SavedProject } from '../types/fs.types'
@@ -207,6 +207,9 @@ function rowToProject(row: any): SavedProject {
 // `updateInputs`.
 let penundaSimpan: Penunda | null = null
 
+// Satu kiriman ke server sekaligus — lihat catatan di `saveCurrentProject`.
+const giliranSimpan = buatSatuSekaligus()
+
 export const useFSStore = create<FSStore>((set, get) => ({
   projects:         IS_DEV_MODE ? loadLocalProjects() : [],
   currentProjectId: null,
@@ -400,6 +403,21 @@ export const useFSStore = create<FSStore>((set, get) => ({
       set({ simpanGagal: 'Proyek ini belum punya id — isiannya belum tersimpan ke server.' })
       return
     }
+
+    // SATU kiriman sekaligus, dan yang terakhir selalu membawa isian terbaru.
+    //
+    // Penundanya hanya mencegah satu kiriman per ketikan; ia tidak mencegah
+    // kiriman baru berangkat selagi yang sebelumnya masih di jalan. Di sinyal
+    // seluler, kiriman berisi isian LAMA bisa tiba sesudah yang baru — dan
+    // server menyimpan yang tiba terakhir. Revisi yang sudah tampil di layar
+    // lalu hilang di perangkat lain, tanpa satu pun tanda gagal.
+    //
+    // Yang datang selagi ada kiriman berjalan tidak berangkat sendiri: ia
+    // menunggu, lalu SATU kiriman susulan membaca isian saat itu juga. Semua
+    // yang menunggu dilayani kiriman susulan yang sama.
+    const susulan = giliranSimpan.masuk(() => get().saveCurrentProject())
+    if (susulan) return susulan
+
     set({ isSaving: true })
     const now = new Date().toISOString()
 
@@ -469,6 +487,7 @@ export const useFSStore = create<FSStore>((set, get) => ({
     } finally {
       clearTimeout(timer)
       set({ isSaving: false })
+      giliranSimpan.keluar()
     }
   },
 

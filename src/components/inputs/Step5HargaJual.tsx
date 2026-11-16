@@ -17,6 +17,7 @@ import {
   calculateFS
 } from '@/engine/calculator'
 import type { FSInputs } from '@/types/fs.types'
+import { rincianBiayaTower } from '@/engine/biayaTower'
 
 import { useAuthStore } from '@/store/authStore'
 
@@ -217,7 +218,15 @@ export default function Step5HargaJual({ inputs, onChange }: Props) {
                             <div className="font-mono text-sm font-semibold h-9 flex items-center bg-white px-3 rounded border border-slate-200">
                               {formatRupiah(ent.biayaPokokPerM2, true)}
                             </div>
-                            <p className="text-[10px] text-slate-500 mt-1 leading-tight">Meliputi HPP Tower & Podium terdistribusi</p>
+                            {/* Asal angkanya disebut. Tanpa ini, HPP yang tidak
+                                berubah setelah biaya konstruksi diubah tidak punya
+                                penjelasan apa pun di layar. */}
+                            <p data-asal-hpp className="text-[10px] text-slate-500 mt-1 leading-tight">
+                              Tower {formatRupiah(rincianBiayaTower(tower).biayaTowerPerM2, true)}/m² GFA
+                              {rincianBiayaTower(tower).luasPodium > 0
+                                ? ` + podium ${formatRupiah(rincianBiayaTower(tower).biayaPodiumPerM2, true)}/m²` : ''}
+                              , dibagi luas jual. Ubah di Biaya Pembangunan.
+                            </p>
                           </div>
                           <div className="space-y-1">
                             <Label className="text-xs text-indigo-700 font-semibold">Target Margin / m² (Rp)</Label>
