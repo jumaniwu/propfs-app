@@ -16,6 +16,14 @@ import { useFSStore } from '@/store/fsStore'
 import { denganBatasWaktu, pesanGalatMuat } from '@/lib/muatHasil'
 import { labelSimpan } from '@/lib/simpanDraf'
 import { toast } from '@/hooks/use-toast'
+import { batasWaktu } from '@/lib/batasWaktu'
+
+/**
+ * Berapa lama tombol "Hitung" menunggu penyimpanan sebelum tetap membuka
+ * hasilnya. Penyimpanan sendiri dibatasi 20 detik; ini lebih pendek karena
+ * hasilnya sudah ada di perangkat dan tidak bergantung pada server.
+ */
+const BATAS_TUNGGU_HITUNG_MS = 12000
 
 const STEP_TITLES = [
   'Data Proyek',
@@ -160,10 +168,23 @@ export default function InputPage() {
       // menampilkan seluruh angkanya sebagai Rp 0, di atas judul proyek yang
       // sudah benar. Yang melihatnya menyimpulkan kalkulasinya rusak, padahal
       // isiannya memang belum sampai ke sana.
-      await saveProject()
+      //
+      // Tetapi TIDAK tanpa batas. Hasilnya sudah dihitung di perangkat ini, dan
+      // draf lokal kini didahulukan saat halaman hasil dibuka — jadi isian
+      // yang tampil di sana tetap yang terbaru walau server belum menjawab.
+      // Menahan tombol ini sampai jaringan yang tersendat pulih membuat
+      // "Menyimpan…" berputar tanpa ujung, dan hasil yang sudah ada tidak
+      // pernah bisa dilihat.
+      const selesai = await batasWaktu(saveProject().then(() => true), BATAS_TUNGGU_HITUNG_MS, false)
 
       const gagal = useFSStore.getState().simpanGagal
-      if (gagal) {
+      if (!selesai) {
+        toast({
+          title: 'Hasil sudah dihitung — penyimpanan ke server masih berjalan',
+          description: 'Koneksi sedang lambat. Isian aman di perangkat ini; penyimpanannya'
+            + ' diselesaikan di latar belakang.',
+        })
+      } else if (gagal) {
         // Tetap boleh dilihat — hasilnya dihitung dari isian di layar ini,
         // bukan dari server. Yang tidak boleh adalah berpindah tanpa
         // memberitahu bahwa isiannya belum tersimpan.
