@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import {
   buatPenunda, buatSatuSekaligus, simpanDraf, bacaDraf, hapusDraf, drafLebihBaru, type Penunda,
 } from '@/lib/simpanDraf'
+import { batasWaktu } from '@/lib/batasWaktu'
 import { v4 as uuidv4 } from 'uuid'
 import type { FSInputs, FSResults, SavedProject } from '../types/fs.types'
 import { DEFAULT_INPUTS, TEMPLATE_A, TEMPLATE_B } from '../types/fs.types'
@@ -26,15 +27,18 @@ const APP_VERSION = '1.0.0'
 const BATAS_SIMPAN_MS = 20000
 
 /** Terjemahkan kegagalan menyimpan menjadi kalimat yang bisa ditindaklanjuti. */
+/** Penanda kiriman yang tidak selesai sama sekali — lihat batas keras di saveCurrentProject. */
+const PESAN_TAK_MENJAWAB = 'server tidak menjawab'
+
 function pesanSimpanGagal(e: unknown): string {
   const nama = e instanceof DOMException ? e.name : ''
   // Sengaja BUKAN String(e): String(null) menghasilkan tulisan "null", dan
   // tulisan itu akan tampil utuh di layar sebagai keterangan kegagalan. Yang
   // bukan Error dan bukan tulisan memang tidak punya pesan untuk dibacakan.
   const teks = e instanceof Error ? e.message : typeof e === 'string' ? e : ''
-  if (nama === 'AbortError' || /abort/i.test(teks)) {
+  if (nama === 'AbortError' || /abort|tidak menjawab/i.test(teks)) {
     return 'Waktu habis saat menyimpan ke server — koneksi terlalu lambat.'
-      + ' Isian Anda tetap aman di perangkat ini.'
+      + ' Isian Anda tetap aman di perangkat ini; bila terus terjadi, muat ulang halaman.'
   }
   return teks || 'Gagal menyimpan ke server.'
 }
@@ -320,7 +324,15 @@ export const useFSStore = create<FSStore>((set, get) => ({
     }
     const cached = get().projects.find(p => p.id === id)
     if (cached) {
-      const migratedInputs = migrateInputs(cached.inputs)
+      // Draf lokal menang di sini JUGA, bukan hanya setelah server menjawab.
+      //
+      // Salinan di daftar proyek baru diperbarui setelah penyimpanan ke
+      // server BERHASIL. Membuka halaman hasil sementara penyimpanan masih di
+      // jalan — atau gagal — dulu menampilkan isian sebelum revisi, dan bila
+      // server tidak menjawab, isian lama itulah yang tertinggal di layar.
+      const draf = bacaDraf<typeof cached.inputs>(id)
+      const isiTerbaru = draf && drafLebihBaru(draf, cached.updatedAt) ? draf.isi : cached.inputs
+      const migratedInputs = migrateInputs(isiTerbaru)
       let freshResults = null
       try { freshResults = calculateFS(migratedInputs) } catch { /* ignore */ }
       
@@ -458,11 +470,28 @@ export const useFSStore = create<FSStore>((set, get) => ({
       // dianggap galat oleh Postgres. Proyek yang gagal dibuat karena itu
       // menerima setiap penyimpanan berikutnya dengan diam — isian mengalir
       // ke sana selama berjam-jam tanpa satu pun tersimpan.
-      const { error } = await supabase.from('projects').upsert({
+      const kirim = supabase.from('projects').upsert({
         id: currentProjectId, user_id: user.id,
         name: currentInputs.namaProyek || 'Proyek Baru',
         inputs: currentInputs, results: currentResults, updated_at: now,
       }, { onConflict: 'id' }).abortSignal(ctrl.signal)
+
+      // Batas KERAS, di atas pembatal permintaan.
+      //
+      // Pembatal hanya menghentikan permintaan yang SUDAH berangkat. Sebelum
+      // berangkat, supabase-js mengambil token login lewat antrean internal
+      // yang tidak punya batas waktu — dan bila penyegaran token tersendat di
+      // jaringan, pengambilan itu menunggu selamanya. Penyimpanan ini lalu
+      // tidak pernah selesai, `finally` tidak pernah dijalankan, giliran
+      // simpan tidak pernah dilepas, dan setiap penyimpanan sesudahnya —
+      // termasuk tombol "Hitung" — ikut menunggu di belakangnya tanpa ujung.
+      //
+      // Lewat dari batas ini, penyimpanan dianggap gagal dan gilirannya
+      // dilepas. Permintaannya sendiri sudah dibatalkan pada saat yang sama,
+      // jadi bila tokennya baru tersedia nanti, ia tidak berangkat lagi
+      // membawa isian lama.
+      const { error } = await batasWaktu(kirim, BATAS_SIMPAN_MS + 1000,
+        { error: { message: PESAN_TAK_MENJAWAB } } as unknown as Awaited<typeof kirim>)
 
       // Hasilnya DIPERIKSA. Dulu baris ini tidak memeriksa apa pun: ditolak
       // RLS, barisnya tidak ada, jaringan putus — ketiganya berakhir sama,
