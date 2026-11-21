@@ -111,7 +111,12 @@ export function keadaanMuat(k: {
 }): KeadaanMuat {
   if (k.sesiMemuat) return 'tunggu-sesi'
   if (k.memuat) return 'memuat'
-  if (k.galat) return 'galat'
+  // Hasil yang SUDAH ada di perangkat ditampilkan walau server belum
+  // menjawab. Dulu galat menang atas segalanya: hasil yang baru saja
+  // dihitung — sudah ada di layar sesaat sebelumnya — diganti layar
+  // "Hasil belum bisa dibuka" hanya karena penyegaran dari server lambat.
+  // Galatnya tetap disampaikan, sebagai pita di atas hasilnya.
+  if (k.galat) return k.adaHasil ? 'siap' : 'galat'
   return k.adaHasil ? 'siap' : 'kosong'
 }
 

@@ -3,6 +3,7 @@
 // ============================================================
 
 import { createClient } from '@supabase/supabase-js'
+import { fetchBerbatas, batasUntukUrl } from './fetchBerbatas'
 
 const supabaseUrl  = ((import.meta as any).env.VITE_SUPABASE_URL as string) || 'https://ciazztqmkhzrgbaqfyyz.supabase.co'
 
@@ -31,7 +32,14 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     // sendiri; refresh ganda aman karena Supabase punya grace period
     // reuse refresh-token.
     lock: async (_name, _acquireTimeout, fn) => await fn(),
-  }
+  },
+  global: {
+    // Permintaan ke server LOGIN diberi batas waktu. Penyegaran token yang
+    // tersendat menahan SEMUA permintaan data di belakangnya — lihat
+    // fetchBerbatas.ts. `fetch` dipanggil lewat fungsi supaya selalu fetch
+    // milik peramban saat itu, bukan salinan yang diambil ketika modul dimuat.
+    fetch: fetchBerbatas((input, init) => fetch(input, init), batasUntukUrl),
+  },
 })
 
 export type PlanId = 'free' | 'basic' | 'pro'
