@@ -26,7 +26,7 @@ import { useAuthStore } from '@/store/authStore'
 import {
   denganBatasWaktu, keadaanMuat, pesanGalatMuat, perluMasukUlang, pesanTunggu,
   TUNGGU_SESI_MS, PESAN_SESI_TAK_SIAP,
-  mulaiJam, ulangJam, lamaJam,
+  mulaiJam, ulangJam, lamaJam, PESAN_LAMBAT,
 } from '@/lib/muatHasil'
 
 function ResultPageContent() {
@@ -162,10 +162,32 @@ function ResultPageContent() {
         if (!cancelled) setReady(true)
       }
     }
-    setReady(false)
+    // Hasil yang sudah tampil TIDAK ditutup layar tunggu saat mencoba lagi.
+    // Percobaan ulang — termasuk yang otomatis di bawah — berjalan di
+    // belakang angka yang sedang dibaca.
+    const tampil = useFSStore.getState()
+    if (!(tampil.currentProjectId === id && tampil.currentResults)) setReady(false)
     void init()
     return () => { cancelled = true }
   }, [id, sesiMemuat, user, ulang]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Server belum menjawab tetapi hasilnya sudah tampil: dicoba lagi SENDIRI.
+  //
+  // Penyebab paling umum bukan sinyal, melainkan penyegaran token login yang
+  // tersendat sesudah HP bangun atau berpindah jaringan — dan ia pulih
+  // sendiri dalam belasan detik. Pemakai tidak perlu tahu itu, apalagi
+  // menekan tombol untuk menebusnya. Paling banyak tiga kali, supaya tanpa
+  // sinyal sungguhan halaman ini tidak mencoba tanpa henti.
+  const [ulangOtomatis, setUlangOtomatis] = useState(0)
+  useEffect(() => {
+    if (!galat || !currentResults || perluMasukUlang(galat) || ulangOtomatis >= 3) return
+    const t = setTimeout(() => {
+      setUlangOtomatis(n => n + 1)
+      ulangJam(`result:${id ?? ''}:${ulang + 1}`)
+      setUlang(n => n + 1)
+    }, 6000)
+    return () => clearTimeout(t)
+  }, [galat, currentResults, ulangOtomatis, ulang, id])
 
   // Auto-calculate if results missing
   useEffect(() => {
@@ -275,6 +297,7 @@ function ResultPageContent() {
 
   const r = currentResults
   const projectName = currentInputs.namaProyek || 'Proyek'
+  const masukUlangPita = !!galat && perluMasukUlang(galat)
 
   return (
     <div className="min-h-screen bg-background">
@@ -317,6 +340,30 @@ function ResultPageContent() {
       />
 
       <main className="max-w-7xl mx-auto px-4 lg:px-6 py-6 space-y-6">
+        {/* Server belum menjawab, tetapi hasilnya ADA di perangkat ini. Yang
+            tampil tetap hasilnya; kabarnya cukup satu pita, bukan layar galat
+            yang menutup angka yang sebenarnya sudah siap dibaca. */}
+        {galat && (
+          <div data-pita-galat className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5
+            flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-amber-900 leading-relaxed min-w-0 flex-1">
+              <b>Belum tersambung ke server</b> — yang tampil dihitung dari isian di perangkat ini.
+              {' '}{galat === PESAN_LAMBAT
+                ? 'Server belum menjawab; biasanya pulih sendiri dalam beberapa detik dan dicoba lagi otomatis.'
+                : galat}
+            </p>
+            {masukUlangPita ? (
+              <Button size="sm" onClick={() => navigate('/auth')} className="h-8 text-xs shrink-0">Masuk kembali</Button>
+            ) : (
+              <Button size="sm" variant="outline" data-muat-ulang-pita
+                onClick={() => { ulangJam(`result:${id ?? ''}:${ulang + 1}`); setUlang(n => n + 1) }}
+                className="h-8 text-xs gap-1.5 shrink-0">
+                <RefreshCw className="h-3.5 w-3.5" /> Coba lagi
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Project title */}
         <div className="flex items-start justify-between gap-4">
           <div>
